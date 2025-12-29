@@ -29,6 +29,7 @@ which outputs the following
     [8760 rows x 10 columns]
 """
 
+import os
 import pandas as pd
 
 from fips.states import States
@@ -92,6 +93,9 @@ class Commercial(pd.DataFrame):
             }
     """Mapping of COMstock data columns to Commercial data columns"""
 
+    CACHEDIR = None
+    """Cache folder"""
+
     def __init__(self,
         # pylint: disable=too-many-arguments,too-many-positional-arguments
         state:str,
@@ -145,44 +149,56 @@ class Commercial(pd.DataFrame):
                 split_areas["FRACTION"].append(area.FLOORAREA/actual_areas_sum)
         split_areas = pd.DataFrame(split_areas).set_index("BUILDING_TYPE")
 
-        # collect building type data
-        for btype in COMstock.BUILDING_TYPES:
-            bdata = COMstock(
-                state=state,
-                county=county,
-                building_type=btype,
-                freq=freq,
-                )
-            for aggr,columns in collect.items():
-                data[f"{btype}_{aggr}_MW"] = bdata[columns].sum(axis=1) / 1e6
-                floorarea[btype] = bdata["floor_area"].max()
-                total_area += floorarea[btype]
-        data = pd.DataFrame(data)
+        if self.CACHEDIR is None:
+            self.CACHEDIR = os.path.join(os.path.dirname(__file__),".cache")
 
-        # prepare consolidation columns
-        for ctype in collect.keys():
-            data[f"{ctype}_MW"] = 0.0
+        cache = os.path.join(self.CACHEDIR,f"{state}_{county}_C.csv")
+        if os.path.exists(cache):
 
-        # collect and consolidate data
-        for btype in COMstock.BUILDING_TYPES:
+            data = pd.read_csv(cache,index_col=[0],parse_dates=[0])
+
+        else:
 
             # collect building type data
-            for ctype in {x.split("_",1)[0] for x in collect.keys()}:
-                for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
-                    data[kwname] *= floorarea[btype] / total_area * split_areas.loc[btype].FLOORAREA
+            for btype in COMstock.BUILDING_TYPES:
+                bdata = COMstock(
+                    state=state,
+                    county=county,
+                    building_type=btype,
+                    freq=freq,
+                    )
+                for aggr,columns in collect.items():
+                    data[f"{btype}_{aggr}_MW"] = bdata[columns].sum(axis=1) / 1e6
+                    floorarea[btype] = bdata["floor_area"].max()
+                    total_area += floorarea[btype]
+            data = pd.DataFrame(data)
 
-            # consolidate building type data
+            # prepare consolidation columns
             for ctype in collect.keys():
-                data[f"{ctype}_MW"] += data[f"{btype}_{ctype}_MW"]
-                data.drop(f"{btype}_{ctype}_MW",axis=1,inplace=True)
+                data[f"{ctype}_MW"] = 0.0
 
-        # update net total with DG
-        data["elec_net_MW"] = data["elec_total_MW"] + data["elec_dg_MW"]
-        data.drop("nonelec_dg_MW",axis=1,inplace=True)
+            # collect and consolidate data
+            for btype in COMstock.BUILDING_TYPES:
 
-        # move year-end data to beginning
-        data.index = pd.DatetimeIndex([str(x).replace("2019","2018") for x in data.index])
-        data.sort_index(inplace=True)
+                # collect building type data
+                for ctype in {x.split("_",1)[0] for x in collect.keys()}:
+                    for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
+                        data[kwname] *= floorarea[btype] / total_area * split_areas.loc[btype].FLOORAREA
+
+                # consolidate building type data
+                for ctype in collect.keys():
+                    data[f"{ctype}_MW"] += data[f"{btype}_{ctype}_MW"]
+                    data.drop(f"{btype}_{ctype}_MW",axis=1,inplace=True)
+
+            # update net total with DG
+            data["elec_net_MW"] = data["elec_total_MW"] + data["elec_dg_MW"]
+            data.drop("nonelec_dg_MW",axis=1,inplace=True)
+
+            # move year-end data to beginning
+            data.index = pd.DatetimeIndex([str(x).replace("2019","2018") for x in data.index])
+            data.sort_index(inplace=True)
+            data.to_csv(cache,index=True,header=True)
+
         super().__init__(data[sorted(data.columns)])
 
     @classmethod
@@ -190,3 +206,10 @@ class Commercial(pd.DataFrame):
         """@private Return dict of accepted kwargs by this class constructor"""
         return {x:y for x,y in kwargs.items()
             if x in cls.__init__.__annotations__}
+
+if __name__ == "__main__":
+
+    from fips.counties import Counties
+    for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
+        print("Processing",state,county,end="...",flush=True)
+        Commercial(state,county)

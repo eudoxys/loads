@@ -10,7 +10,7 @@ To get the weather data for Alameda County CA use the command
 
 which outputs the following
 
-                               temperature[degF]  ...  diffuse[W/m^2]
+                                temperature_degF  ...    diffuse_Wpms
     2018-01-01 00:00:00+00:00              53.96  ...            32.0
     2018-01-01 01:00:00+00:00              51.98  ...             2.0
     2018-01-01 02:00:00+00:00              51.08  ...             0.0
@@ -81,14 +81,14 @@ class Weather(pd.DataFrame):
             data.index = pd.DatetimeIndex(data.index,tz=pytz.UTC) - dt.timedelta(hours=tzoffset+1)
             data.index.name = "timestamp"
             data.columns = [
-                "temperature[degF]",
-                "humidity[%]",
-                "global[W/m^2]",
-                "direct[W/m^2]",
-                "diffuse[W/m^2]",
+                "temperature_degF",
+                "humidity_pc",
+                "global_Wpms",
+                "direct_Wpms",
+                "diffuse_Wpms",
                 ]
-            data["temperature[degF]"] = data["temperature[degF]"]*9/5+32
-            data["humidity[%]"] = data["humidity[%]"].round(1)
+            data["temperature_degF"] = (data["temperature_degF"]*9/5+32).round(2)
+            data["humidity_pc"] = data["humidity_pc"].round(1)
             data.to_csv(file,index=True,header=True,compression="gzip")
 
         else:

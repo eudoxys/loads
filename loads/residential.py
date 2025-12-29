@@ -29,6 +29,7 @@ which outputs the following
     [8760 rows x 10 columns]
 """
 
+import os
 import pandas as pd
 
 from fips.states import States
@@ -121,6 +122,9 @@ class Residential(pd.DataFrame):
             }
     """Mapping of `RESstock` columns to `Residential` columns"""
 
+    CACHEDIR = None
+    """Cache folder"""
+
     def __init__(self,
         # pylint: disable=too-many-arguments,too-many-positional-arguments
         state:str,
@@ -154,54 +158,66 @@ class Residential(pd.DataFrame):
         assert county in Counties().set_index(["ST","COUNTY"]).loc[state].index, \
             f"{state=} {county=} is not valid"
 
-        if collect is None:
-            collect = self.COLLECT
+        if self.CACHEDIR is None:
+            self.CACHEDIR = os.path.join(os.path.dirname(__file__),".cache")
 
-        units = {}
-        total_units = 0.0
-        data = {}
+        cache = os.path.join(self.CACHEDIR,f"{state}_{county}_R.csv")
+        if os.path.exists(cache):
 
-        # collect building type data
-        for btype in RESstock.BUILDING_TYPES:
-            bdata = RESstock(
-                state=state,
-                county=county,
-                building_type=btype,
-                freq=freq,
-                )
-            for aggr,columns in collect.items():
-                data[f"{btype}_{aggr}_MW"] = bdata[columns].sum(axis=1) / 1e6
-                units[btype] = bdata["units"].max()
-                total_units += units[btype]
-        data = pd.DataFrame(data)
+            data = pd.read_csv(cache,index_col=[0],parse_dates=[0])
+        
+        else:
+        
+            if collect is None:
+                collect = self.COLLECT
 
-        # prepare consolidation columns
-        for ctype in collect.keys():
-            data[f"{ctype}_MW"] = 0.0
-
-        # scale by number of residential units and calculate fractional loads
-        actual_units = Units(state=state,county=county,year=year)
-
-        for btype in RESstock.BUILDING_TYPES:
+            units = {}
+            total_units = 0.0
+            data = {}
 
             # collect building type data
-            for ctype in {x.split("_",1)[0] for x in collect.keys()}:
-                for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
-                    data[kwname] *= units[btype] / total_units * actual_units
+            for btype in RESstock.BUILDING_TYPES:
+                bdata = RESstock(
+                    state=state,
+                    county=county,
+                    building_type=btype,
+                    freq=freq,
+                    )
+                for aggr,columns in collect.items():
+                    data[f"{btype}_{aggr}_MW"] = bdata[columns].sum(axis=1) / 1e6
+                    units[btype] = bdata["units"].max()
+                    total_units += units[btype]
+            data = pd.DataFrame(data)
 
-            # consolidate building type data
+            # prepare consolidation columns
             for ctype in collect.keys():
-                data[f"{ctype}_MW"] += data[f"{btype}_{ctype}_MW"]
-                data.drop(f"{btype}_{ctype}_MW",axis=1,inplace=True)
+                data[f"{ctype}_MW"] = 0.0
 
-        # update net total with DG
-        data["elec_net_MW"] = data["elec_total_MW"] + data["elec_dg_MW"]
-        data.drop("nonelec_dg_MW",axis=1,inplace=True)
+            # scale by number of residential units and calculate fractional loads
+            actual_units = Units(state=state,county=county,year=year)
 
-        # move year-end data to beginning
-        data.index = pd.DatetimeIndex([str(x).replace("2019","2018") for x in data.index])
-        data.index.name = "timestamp"
-        data.sort_index(inplace=True)
+            for btype in RESstock.BUILDING_TYPES:
+
+                # collect building type data
+                for ctype in {x.split("_",1)[0] for x in collect.keys()}:
+                    for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
+                        data[kwname] *= units[btype] / total_units * actual_units
+
+                # consolidate building type data
+                for ctype in collect.keys():
+                    data[f"{ctype}_MW"] += data[f"{btype}_{ctype}_MW"]
+                    data.drop(f"{btype}_{ctype}_MW",axis=1,inplace=True)
+
+            # update net total with DG
+            data["elec_net_MW"] = data["elec_total_MW"] + data["elec_dg_MW"]
+            data.drop("nonelec_dg_MW",axis=1,inplace=True)
+
+            # move year-end data to beginning
+            data.index = pd.DatetimeIndex([str(x).replace("2019","2018") for x in data.index])
+            data.index.name = "timestamp"
+            data.sort_index(inplace=True)
+            data.to_csv(cache,index=True,header=True)
+            
         super().__init__(data[sorted(data.columns)])
 
     @classmethod
@@ -209,3 +225,14 @@ class Residential(pd.DataFrame):
         """@private Return dict of accepted kwargs by this class constructor"""
         return {x:y for x,y in kwargs.items()
             if x in cls.__init__.__annotations__}
+
+if __name__ == "__main__":
+
+    from fips.counties import Counties
+    for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
+        print("Processing",state,county,end="...",flush=True)
+        try:
+            Residential(state,county)
+            print("done")
+        except Exception as err:
+            print("ERROR:",err)

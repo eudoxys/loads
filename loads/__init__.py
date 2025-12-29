@@ -1,10 +1,12 @@
 """Electric load data accessors
 
-Syntax: `loads [-h] [-y YEAR] [-o OUTPUT] [--building_type BUILDING_TYPE]
-[--format {csv,gzip,zip,xlsx}] [--precision PRECISION] [--warning] [--debug] 
-state county {residential,commercial,industrial,agricultural,public,weather}`
+# Syntax
 
-Positional arguments:
+  `loads [-h] [-y YEAR] [-o OUTPUT] [--building_type BUILDING_TYPE]
+  [--format {csv,gzip,zip,xlsx}] [--precision PRECISION] [--warning] [--debug] 
+  state county {residential,commercial,industrial,agricultural,public,weather}`
+
+## Positional arguments
 
 - `state`
 
@@ -12,7 +14,7 @@ Positional arguments:
 
 - `{residential,commercial,industrial,agricultural,public,weather}`O
 
-Options:
+## Option arguments
 
 -  `-h`, `--help`           show this help message and exit
 
@@ -35,7 +37,7 @@ Options:
 
 See https://www.eudoxys.com/loads for documentation.
 
-Description:
+# Description
 
 The `loads` package retrieves data for the following sectors:
 
@@ -50,7 +52,9 @@ The `loads` package retrieves data for the following sectors:
 In addition corresponding `weather` data is available for the residential and
 commercial sector loads that weather sensitive
 
-Data frame generally contain any of the following, indexed by date/time:
+## Load data
+
+Load data frames generally contain any of the following, indexed by date/time:
 
 - `elec_baseload_MW`: electric loads which are dependent on outdoor air
   temperature and solar gains over all conditions.
@@ -83,7 +87,7 @@ Data frame generally contain any of the following, indexed by date/time:
 
 Not all data frames will contain all these columns. Columns that are all zeros may be omitted.
 
-Package architecture:
+# Package architecture
 
 ```mermaid
 flowchart TD
@@ -110,11 +114,11 @@ flowchart TD
     Floorarea --> Commercial
 ```
 
-Example:
+# Example
 
     loads CA Alameda residential
 
-Caveats:
+# Caveats
 
 - Most of the data comes from online sources that are cached locally to help
   with performance. However, some of the initial downloads can take a several
@@ -124,7 +128,7 @@ Caveats:
   counties. In such cases a warning is output and a zero dataframe is
   constructed.
 
-Package information:
+# Package information
 
 - Source code: https://github.com/eudoxys/loads
 
@@ -144,13 +148,17 @@ Package information:
   - [fips](https://github.com/eudoxys/fips)
 
 """
+
+from loads.agriculture import Agriculture
+from loads.cast import Cast
 from loads.cli import main
-from loads.resstock import RESstock
-from loads.residential import Residential
 from loads.comstock import COMstock
-from loads.units import Units
 from loads.floorarea import Floorarea
 from loads.industry import Industry
-from loads.agriculture import Agriculture
+from loads.residential import Residential
+from loads.resstock import RESstock
+from loads.units import Units
 from loads.weather import Weather
+
 import loads.cache
+

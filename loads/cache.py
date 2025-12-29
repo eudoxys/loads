@@ -21,3 +21,7 @@ def cache_clear():
             except Exception as err:
 
                 warnings.warn(f"cache {file=} delete failed: {err}")
+
+if __name__ == "__main__":
+
+    cache_clear()

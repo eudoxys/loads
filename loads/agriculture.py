@@ -39,6 +39,9 @@ import numpy as np
 import pandas as pd
 from fips.counties import Counties
 
+CACHE = None
+"""Global cache of agricultural load data"""
+
 class Agriculture(pd.DataFrame):
     "Agricultural loads data frame implementation"
 
@@ -81,50 +84,55 @@ class Agriculture(pd.DataFrame):
         os.makedirs(self.CACHEDIR,exist_ok=True)
 
         # load data
-        file = os.path.join(self.CACHEDIR,"agriculture.csv.gz")
-        if not os.path.exists(file):
-            data = pd.read_csv(self.SOURCE,
-                low_memory=False).sort_values("fips_matching")
-            data.to_csv(file,index=False,header=True,compression="gzip"
-                if file.endswith(".gz") else None)
+        global CACHE
+        if CACHE is None:
+            file = os.path.join(self.CACHEDIR,"agriculture.csv.gz")
+            if not os.path.exists(file):
+                data = pd.read_csv(self.SOURCE,
+                    low_memory=False).sort_values("fips_matching")
+                data.to_csv(file,index=False,header=True,compression="gzip"
+                    if file.endswith(".gz") else None)
+            else:
+                data = pd.read_csv(file,low_memory=False)
+
+            # remove unwanted columns, aggregate, and convert from TBTU/y to MWh/h
+            data = data\
+                .drop([x for x in data.columns if x not in self.COLUMNS],axis=1) \
+                .groupby(["fips_matching"]) \
+                .sum() \
+                * 1e12 \
+                * 0.2931 \
+                / 1e6 \
+                / 365.2425 \
+                / 24
+                # convert from TBTU/y -> BTU/y -> Wh/y -> MWh/y -> MWh/d -> MWh/h
+
+            # collect columns
+            for column,group in [(x,y) for x,y in self.COLUMNS.items() if not y is None]:
+                if not group in data.columns:
+                    data[group] = 0.0
+                data[group] += data[column]
+                data.drop(column,inplace=True,axis=1)
+            data.reset_index(inplace=True)
+
+            # merge state/county data
+            counties = Counties()
+            data.fips_matching = [f"{x:05d}" for x in data.fips_matching]
+            data = pd.merge(
+                left=counties[["FIPS","ST","COUNTY"]],
+                right=data,
+                left_on="FIPS",
+                right_on="fips_matching",
+                how="outer",
+                )\
+                .drop({"FIPS","fips_matching"},axis=1)\
+                .rename({"ST":"state","COUNTY":"county"},axis=1)\
+                .ffill()\
+                .groupby(["state","county"])\
+                .sum()
+            CACHE = data.copy()
         else:
-            data = pd.read_csv(file,low_memory=False)
-
-        # remove unwanted columns, aggregate, and convert from TBTU/y to MWh/h
-        data = data\
-            .drop([x for x in data.columns if x not in self.COLUMNS],axis=1) \
-            .groupby(["fips_matching"]) \
-            .sum() \
-            * 1e12 \
-            * 0.2931 \
-            / 1e6 \
-            / 365.2425 \
-            / 24
-            # convert from TBTU/y -> BTU/y -> Wh/y -> MWh/y -> MWh/d -> MWh/h
-
-        # collect columns
-        for column,group in [(x,y) for x,y in self.COLUMNS.items() if not y is None]:
-            if not group in data.columns:
-                data[group] = 0.0
-            data[group] += data[column]
-            data.drop(column,inplace=True,axis=1)
-        data.reset_index(inplace=True)
-
-        # merge state/county data
-        counties = Counties()
-        data.fips_matching = [f"{x:05d}" for x in data.fips_matching]
-        data = pd.merge(
-            left=counties[["FIPS","ST","COUNTY"]],
-            right=data,
-            left_on="FIPS",
-            right_on="fips_matching",
-            how="outer",
-            )\
-            .drop({"FIPS","fips_matching"},axis=1)\
-            .rename({"ST":"state","COUNTY":"county"},axis=1)\
-            .ffill()\
-            .groupby(["state","county"])\
-            .sum()
+            data = CACHE.copy()
 
         # return all states/counties
         if state is None and county is None:
@@ -175,4 +183,30 @@ class Agriculture(pd.DataFrame):
         """@private Return dict of accepted kwargs by this class constructor"""
         return {x:y for x,y in kwargs.items()
             if x in cls.__init__.__annotations__}
+
+if __name__ == "__main__":
+
+    import matplotlib.pyplot as plt
+    from fips.counties import Counties
+    counties = Counties(use_index="RO").loc["WECC"].set_index(["ST","COUNTY"]).sort_index()
+    loads = {}
+    last = None
+    for state,county in counties.index.values:
+        if state != last:
+            if not last is None:
+                plt.figure(figsize=(20,10))
+                plt.bar(loads.keys(),height=loads.values())
+                plt.xticks(rotation=90)
+                plt.grid()
+                plt.ylabel("Electric load annual average (MW)")
+                plt.xlabel("County")
+                plt.title(f"{last} Agriculture")
+                plt.savefig(f".cache/agriculture_{last}.png")
+                print()
+                loads = {}
+            print(state,end="")
+            last = state
+        print(".",end="",flush=True)
+        loads[county] = Agriculture(state,county).T.elec_net_MW.values[0].round(1)
+
             
