@@ -41,8 +41,16 @@ def _(county_ui, mo, state_ui):
 
 
 @app.cell
-def _(Cast, Residential, Weather, county_ui, mo, os, pd, state_ui):
+def _(county_ui, mo):
     mo.stop(county_ui.value is None,mo.md("**<font color=blue>HINT**: select a county</font>"))
+    order_ui = mo.ui.slider(label="Model order:",start=1,stop=24,step=1,value=1,debounce=True,show_value=True)
+    # order_ui
+    return (order_ui,)
+
+
+@app.cell
+def _(Cast, Residential, Weather, county_ui, mo, order_ui, os, pd, state_ui):
+    order_ui
     STATE = state_ui.value
     COUNTY = county_ui.value
     LOAD = "cooling"
@@ -60,92 +68,35 @@ def _(Cast, Residential, Weather, county_ui, mo, os, pd, state_ui):
 
     data = Cast(_test,2025,Weather(STATE,COUNTY))
     data.index.name="timestamp"
-    # data.reset_index(inplace=True)
-
-    order_ui = mo.ui.slider(label="Model order:",start=1,stop=72,step=1,value=3,debounce=True,show_value=True)
-    order_ui
-    return COUNTY, LOAD, STATE, data, order_ui
+    return LOAD, data
 
 
 @app.cell
-def _(COUNTY, LOAD, STATE, data, np, plt):
-    plt.clf()
-
+def _(LOAD, data, order_ui):
+    # fit the model
     X = data["temperature_degF"].values
     Y = data[f"elec_{LOAD}_MW"].values
     t = data.index.values
 
-    # data.set_index("timestamp",inplace=True)
-    model = data.static_model(weather=data,return_model=True)["cooling"]
-    # data.reset_index(inplace=True)
+    # baseline model (sigmoid fit)
+    baseline_model = data.static_model()["cooling"]
+    Yf = baseline_model(X) # baseline model fit
 
-    Xr = np.arange(min(X),max(X)+1,1)
-    Ym = model(Xr)
-
-    plt.figure(figsize=(12,5))
-    plt.plot(X, Y, ".b",label="Load data")
-    plt.plot(Xr, Ym, "k",label="Baseline model")
-
-    plt.xlabel("Temperature ($^\\text{o}$F)")
-    plt.title(f"{COUNTY} {STATE} {LOAD}")
-    plt.ylabel("Load (MW)")
-    plt.grid()
-    plt.legend()
-
-    plt.gca()
-    return X, Y, model
+    # dynamic model (linear fit to residual)
+    K = order_ui.value
+    dynamic_model = data.dynamic_model(order=K)["cooling"]
+    Yd = dynamic_model(X)
+    return K, Y, Yd, Yf
 
 
 @app.cell
-def _(X, Y, model):
-    Yf = model(X)
-    Yr = Y - Yf
-    return Yf, Yr
-
-
-@app.cell
-def _(Y, Yr, np, order_ui):
-    K=order_ui.value
-    YY=np.vstack([Y[k:len(Yr)-K+k+1] for k in range(K)])
-    return K, YY
-
-
-@app.cell
-def _(K, X, YY, Yf, np):
-    # raise Exception("YY columns are backwards")
-    M = np.concat([[Yf[K-1:]],
-                   YY[-2::-1,],
-                   np.array([X[K-1:]]),
-                  ]).T
-    b = np.array([YY[-1]]).T
-    return M, b
-
-
-@app.cell
-def _(M):
-    # check the transfer function matrix M
-    print("  Pm[t]    P[t-1]    P[t-2]     T[t]")
-    print("--------  --------  --------  --------")
-    print("\n".join([', '.join([f'{y:8.4f}' for y in x]) for x in M[:10,:].tolist()]))
+def _(K, Y, Yd, mo, np):
+    _rmse = np.sqrt(np.mean((Y[K-1:]-Yd)**2))
+    mo.md(f"""RMSE = ${_rmse:.3f}$ MW (${_rmse/np.mean(Y)*100:.1f}$%)""")
     return
 
 
-@app.cell
-def _(K, M, Y, b, mo, np):
-    x = np.linalg.lstsq(M,b)[0]
-    Yd = (M@x + b)/2
-    _y = np.array([Y[K-1:]]).T
-    _rmse = np.sqrt(np.mean((_y-Yd)**2))
-    mo.md(f"""
-    | Model fit | $~$ |
-    | :------ | :----- |
-    | Dynamic model | $P[t] = {'~'.join([(f'{y:+.4f}~P[{{t{-K+n:.0f}}}]' if n > 0 else f"{y:.4f}~\\bar P[t]") if n<K else f"{y:+.4f}~T[t]" for n,y in enumerate(x.T.tolist()[0])])}$ |
-    | Model RMSE | ${_rmse:.3f}$ MW (${_rmse/np.mean(_y)*100:.1f}$%) |
-    """)
-    return (Yd,)
-
-
-@app.cell
+@app.cell(hide_code=True)
 def _(data, mo, px):
     xaxis_ui = mo.ui.radio(
         label="X axis:",
@@ -165,20 +116,21 @@ def _(data, mo, px):
 
 
 @app.cell
-def _(K, Yd, data, mo, pd, plotter_ui, xaxis_ui, yaxis_ui):
+def _(K, Y, Yd, Yf, data, mo, pd, plotter_ui, xaxis_ui, yaxis_ui):
     if yaxis_ui.value == "elec_cooling_MW":
         _data = pd.DataFrame(
             {
-                xaxis_ui.value: data.reset_index()[xaxis_ui.value][K - 1 :],
-                f"Actual {yaxis_ui.value}": data.reset_index()[yaxis_ui.value][K - 1 :],
-                f"Model {yaxis_ui.value}": Yd.T.tolist()[0],
+                xaxis_ui.value: data.reset_index()[xaxis_ui.value].iloc[K - 1 :],
+                f"Original {yaxis_ui.value}": Y[K - 1 :],
+                f"Prediction {yaxis_ui.value}": Yd,
+                f"Baseline {yaxis_ui.value}": Yf[K - 1 :],
             }
         )
         fig = mo.ui.plotly(
             plotter_ui.value(
                 _data,
                 x=xaxis_ui.value,
-                y=[f"Actual {yaxis_ui.value}",f"Model {yaxis_ui.value}"],
+                y=[f"Original {yaxis_ui.value}", f"Prediction {yaxis_ui.value}", f"Baseline {yaxis_ui.value}"],
             )
         )
     else:
@@ -187,15 +139,17 @@ def _(K, Yd, data, mo, pd, plotter_ui, xaxis_ui, yaxis_ui):
                 data.reset_index(), x=xaxis_ui.value, y=yaxis_ui.value
             )
         )
-    mo.ui.tabs({
-        "Plots":fig,
-        "Data": mo.ui.table(
-            data=data.round(4),
-            selection=None,
-            text_justify_columns={x:"right" for x in data.columns},
-            page_size=24,
-        ),
-    })
+    mo.ui.tabs(
+        {
+            "Plots": fig,
+            "Data": mo.ui.table(
+                data=data.round(4),
+                selection=None,
+                text_justify_columns={x: "right" for x in data.columns},
+                page_size=24,
+            ),
+        }
+    )
     return
 
 
@@ -214,7 +168,7 @@ def _():
     Residential.CACHEDIR=".cache"
     from loads.weather import Weather
     from loads.cast import Cast
-    return Cast, Counties, Residential, Weather, mo, np, os, pd, plt, px
+    return Cast, Counties, Residential, Weather, mo, np, os, pd, px
 
 
 if __name__ == "__main__":
