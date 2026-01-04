@@ -4,27 +4,27 @@ __generated_with = "0.18.4"
 app = marimo.App(width="full")
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(Counties, mo):
     counties = Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"]
     state_ui = mo.ui.dropdown(label="State:",options=counties.index.get_level_values(0).unique(),value=counties.index.get_level_values(0)[0])
     return counties, state_ui
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(counties, mo, state_ui):
     _counties = counties.loc[state_ui.value].index
     county_ui = mo.ui.dropdown(label="County:",options=_counties)
     return (county_ui,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(county_ui, mo, state_ui):
     mo.hstack([state_ui, county_ui], justify="start")
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     get_northeast,set_northeast = mo.state(True)
     get_east,set_east = mo.state(True)
@@ -65,7 +65,7 @@ def _(mo):
     )
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     global_ui = mo.ui.checkbox(label="Horizontal",value=True)
     diffuse_ui = mo.ui.checkbox(label="Diffuse",value=True)
@@ -73,7 +73,7 @@ def _(mo):
     return diffuse_ui, direct_ui, global_ui
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
     get_east,
     get_northeast,
@@ -109,7 +109,7 @@ def _(
     )
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(get_altitude, mo, set_all, set_altitude):
     all_ui = mo.ui.button(label="All",on_click=lambda x: set_all(True))
     none_ui = mo.ui.button(label="None",on_click=lambda x: set_all(False))
@@ -117,7 +117,7 @@ def _(get_altitude, mo, set_all, set_altitude):
     return all_ui, altitude_ui, none_ui
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     # constraint_ui = mo.ui.radio(
     #     label="Constraint:",
@@ -131,7 +131,7 @@ def _(mo):
     return constrain_generation, constrain_normals, constraints_ui
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
     Counties,
     all_ui,
@@ -189,7 +189,7 @@ def _(
     return COUNTY, STATE, latitude, tzoffset
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(COUNTY, Cast, Residential, STATE, Weather, mo, os, pd, tzoffset):
     LOAD = "cooling"
     tzoffset
@@ -235,8 +235,10 @@ def _(
     t = data.index.hour / 12 * np.pi
     columns = basecolumns.copy()
     if get_altitude():
-        _declination = -23.44*np.pi/180 * np.cos((data.index.dayofyear-1+10+data.index.hour/24)/365.2425*2*np.pi) 
-        _altitude = np.cos(np.asin(np.sin(latitude) * np.sin(_declination) + np.cos(latitude)*np.cos(_declination)*np.cos((data.index.hour-12)/12*np.pi)))
+        # _declination = -23.44*np.pi/180 * np.cos((data.index.dayofyear-1+10+data.index.hour/24)/365.2425*2*np.pi)
+        _declination = -23.44*np.cos(2*np.pi/365.2425*(data.index.dayofyear-1+10+data.index.hour/24))*np.pi/180
+        _hourangle = (data.index.hour-12)%24 / 12 * np.pi
+        _altitude = np.sin(latitude) * np.sin(_declination) + np.cos(latitude)*np.cos(_declination)*np.cos(_hourangle)
     else:
         _altitude = 1.0
     for direction, active, angle in [
@@ -250,7 +252,7 @@ def _(
     ]:
         if active:
             M[direction] = data["direct_Wpms"] * np.clip(
-                np.cos(t - angle)*_altitude, a_min=0, a_max=1
+                np.cos(t - angle)*np.cos(_altitude), a_min=0, a_max=1
             )
             columns.append(f"{direction}")
     M = M.values
@@ -258,11 +260,13 @@ def _(
     return M, b, basecolumns, columns
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(M, b, basecolumns, constrain_generation, constrain_normals, cp, np):
     x = cp.Variable(M.shape[1])
     cost = cp.sum_squares(M@x-b.T)
     constraints = [] + ([x[len(basecolumns):]>=0] if constrain_normals.value and M.shape[1]>len(basecolumns) else []) + ([M@x>=0] if constrain_generation.value else [])
+    # if M.shape[1] > len(basecolumns):
+    #     constraints += [cp.sum(x[M.shape[1]-len(basecolumns)]) == 1-cp.sum(x0]
     prob = cp.Problem(cp.Minimize(cost),constraints)
     prob.solve(solver="CLARABEL")
     fit = np.array([x.value]).T if not x.value is None else None
@@ -271,7 +275,7 @@ def _(M, b, basecolumns, constrain_generation, constrain_normals, cp, np):
     return fit, model, prob
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(columns, fit, mo):
     if fit is None:
         _result = mo.md("No solution")
@@ -281,7 +285,7 @@ def _(columns, fit, mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(b, fit, mo, model, np):
     if fit is None:
         _result = None
@@ -299,7 +303,7 @@ def _(mo):
     return (plot_ui,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(M, b, columns, data, fit, mo, model, pd, plot_ui, prob, px, tzoffset):
     if not fit is None:
         _data = pd.DataFrame(b,columns=["Data (MW)"])
@@ -342,7 +346,7 @@ def _(M, b, columns, data, fit, mo, model, pd, plot_ui, prob, px, tzoffset):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _():
     import os
     import marimo as mo

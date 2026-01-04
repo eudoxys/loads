@@ -28,11 +28,11 @@ which generates the following output
        06001           CLH    5894800
        06001           CSL   13351200
        06001                 90258900
-       06001   CSO|CMO|CLO   84136400
+       06001   CSO+CMO+CLO   84136400
        06001           CSH    9797500
        06001           CSF     706000
        06001           CMS   51336900
-       06001       CME|CSE    5879200
+       06001       CME+CSE    5879200
        06001           CSR    6843000
        06001           CMR    1994200
        06001           CMW  158914200
@@ -47,6 +47,7 @@ import os
 import pandas as pd
 
 from fips.counties import County
+from loads.cache import Cache
 
 class Floorarea(pd.DataFrame):
     """Commercial building floor area data frame implementation"""
@@ -54,6 +55,9 @@ class Floorarea(pd.DataFrame):
     # pylint: disable=invalid-name
     CACHEDIR = None
     """Cache folder path (`None` is package source folder)"""
+
+    SOURCE = "https://data.openei.org/files/906/{year}"\
+        "%20Commercial%20Building%20Inventory%20-%20{region}.xlsb"
 
     YEAR = 2019
     """Default floor area data year"""
@@ -91,18 +95,18 @@ class Floorarea(pd.DataFrame):
         - `year`: specify the year on which the floor area is based
           (default most recent in `Units()`)
         """
-        if self.CACHEDIR is None:
-            self.CACHEDIR = os.path.join(os.path.dirname(__file__),".cache")
-        os.makedirs(self.CACHEDIR,exist_ok=True)
 
+        # set cache location
+        if self.CACHEDIR :
+            Cache.CACHEDIR = self.CACHEDIR
+
+        # set default year
         if year is None:
             year = self.YEAR
 
-        # load cunty commercial floor area data
-        cache = os.path.join(self.CACHEDIR,"floorarea.csv.gz")
-        if not os.path.exists(cache):
-            root = "https://data.openei.org/files/906/{year}"\
-                "%20Commercial%20Building%20Inventory%20-%20{region}.xlsb"
+        # load county commercial floor area data
+        cache = Cache("floorarea.csv.gz")
+        if not cache.exists():
             data = []
             for n,region in enumerate([
                 "South Central",
@@ -112,10 +116,16 @@ class Floorarea(pd.DataFrame):
                 "West",
                 ]):
 
-                file = os.path.join(self.CACHEDIR,f"region{n}_floorarea.csv.gz")
-                if not os.path.exists(file):
-                    # print("Downloading",region,"...",flush=True)
-                    result = pd.read_excel(root.format(
+                file = Cache(f"floorarea_region{n}.csv.gz")
+                if file.exists():
+                    try:
+                        result = pd.read_csv(file.pathname)
+                    except:
+                        result = None
+                else:
+                    result = None
+                if result is None:
+                    result = pd.read_excel(self.SOURCE.format(
                             region=region.replace(" ","%20"),
                             year=year
                             ),
@@ -126,17 +136,19 @@ class Floorarea(pd.DataFrame):
                         .sum()\
                         .reset_index()
                     result.columns = ["ST","FIPS","BUILDING_TYPE","FLOORAREA"]
-                    result.to_csv(file,index=False,header=True,compression="gzip")
-                else:
-                    result = pd.read_csv(file)
+                    result.to_csv(file.pathname,index=False,header=True,compression="gzip")
                 result.FLOORAREA = result.FLOORAREA.astype(float)
                 data.append(result)
             data = pd.concat(data)
-            data.to_csv(cache,index=False,header=True,compression="gzip")
+            data.to_csv(cache.pathname,
+                index=False,
+                header=True,
+                compression="gzip" if cache.pathname.endswith(".gz") else None,
+                )
         else:
-            data = pd.read_csv(cache)
+            data = pd.read_csv(cache.pathname)
         data.FIPS=[f"{x:05d}" for x in data.FIPS]
-        data.BUILDING_TYPE = ["|".join(self.BUILDING_TYPES[x]) for x in data.BUILDING_TYPE]
+        data.BUILDING_TYPE = ["+".join(self.BUILDING_TYPES[x]) for x in data.BUILDING_TYPE]
 
         if not state and not county:
             super().__init__(data)
@@ -145,3 +157,8 @@ class Floorarea(pd.DataFrame):
         else:
             fips = County(ST=state,COUNTY=county).FIPS
             super().__init__(data.set_index(["ST","FIPS"]).sort_index().loc[state,fips])
+
+if __name__ == '__main__':
+    
+    test = Floorarea()
+    print(test)

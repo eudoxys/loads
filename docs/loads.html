@@ -91,6 +91,7 @@
                     <li><a href="loads/residential.html">residential</a></li>
                     <li><a href="loads/resstock.html">resstock</a></li>
                     <li><a href="loads/review_cooling_model.html">review_cooling_model</a></li>
+                    <li><a href="loads/review_dg_model.html">review_dg_model</a></li>
                     <li><a href="loads/units.html">units</a></li>
                     <li><a href="loads/weather.html">weather</a></li>
             </ul>
@@ -403,17 +404,18 @@ constructed.</p></li>
 </span><span id="L-150"><a href="#L-150"><span class="linenos">150</span></a><span class="sd">&quot;&quot;&quot;</span>
 </span><span id="L-151"><a href="#L-151"><span class="linenos">151</span></a>
 </span><span id="L-152"><a href="#L-152"><span class="linenos">152</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.agriculture</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agriculture</span>
-</span><span id="L-153"><a href="#L-153"><span class="linenos">153</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.cast</span><span class="w"> </span><span class="kn">import</span> <span class="n">Cast</span>
-</span><span id="L-154"><a href="#L-154"><span class="linenos">154</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.cli</span><span class="w"> </span><span class="kn">import</span> <span class="n">main</span>
-</span><span id="L-155"><a href="#L-155"><span class="linenos">155</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.comstock</span><span class="w"> </span><span class="kn">import</span> <span class="n">COMstock</span>
-</span><span id="L-156"><a href="#L-156"><span class="linenos">156</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.floorarea</span><span class="w"> </span><span class="kn">import</span> <span class="n">Floorarea</span>
-</span><span id="L-157"><a href="#L-157"><span class="linenos">157</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.industry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Industry</span>
-</span><span id="L-158"><a href="#L-158"><span class="linenos">158</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.residential</span><span class="w"> </span><span class="kn">import</span> <span class="n">Residential</span>
-</span><span id="L-159"><a href="#L-159"><span class="linenos">159</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.resstock</span><span class="w"> </span><span class="kn">import</span> <span class="n">RESstock</span>
-</span><span id="L-160"><a href="#L-160"><span class="linenos">160</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.units</span><span class="w"> </span><span class="kn">import</span> <span class="n">Units</span>
-</span><span id="L-161"><a href="#L-161"><span class="linenos">161</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.weather</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weather</span>
-</span><span id="L-162"><a href="#L-162"><span class="linenos">162</span></a>
-</span><span id="L-163"><a href="#L-163"><span class="linenos">163</span></a><span class="kn">import</span><span class="w"> </span><span class="nn">loads.cache</span>
+</span><span id="L-153"><a href="#L-153"><span class="linenos">153</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.cache</span><span class="w"> </span><span class="kn">import</span> <span class="n">Cache</span>
+</span><span id="L-154"><a href="#L-154"><span class="linenos">154</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.cast</span><span class="w"> </span><span class="kn">import</span> <span class="n">Cast</span>
+</span><span id="L-155"><a href="#L-155"><span class="linenos">155</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.cli</span><span class="w"> </span><span class="kn">import</span> <span class="n">main</span>
+</span><span id="L-156"><a href="#L-156"><span class="linenos">156</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.comstock</span><span class="w"> </span><span class="kn">import</span> <span class="n">COMstock</span>
+</span><span id="L-157"><a href="#L-157"><span class="linenos">157</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.floorarea</span><span class="w"> </span><span class="kn">import</span> <span class="n">Floorarea</span>
+</span><span id="L-158"><a href="#L-158"><span class="linenos">158</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.industry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Industry</span>
+</span><span id="L-159"><a href="#L-159"><span class="linenos">159</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.residential</span><span class="w"> </span><span class="kn">import</span> <span class="n">Residential</span>
+</span><span id="L-160"><a href="#L-160"><span class="linenos">160</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.resstock</span><span class="w"> </span><span class="kn">import</span> <span class="n">RESstock</span>
+</span><span id="L-161"><a href="#L-161"><span class="linenos">161</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.units</span><span class="w"> </span><span class="kn">import</span> <span class="n">Units</span>
+</span><span id="L-162"><a href="#L-162"><span class="linenos">162</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.weather</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weather</span>
+</span><span id="L-163"><a href="#L-163"><span class="linenos">163</span></a>
+</span><span id="L-164"><a href="#L-164"><span class="linenos">164</span></a><span class="kn">import</span><span class="w"> </span><span class="nn">loads.cache</span>
 </span></pre></div>
 
 

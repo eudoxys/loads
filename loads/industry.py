@@ -119,6 +119,7 @@ import os
 import numpy as np
 import pandas as pd
 from fips.counties import Counties
+from loads.cache import Cache
 
 CACHE = None
 """Global cache of industrial load data"""
@@ -192,21 +193,20 @@ energy use data.
         """
 
         # set cache location
-        if self.CACHEDIR is None:
-            self.CACHEDIR = os.path.join(os.path.dirname(__file__),".cache")
-        os.makedirs(self.CACHEDIR,exist_ok=True)
+        if self.CACHEDIR :
+            Cache.CACHEDIR = self.CACHEDIR
 
         # load data
         global CACHE
         if CACHE is None:
-            file = os.path.join(self.CACHEDIR,"industry.csv.gz")
-            if not os.path.exists(file):
+            cache = Cache(["industry.csv.gz"])
+            if not os.path.exists(cache.pathname):
                 data = pd.read_csv(self.SOURCE,
                     low_memory=False).sort_values("fips_matching")
-                data.to_csv(file,index=False,header=True,compression="gzip"
-                    if file.endswith(".gz") else None)
+                data.to_csv(cache.pathname,index=False,header=True,compression="gzip"
+                    if cache.pathname.endswith(".gz") else None)
             else:
-                data = pd.read_csv(file,low_memory=False)
+                data = pd.read_csv(cache.pathname,low_memory=False)
 
             # remove unwanted columns, aggregate, and convert from TBTU/y to MWh/h
             data = data\
@@ -314,7 +314,7 @@ if __name__ == "__main__":
                 plt.ylabel("Electric load annual average (MW)")
                 plt.xlabel("County")
                 plt.title(f"{last} Industry")
-                plt.savefig(f".cache/industry_{last}.png")
+                plt.savefig(f"/tmp/{last}_I.png")
                 print()
                 loads = {}
             print(state,end="")

@@ -150,6 +150,7 @@ flowchart TD
 """
 
 from loads.agriculture import Agriculture
+from loads.cache import Cache
 from loads.cast import Cast
 from loads.cli import main
 from loads.comstock import COMstock

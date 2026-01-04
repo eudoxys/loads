@@ -41,6 +41,7 @@ import pytz
 import pandas as pd
 
 from fips.counties import County
+from loads.cache import Cache
 
 def _float(s,default=0.0):
     try:
@@ -62,6 +63,11 @@ class COMstock(pd.DataFrame):
     # pylint: disable=invalid-name,too-many-locals
     CACHEDIR = None
     """Cache folder path (`None` is package source folder)"""
+
+    SOURCE = "https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/" \
+        "end-use-load-profiles-for-us-building-stock/2021/" \
+        "comstock_amy2018_release_1/timeseries_aggregates"
+    """URL of data source"""
 
     COLUMNS = {
         "out.district_cooling.cooling.energy_consumption": "district_cooling",
@@ -115,6 +121,7 @@ class COMstock(pd.DataFrame):
         county:str=None,
         building_type:list[str]=None,
         freq:str|None="1h",
+        refresh:bool=False,
         ):
         """Construct a COMstock data frame
 
@@ -128,53 +135,69 @@ class COMstock(pd.DataFrame):
         - `building_type`: specifies the building type (e.g., "house")
 
         - `freq`: specifies the sampling interval (None for raw sampling)
+
+        - `refresh`: force download of data from source
         """
         assert building_type in self.BUILDING_TYPES, \
             f"{building_type=} is not one of {self.BUILDING_TYPES}"
 
-        if self.CACHEDIR is None:
-            self.CACHEDIR = os.path.join(os.path.dirname(__file__),".cache")
-        os.makedirs(self.CACHEDIR,exist_ok=True)
+        # gather source and cache info
+        if self.CACHEDIR :
+            Cache.CACHEDIR = self.CACHEDIR
+        btype = self.BUILDING_TYPES[building_type]
 
-        # check cache
+        # gather source and cache info
         file = f"{state}_{building_type}.csv.gz" \
             if county is None \
             else f"{state}_{county}_{building_type}.csv.gz"
-        cache = os.path.join(self.CACHEDIR,file.replace(" ","-"))
-        if not os.path.exists(cache):
+        if county is None:
+            url = f"{self.SOURCE}/by_state/state={state.upper()}/{state.lower()}-{btype}.csv"
+            cache = Cache([state,f"{building_type}.csv.gz"]) # whole state data
+        else:
+            fips = County(ST=state,COUNTY=county).FIPS
+            url = f"{self.SOURCE}/by_county/state={state.upper()}/g{fips[:2]}0{fips[2:]}0-{btype}.csv"
+            cache = Cache([state,county,f"{building_type}.csv.gz"])
 
-            # download data to cache
-            root = "https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/" \
-                "end-use-load-profiles-for-us-building-stock/2021/" \
-                "comstock_amy2018_release_1/timeseries_aggregates"
-            btype = self.BUILDING_TYPES[building_type]
-            if county is None:
-                url = f"{root}/by_state/state={state.upper()}/{state.lower()}-{btype}.csv"
-            else:
-                fips = County(ST=state,COUNTY=county).FIPS
-                url = f"{root}/by_county/state={state.upper()}/g{fips[:2]}0{fips[2:]}0-{btype}.csv"
+        # check cache
+        data = None
+        maxretry = 5
+        while data is None:
+            if not cache.exists() or refresh:
+
+                # download data to cache
+                try:
+                    data = pd.read_csv(url)
+                except urllib.error.HTTPError as err:
+
+                    # download error (most likely no data in COMstock)
+                    warnings.warn(f"COMstock {county} {state} '{btype}' ({building_type}) data not available ({err})")
+
+                    # create all zeros dataframe
+                    ndx = pd.date_range(
+                        start="2018-01-01 05:00:00+00:00",
+                        end="2019-01-01 04:00:00+00:00",
+                        freq=freq)
+                    zeros = [0.0]*len(ndx)
+                    data = pd.DataFrame(data={x:zeros for x in self.COLUMNS},index=ndx)
+                    data.index.name = "timestamp"
+                    data.reset_index(inplace=True)
+                    data["floor_area_represented"] = 0.0
+
+                data.to_csv(cache.pathname,compression="gzip" if cache.pathname.endswith(".gz") else None)
+
+            # load data from cache
             try:
-                data = pd.read_csv(url)
-            except urllib.error.HTTPError as err:
+                data = pd.read_csv(cache.pathname,dtype=str,na_filter=False,low_memory=False)
+            except:
+                os.unlink(cache)
+                maxretry -= 1
+                if maxretry == 0:
+                    raise RuntimeError(f"'{cache.pathname}' read error retry limit reached")
+                data = None
+        if data is None:
+            raise RuntimeError(f"{state} {county} {building_type} data load failed after 5 retries")
 
-                # download error (most likely no data in COMstock)
-                warnings.warn(f"COMstock building type '{btype}' has no data ({err})")
-
-                # create all zeros dataframe
-                ndx = pd.date_range(
-                    start="2018-01-01 05:00:00+00:00",
-                    end="2019-01-01 04:00:00+00:00",
-                    freq=freq)
-                zeros = [0.0]*len(ndx)
-                data = pd.DataFrame(data={x:zeros for x in self.COLUMNS},index=ndx)
-                data.index.name = "timestamp"
-                data.reset_index(inplace=True)
-                data["floor_area_represented"] = 0.0
-
-            data.to_csv(cache,compression="gzip" if cache.endswith(".gz") else None)
-
-        # load data from cache
-        data = pd.read_csv(cache,dtype=str,na_filter=False,low_memory=False)
+        # restructure index
         data.set_index(["timestamp"],inplace=True)
         data.index = (pd.DatetimeIndex(data.index,tz=pytz.timezone("EST")) \
             - dt.timedelta(minutes=15)).tz_convert(pytz.UTC)
@@ -184,13 +207,14 @@ class COMstock(pd.DataFrame):
         if floor_area.min() != floor_area.max():
             warnings.warn(f"{state=} {county=} floor area changes (using max)")
         floor_area = floor_area.max()
+        if floor_area == 0.0:
+            warnings.warn(f"{state} {county} {building_type} has no floor area")
 
         # restructure data
         data.drop([x for x in data.columns if x not in self.COLUMNS],inplace=True,axis=1)
         data.rename(self.COLUMNS,inplace=True,axis=1)
         for value in self.COLUMNS.values():
-            data[value] = [0.0 if floor_area == 0.0
-                else _float(x)/floor_area*1000 for x in data[value]]
+            data[value] = [_float(x)/floor_area*1000 for x in data[value]] if floor_area > 0 else 0.0
 
         data["floor_area"] = floor_area
 
@@ -208,3 +232,23 @@ class COMstock(pd.DataFrame):
         """@private Return dict of accepted kwargs by this class constructor"""
         return {x:y for x,y in kwargs.items()
             if x in cls.__init__.__annotations__}
+
+if __name__ == "__main__":
+
+    from fips.counties import Counties
+
+    pd.options.display.width = None
+    pd.options.display.max_columns = None
+
+    for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
+        print("Processing",state,county,end="...",flush=True)
+        total = []
+        for btype in COMstock.BUILDING_TYPES:
+            try:
+                result = pd.DataFrame(COMstock(state,county,building_type=btype).sum()).T
+                result.index = [btype]
+                total.append(result)
+            except Exception as err:
+                print(f"ERROR [{btype}]:",err)
+        print("ok")
+        print(pd.concat(total).round(1),flush=True)

@@ -31,11 +31,13 @@ which outputs the following
 
 import os
 import pandas as pd
+import warnings
 
 from fips.states import States
 from fips.counties import Counties
 from loads.floorarea import Floorarea
 from loads.comstock import COMstock
+from loads.cache import Cache
 
 class Commercial(pd.DataFrame):
     """Commercial building data frame class
@@ -103,6 +105,7 @@ class Commercial(pd.DataFrame):
         freq:str="1h",
         collect=None,
         year:int=None,
+        refresh:bool=False,
         ):
         """Construct building types data frame
 
@@ -119,6 +122,8 @@ class Commercial(pd.DataFrame):
         - `year`: specify the year on which the floor area is based
           (default most recent in `Floorarea()`)
 
+        - `refresh`: force cache refresh from source data
+
         This class compiles the building type data for a county by collecting
         COMstock columns, scaling by the floor area in that year, and finally
         computing total electric and non-electric loads in MW.
@@ -133,7 +138,7 @@ class Commercial(pd.DataFrame):
 
         floorarea = {}
         total_area = 0.0
-        data = {}
+        data = None
 
         # split floor areas by building type
         actual_areas = Floorarea(state=state,county=county,year=year)\
@@ -142,30 +147,33 @@ class Commercial(pd.DataFrame):
         split_areas = {"BUILDING_TYPE":[],"FLOORAREA":[],"SPLITS":[],"FRACTION":[]}
         actual_areas_sum = actual_areas.FLOORAREA.sum()
         for bts,area in list(actual_areas.iterrows()):
-            for bt in bts.split("|"):
+            for bt in bts.split("+"):
                 split_areas["BUILDING_TYPE"].append(bt if bt else "OTH")
-                split_areas["FLOORAREA"].append(area.FLOORAREA / len(bts.split("|")))
+                split_areas["FLOORAREA"].append(area.FLOORAREA / len(bts.split("+")))
                 split_areas["SPLITS"].append(bts)
                 split_areas["FRACTION"].append(area.FLOORAREA/actual_areas_sum)
         split_areas = pd.DataFrame(split_areas).set_index("BUILDING_TYPE")
 
-        if self.CACHEDIR is None:
-            self.CACHEDIR = os.path.join(os.path.dirname(__file__),".cache")
+        if self.CACHEDIR:
+            Cache.CACHEDIR = self.CACHEDIR
+        cache = Cache([state,county,"C.csv.gz"])
+        if cache.exists() and not refresh:
+            try:
+                data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
+            except:
+                data = None
 
-        cache = os.path.join(self.CACHEDIR,f"{state}_{county}_C.csv")
-        if os.path.exists(cache):
-
-            data = pd.read_csv(cache,index_col=[0],parse_dates=[0])
-
-        else:
+        if data is None:
 
             # collect building type data
+            data = {}
             for btype in COMstock.BUILDING_TYPES:
                 bdata = COMstock(
                     state=state,
                     county=county,
                     building_type=btype,
                     freq=freq,
+                    refresh=refresh,
                     )
                 for aggr,columns in collect.items():
                     data[f"{btype}_{aggr}_MW"] = bdata[columns].sum(axis=1) / 1e6
@@ -183,7 +191,10 @@ class Commercial(pd.DataFrame):
                 # collect building type data
                 for ctype in {x.split("_",1)[0] for x in collect.keys()}:
                     for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
-                        data[kwname] *= floorarea[btype] / total_area * split_areas.loc[btype].FLOORAREA
+                        if btype in split_areas.index:
+                            data[kwname] *= floorarea[btype] / total_area * split_areas.loc[btype].FLOORAREA
+                        else:
+                            warnings.warn(f"COMstock {county} {state} building type '{btype}' has zero floor area")
 
                 # consolidate building type data
                 for ctype in collect.keys():
@@ -196,8 +207,14 @@ class Commercial(pd.DataFrame):
 
             # move year-end data to beginning
             data.index = pd.DatetimeIndex([str(x).replace("2019","2018") for x in data.index])
+            data.index.name = "timestamp"
             data.sort_index(inplace=True)
-            data.to_csv(cache,index=True,header=True)
+            data = data.round(4)
+            data.to_csv(cache.pathname,
+                index=True,
+                header=True,
+                compression="gzip" if cache.pathname.endswith(".gz") else None,
+                )
 
         super().__init__(data[sorted(data.columns)])
 
@@ -210,6 +227,14 @@ class Commercial(pd.DataFrame):
 if __name__ == "__main__":
 
     from fips.counties import Counties
+
+    pd.options.display.width = None
+    pd.options.display.max_columns = None
+
     for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
         print("Processing",state,county,end="...",flush=True)
-        Commercial(state,county)
+        try:
+            print("ok")
+            print(pd.DataFrame(Commercial(state,county,refresh=False).sum()).T)
+        except Exception as err:
+            raise

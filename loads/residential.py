@@ -36,6 +36,7 @@ from fips.states import States
 from fips.counties import Counties
 from loads.units import Units
 from loads.resstock import RESstock
+from loads.cache import Cache
 
 class Residential(pd.DataFrame):
     """Residential building data frame class
@@ -122,6 +123,7 @@ class Residential(pd.DataFrame):
             }
     """Mapping of `RESstock` columns to `Residential` columns"""
 
+    # pylint: disable=invalid-name
     CACHEDIR = None
     """Cache folder"""
 
@@ -132,6 +134,7 @@ class Residential(pd.DataFrame):
         freq:str="1h",
         collect=None,
         year:int=None,
+        refresh:bool=False,
         ):
         """Construct building types data frame
 
@@ -148,25 +151,34 @@ class Residential(pd.DataFrame):
         - `year`: specify the year on which the number of housing units is
           based (default most recent in `Units()`)
 
+        - `refresh`: force download of data from source
+
+        # Description
+
         This class compiles the building type data for a county by collecting
         RESstock columns, scaling by the number of housing units in that year,
         and finally computing total MW and the fraction of total of electric
         or non-electric load.
         """
+        
         # pylint: disable=too-many-locals
         assert state in States()["ST"].values, f"{state=} is not valid"
         assert county in Counties().set_index(["ST","COUNTY"]).loc[state].index, \
             f"{state=} {county=} is not valid"
 
-        if self.CACHEDIR is None:
-            self.CACHEDIR = os.path.join(os.path.dirname(__file__),".cache")
+        if self.CACHEDIR:
+            Cache.CACHEDIR = self.CACHEDIR
+        cache = Cache([state,county,"R.csv.gz"])
 
-        cache = os.path.join(self.CACHEDIR,f"{state}_{county}_R.csv")
-        if os.path.exists(cache):
+        data = None
+        if cache.exists():
 
-            data = pd.read_csv(cache,index_col=[0],parse_dates=[0])
+            try:
+                data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
+            except:
+                data = None
         
-        else:
+        if data is None:
         
             if collect is None:
                 collect = self.COLLECT
@@ -216,7 +228,8 @@ class Residential(pd.DataFrame):
             data.index = pd.DatetimeIndex([str(x).replace("2019","2018") for x in data.index])
             data.index.name = "timestamp"
             data.sort_index(inplace=True)
-            data.to_csv(cache,index=True,header=True)
+            data = data.round(4)
+            data.to_csv(cache.pathname,index=True,header=True)
             
         super().__init__(data[sorted(data.columns)])
 
@@ -229,10 +242,15 @@ class Residential(pd.DataFrame):
 if __name__ == "__main__":
 
     from fips.counties import Counties
+
+    pd.options.display.width = None
+    pd.options.display.max_columns = None
+
     for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
         print("Processing",state,county,end="...",flush=True)
         try:
-            Residential(state,county)
+            print(pd.DataFrame(Residential(state,county).sum()).T)
             print("done")
         except Exception as err:
             print("ERROR:",err)
+            raise
