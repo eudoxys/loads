@@ -15,21 +15,19 @@ Get the industrial load data for all US counties using the command
 
 which outputs the following
 
-                          nonelec_total_MW  elec_net_MW
-    state county                                       
-    AK    Aleutians East         41.933534    15.655625
-          Aleutians West         42.319171    16.922788
-          Anchorage             168.897481    39.530040
-          Bethel                 15.566359     7.720212
-          Bristol Bay             0.226564     0.044128
-    ...                                ...          ...
-    WY    Sweetwater           2699.670664    85.240132
-          Teton                  19.056917     2.809565
-          Uinta                 238.257039    11.872925
-          Washakie               65.464650     7.581157
-          Weston                113.971320    16.414641
-
-    [3136 rows x 2 columns]
+                          nonelec_total_MW  elec_net_MW  elec_baseload_MW  elec_total_MW  nonelec_baseload_MW
+    state county                                                                                             
+    AK    Aleutians East         41.933534    15.655625         15.655625      15.655625            41.933534
+          Aleutians West         42.319171    16.922788         16.922788      16.922788            42.319171
+          Anchorage             168.897481    39.530040         39.530040      39.530040           168.897481
+          Bethel                 15.566359     7.720212          7.720212       7.720212            15.566359
+          Bristol Bay             0.226564     0.044128          0.044128       0.044128             0.226564
+    ...                                ...          ...               ...            ...                  ...
+    WY    Sweetwater           2699.670664    85.240132         85.240132      85.240132          2699.670664
+          Teton                  19.056917     2.809565          2.809565       2.809565            19.056917
+          Uinta                 238.257039    11.872925         11.872925      11.872925           238.257039
+          Washakie               65.464650     7.581157          7.581157       7.581157            65.464650
+          Weston                113.971320    16.414641         16.414641      16.414641           113.971320
 
 Get the industrial load data for all California counties using the command
 
@@ -37,17 +35,16 @@ Get the industrial load data for all California counties using the command
 
 which outputs the following
 
-                     nonelec_total_MW  elec_net_MW
-    county                                        
-    Alameda                485.513443   223.618361
-    Alpine                   0.106659     0.043838
-    Amador                  61.116353    19.487183
-    Butte                  118.602559    50.740839
-    ...
-    Tuolumne                16.937469     5.142913
-    Ventura                641.076206   243.793152
-    Yolo                   264.316616    51.424299
-    Yuba                    23.722993     9.363254
+                     nonelec_total_MW  elec_net_MW  elec_baseload_MW  elec_total_MW  nonelec_baseload_MW
+    county                                                                                              
+    Alameda                485.513443   223.618361        223.618361     223.618361           485.513443
+    Alpine                   0.106659     0.043838          0.043838       0.043838             0.106659
+    .
+    .
+    .
+    Ventura                641.076206   243.793152        243.793152     243.793152           641.076206
+    Yolo                   264.316616    51.424299         51.424299      51.424299           264.316616
+    Yuba                    23.722993     9.363254          9.363254       9.363254            23.722993
 
 Get the industrial load data for Alameda County in California using the command
 
@@ -55,11 +52,13 @@ Get the industrial load data for Alameda County in California using the command
 
 which outputs the following
 
-                              CA
-                         Alameda
-    nonelec_total_MW  485.513443
-    elec_net_MW       223.618361
-
+                                 CA
+                            Alameda
+    nonelec_total_MW     485.513443
+    elec_net_MW          223.618361
+    elec_baseload_MW     223.618361
+    elec_total_MW        223.618361
+    nonelec_baseload_MW  485.513443
 
 Generate a load shape for Alameda County CA from a Pandas data frame using the command
 
@@ -74,12 +73,11 @@ Generate a load shape for Alameda County CA from a Pandas data frame using the c
 
 which outputs the following
 
-                               nonelec_total_MW  elec_net_MW
-    2018-01-01 00:00:00+00:00         48.551344    22.361836
-    2018-01-01 01:00:00+00:00         97.102689    44.723672
-    2018-01-01 02:00:00+00:00        145.654033    67.085508
-    2018-01-01 03:00:00+00:00         97.102689    44.723672
-
+                               elec_baseload_MW  elec_net_MW  elec_total_MW  nonelec_baseload_MW  nonelec_total_MW
+    2018-01-01 00:00:00+00:00         22.361836    22.361836      22.361836            48.551344         48.551344
+    2018-01-01 01:00:00+00:00         44.723672    44.723672      44.723672            97.102689         97.102689
+    2018-01-01 02:00:00+00:00         67.085508    67.085508      67.085508           145.654033        145.654033
+    2018-01-01 03:00:00+00:00         44.723672    44.723672      44.723672            97.102689         97.102689
 
 Generate a load shape for Alameda County CA from a dict using the command
 
@@ -93,20 +91,16 @@ Generate a load shape for Alameda County CA from a dict using the command
 
 which output the following
 
-                               nonelec_total_MW  elec_net_MW
-    2020-08-01 00:00:00+00:00         48.551344    22.361836
-    2020-08-01 01:00:00+00:00         97.102689    44.723672
-    2020-08-01 02:00:00+00:00        145.654033    67.085508
-    2020-08-01 03:00:00+00:00         97.102689    44.723672
-    2020-08-01 04:00:00+00:00         48.551344    22.361836
-    ...                                     ...          ...
-    2020-08-31 20:00:00+00:00         48.551344    22.361836
-    2020-08-31 21:00:00+00:00         97.102689    44.723672
-    2020-08-31 22:00:00+00:00        145.654033    67.085508
-    2020-08-31 23:00:00+00:00         97.102689    44.723672
-    2020-09-01 00:00:00+00:00         48.551344    22.361836
-
-    [745 rows x 2 columns]
+                               elec_baseload_MW  elec_net_MW  elec_total_MW  nonelec_baseload_MW  nonelec_total_MW
+    2020-08-01 00:00:00+00:00         22.361836    22.361836      22.361836            48.551344         48.551344
+    2020-08-01 01:00:00+00:00         44.723672    44.723672      44.723672            97.102689         97.102689
+    2020-08-01 02:00:00+00:00         67.085508    67.085508      67.085508           145.654033        145.654033
+    .
+    .
+    .
+    2020-08-01 22:00:00+00:00         67.085508    67.085508      67.085508           145.654033        145.654033
+    2020-08-01 23:00:00+00:00         44.723672    44.723672      44.723672            97.102689         97.102689
+    2020-08-02 00:00:00+00:00         22.361836    22.361836      22.361836            48.551344         48.551344
 
 # Caveat
 
@@ -249,14 +243,23 @@ energy use data.
 
         # return all states/counties
         if state is None and county is None:
+            data["elec_baseload_MW"] = data["elec_net_MW"]
+            data["elec_total_MW"] = data["elec_net_MW"]
+            data["nonelec_baseload_MW"] = data["nonelec_total_MW"]
             super().__init__(data)
 
         # return requested state
         elif county is None:
+            data["elec_baseload_MW"] = data["elec_net_MW"]
+            data["elec_total_MW"] = data["elec_net_MW"]
+            data["nonelec_baseload_MW"] = data["nonelec_total_MW"]
             super().__init__(data.loc[state,:])
 
         # return requested county raw data
         elif loadshape is None:
+            data["elec_baseload_MW"] = data["elec_net_MW"]
+            data["elec_total_MW"] = data["elec_net_MW"]
+            data["nonelec_baseload_MW"] = data["nonelec_total_MW"]
             super().__init__(data.loc[state,county])
 
         # return rollout of county load
@@ -265,8 +268,11 @@ energy use data.
             assert len(loadshape.columns) == 1, "loadshape must have only one column"
             super().__init__(pd.DataFrame(
                 data={
-                "nonelec_total_MW":loadshape[0]*nonelec_total_MW,
+                "elec_baseload_MW":loadshape[0]*elec_net_MW,
                 "elec_net_MW":loadshape[0]*elec_net_MW,
+                "elec_total_MW":loadshape[0]*elec_net_MW,
+                "nonelec_baseload_MW":loadshape[0]*nonelec_total_MW,
+                "nonelec_total_MW":loadshape[0]*nonelec_total_MW,
                 },
                 index=loadshape.index,
                 ))
@@ -285,8 +291,11 @@ energy use data.
             nonelec_total_MW,elec_net_MW = data.loc[state,county].values.tolist()
             super().__init__(pd.DataFrame(
                 data={
-                "nonelec_total_MW":shape*nonelec_total_MW,
+                "elec_baseload_MW":shape*elec_net_MW,
                 "elec_net_MW":shape*elec_net_MW,
+                "elec_total_MW":shape*elec_net_MW,
+                "nonelec_baseload_MW":shape*nonelec_total_MW,
+                "nonelec_total_MW":shape*nonelec_total_MW,
                 },
                 index=dt_index,
                 ))
@@ -302,8 +311,8 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from fips.counties import Counties
     counties = Counties(use_index="RO").loc["WECC"].set_index(["ST","COUNTY"]).sort_index()
-    loads = {}
     last = None
+    loads = {}
     for state,county in counties.index.values:
         if state != last:
             if not last is None:
@@ -315,10 +324,7 @@ if __name__ == "__main__":
                 plt.xlabel("County")
                 plt.title(f"{last} Industry")
                 plt.savefig(f"/tmp/{last}_I.png")
-                print()
                 loads = {}
-            print(state,end="")
             last = state
-        print(".",end="",flush=True)
         loads[county] = Industry(state,county).T.elec_net_MW.values[0].round(1)
-
+        print(state,county,loads[county],"MW",flush=True)

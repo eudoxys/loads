@@ -103,30 +103,34 @@ def main(*args:list[str]) -> int:
             description="Electric loads data accessor",
             epilog="See https://www.eudoxys.com/loads for documentation. ",
             )
-        parser.add_argument("state")
-        parser.add_argument("county")
-        parser.add_argument("sector",
+
+        parser.add_argument("command",
+            choices=["print","plot"]
+            )
+        parser.add_argument("-S","--state")
+        parser.add_argument("-C","--county")
+        parser.add_argument("-D","--dataset",
             choices=["residential","commercial","industrial","agricultural","weather"]
             )
-        parser.add_argument("-y","--year",
+        parser.add_argument("-Y","--year",
             type=int,
             help="set load model year (default 2018)")
         parser.add_argument("-o","--output",
             help="set output file name")
-        parser.add_argument("--building_type",
+        parser.add_argument("-B","--building_type",
             help="access raw building type stock data (residential and commercial only)")
-        parser.add_argument("--format",
-            choices=["csv","gzip","zip","xlsx"],
-            help="specify output format")
-        parser.add_argument("--precision",
+        parser.add_argument("-f","--format",
+            choices=["csv","gzip","zip","xlsx","pie","scatter","plot"],
+            help="specify output format (depends on command)")
+        parser.add_argument("-p","--precision",
             type=int,
             default=3,
             help="specify output precision (default 3)"
             )
-        parser.add_argument("--warning",
+        parser.add_argument("-w","--warning",
             action="store_true",
             help="enable warning messages from python")
-        parser.add_argument("--debug",
+        parser.add_argument("-d","--debug",
             action="store_true",
             help="enable debug traceback on exceptions")
 
@@ -143,7 +147,7 @@ def main(*args:list[str]) -> int:
                 )
 
         # get data
-        match args.sector:
+        match args.dataset:
  
             case "residential":
                 source = (RESstock if args.building_type else Residential)
@@ -167,6 +171,20 @@ def main(*args:list[str]) -> int:
                 kwargs = Weather.makeargs(**vars(args))
                 data = Weather(**kwargs).round(args.precision)
  
+            case None:
+                data = None
+                for source in [Residential,Commercial,Industry,Agriculture]:
+                    kwargs = source.makeargs(**vars(args))
+                    tmp = source(**kwargs)
+                    if data is None:
+                        data = source(**kwargs)
+                    elif not tmp.index.name is None:
+                        tmp = source(**kwargs)
+                        data += tmp
+                    else:
+                        for key,value in tmp.iterrows():
+                            data[key] += value[tmp.columns[0]]
+
             case "_":
                 raise ValueError(f"{args.sector=} is invalid")
 
@@ -215,3 +233,7 @@ def main(*args:list[str]) -> int:
 
         print(f"ERROR [loads]: {err}")
         return E_FAILED
+
+if __name__ == "__main__":
+
+    main("print","-S=CA","-C=Alameda")

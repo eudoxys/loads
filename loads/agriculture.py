@@ -11,21 +11,24 @@ MW. All agricultural loads in each county are aggregated.
 
 Get the agricultural load data for all California counties using the command
 
+    from loads.agriculture import Agriculture
     print(Agriculture("CA"))
 
 which outputs the following
 
-                     nonelec_total_MW  elec_net_MW
-    county                                        
-    Alameda                 10.100226     6.901008
-    Alpine                   0.094917     0.062058
-    Amador                  10.533700     7.517497
-    Butte                   58.790507    45.148467
-    ...
-    Tuolumne                 6.761928     4.221102
-    Ventura                 61.580047    54.378405
-    Yolo                    40.123365    25.889051
-    Yuba                    22.763883    15.086629
+                     nonelec_total_MW  elec_net_MW  elec_baseload_MW  elec_total_MW  nonelec_baseload_MW
+    county                                                                                              
+    Alameda                 10.100226     6.901008          6.901008       6.901008            10.100226
+    Alpine                   0.094917     0.062058          0.062058       0.062058             0.094917
+    Amador                  10.533700     7.517497          7.517497       7.517497            10.533700
+    .
+    .
+    .
+    Ventura                 61.580047    54.378405         54.378405      54.378405            61.580047
+    Yolo                    40.123365    25.889051         25.889051      25.889051            40.123365
+    Yuba                    22.763883    15.086629         15.086629      15.086629            22.763883
+
+For more examples, see `loads.industry.Industry`, which uses the same syntax.
 
 # Caveat
 
@@ -136,14 +139,23 @@ class Agriculture(pd.DataFrame):
 
         # return all states/counties
         if state is None and county is None:
+            data["elec_baseload_MW"] = data["elec_net_MW"]
+            data["elec_total_MW"] = data["elec_net_MW"]
+            data["nonelec_baseload_MW"] = data["nonelec_total_MW"]
             super().__init__(data)
 
         # return requested state
         elif county is None:
+            data["elec_baseload_MW"] = data["elec_net_MW"]
+            data["elec_total_MW"] = data["elec_net_MW"]
+            data["nonelec_baseload_MW"] = data["nonelec_total_MW"]
             super().__init__(data.loc[state,:])
 
         # return requested county raw data
         elif loadshape is None:
+            data["elec_baseload_MW"] = data["elec_net_MW"]
+            data["elec_total_MW"] = data["elec_net_MW"]
+            data["nonelec_baseload_MW"] = data["nonelec_total_MW"]
             super().__init__(data.loc[state,county])
 
         # return rollout of county load
@@ -152,8 +164,11 @@ class Agriculture(pd.DataFrame):
             assert len(loadshape.columns) == 1, "loadshape must have only one column"
             super().__init__(pd.DataFrame(
                 data={
-                "nonelec_total_MW":loadshape[0]*nonelec_total_MW,
+                "elec_baseload_MW":loadshape[0]*elec_net_MW,
                 "elec_net_MW":loadshape[0]*elec_net_MW,
+                "elec_total_MW":loadshape[0]*elec_net_MW,
+                "nonelec_baseload_MW":loadshape[0]*nonelec_total_MW,
+                "nonelec_total_MW":loadshape[0]*nonelec_total_MW,
                 },
                 index=loadshape.index,
                 ))
@@ -172,8 +187,11 @@ class Agriculture(pd.DataFrame):
             nonelec_total_MW,elec_net_MW = data.loc[state,county].values.tolist()
             super().__init__(pd.DataFrame(
                 data={
-                "nonelec_total_MW":shape*nonelec_total_MW,
+                "elec_baseload_MW":shape*elec_net_MW,
                 "elec_net_MW":shape*elec_net_MW,
+                "elec_total_MW":shape*elec_net_MW,
+                "nonelec_baseload_MW":shape*nonelec_total_MW,
+                "nonelec_total_MW":shape*nonelec_total_MW,
                 },
                 index=dt_index,
                 ))
@@ -202,11 +220,9 @@ if __name__ == "__main__":
                 plt.xlabel("County")
                 plt.title(f"{last} Agriculture")
                 plt.savefig(f"/tmp/{last}_A.png")
-                print()
                 loads = {}
-            print(state,end="")
             last = state
-        print(".",end="",flush=True)
         loads[county] = Agriculture(state,county).T.elec_net_MW.values[0].round(1)
+        print(state,county,loads[county],"MW",flush=True)
 
             
