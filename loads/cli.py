@@ -127,9 +127,6 @@ def main(*args:list[str],**kwargs:dict[str,str]) -> int:
         parser.add_argument("-Y","--year",
             type=int,
             help="set load model year (default 2018)")
-        parser.add_argument("-Z","--timezone",
-            type=str,
-            help="set timezone (default UTC)")
 
         parser.add_argument("-o","--output",
             help="set output file name")

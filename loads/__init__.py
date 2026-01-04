@@ -2,28 +2,22 @@
 
 # Syntax
 
-  `loads [-h] [-y YEAR] [-o OUTPUT] [--building_type BUILDING_TYPE]
-  [--format {csv,gzip,zip,xlsx}] [--precision PRECISION] [--warning] [--debug] 
-  state county {residential,commercial,industrial,agricultural,public,weather}`
+    loads {print,plot} [-S STATE] [-C COUNTY] [-B BUILDING_TYPE] [-Y YEAR]
+          [-D {residential,commercial,industrial,agricultural,weather}] 
+          [-h] [-o OUTPUT] [-f {csv,gzip,zip,xlsx,pie,scatter,plot}] [-p PRECISION] 
+          [-w] [-d]
 
 ## Positional arguments
 
-- `state`
+- `print`: output text
 
-- `county`
-
-- `{residential,commercial,industrial,agricultural,public,weather}`O
+- `plot`: output graphics
 
 ## Option arguments
 
 -  `-h`, `--help`           show this help message and exit
 
-- `-y`, `--year YEAR`       set load model year
-
 - `-o`, `--output OUTPUT`   set output file name
-
-- `--building_type BUILDING_TYPE`
-                            access raw building type stock data
 
 - `--format {csv,gzip,zip,xlsx}`
                             specify output format
@@ -31,11 +25,23 @@
 - `--precision PRECISION`
                             specify output precision
 
-- `--warning`.              enable warning messages from python
+- `-w|--warning`            enable warning messages from python
 
-- `--debug`                 enable debug traceback on exceptions
+- `-d|--debug`              enable debug traceback on exceptions
 
-See https://www.eudoxys.com/loads for documentation.
+- `-S|--state STATE`        select state
+
+- `-C|--county COUNTY`      select county
+
+- `-D|--dataset {residential,commercial,industrial,agricultural,public,weather}`
+                            select dataset
+
+- `-B|--building_type BUILDING_TYPE`
+                            access raw building type stock data
+
+- `-Y|--year YEAR`          select year
+
+See https://www.eudoxys.com/loads for full documentation.
 
 # Description
 
