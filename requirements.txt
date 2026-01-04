@@ -3,4 +3,5 @@ openpyxl
 pyxlsb
 requests
 pytz
+matplotlib
 fips @ git+https://github.com/eudoxys/fips

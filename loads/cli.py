@@ -16,7 +16,7 @@ cooling, heating, total, distributed generation, and net loads.
 To print the raw residential single-family detached house loads in Alameda
 County CA as a table, the command
 
-    loads CA Alameda residential --building_type=RSD
+    loads print -S=CA -C=Alameda -D=residential -B=RSD
 
 outputs the following
 
@@ -31,7 +31,7 @@ outputs the following
     2018-12-31 22:00:00+00:00         0.359              0.0      62.863        4.585        22.521        12.094            2.340                0.0             7.565                  16.366            2.691            4.382         6.467                1.588        31.096                     0.0              3.857            7.387            0.0                 90.324     318.674            4.325         91.961               0.0             0.003 -155.361          2.133              0.0             45.969     768.840           0.0             24.723          4.568          0.0      0.000             0.000     36.104       83.604          5.726      3.286      234.099             8.221         0.607          45.554    914.240           497.037        0.0      0.000        0.959      7.457             6.498  1690.537           0.0         0.0  1253270.056
     2018-12-31 23:00:00+00:00         0.278              0.0      53.031        4.572        21.179        18.084            3.583                0.0             7.809                  15.976            4.070            2.242         6.313                1.639        18.060                     0.0              9.321           17.852            0.0                106.069     331.294            3.518         74.795               0.0             0.002 -108.314          1.229              0.0             44.875     769.450           0.0             18.951          4.711          0.0      0.000             0.000     43.263       67.262          5.905      3.957      123.962            19.867         0.626          37.051    760.953           459.058        0.0      0.000        0.525      8.253             7.728  1538.656           0.0         0.0  1253270.056
 
-To get the compiled residential loads in Alameda County CA in CSV format, the command
+To print the compiled residential loads in Alameda County CA in CSV format, the command
 
     loads CA Alameda residential --format=csv
 
@@ -48,6 +48,14 @@ outputs the following
     2018-12-31 22:00:00+00:00,37.711,1.033,-5.342,2.649,36.051,41.393,7.904,0.0,38.068,45.972
     2018-12-31 23:00:00+00:00,38.226,1.382,-3.725,1.664,37.548,41.272,8.399,0.0,30.819,39.218
 
+To plot the Alameda County CA total electric and non-electric loads in 2020, the command
+
+    loads plot -S=CA -C=Alameda -Y=2020
+
+display the following image
+
+![image](https://github.com/eudoxys/loads/blob/main/docs/CA_Alameda_2020.png?raw=true)
+
 # Caveats
 
 * Compiling data can be time consuming. To help with performance data is cached
@@ -60,6 +68,7 @@ import argparse
 import warnings
 
 import pandas as pd
+import matplotlib.pyplot as plt
 
 # pylint: disable=unused-import
 from loads.resstock import RESstock
@@ -69,6 +78,7 @@ from loads.commercial import Commercial
 from loads.industry import Industry
 from loads.agriculture import Agriculture
 from loads.weather import Weather
+from loads.cast import Cast
 
 E_OK = 0
 """Exit code on success"""
@@ -79,7 +89,7 @@ E_FAILED = 1
 E_SYNTAX = 2
 """Exit code on syntax error"""
 
-def main(*args:list[str]) -> int:
+def main(*args:list[str],**kwargs:dict[str,str]) -> int:
     """RESstock form accessor main command line processor
 
     # Argument
@@ -96,6 +106,8 @@ def main(*args:list[str]) -> int:
         # support direct call to main
         if args:
             sys.argv = [__file__] + list(args)
+        if kwargs:
+            sys.argv += [f"--{x}={y}" for x,y in kwargs.items()]
 
         # setup command line parser
         parser = argparse.ArgumentParser(
@@ -115,6 +127,10 @@ def main(*args:list[str]) -> int:
         parser.add_argument("-Y","--year",
             type=int,
             help="set load model year (default 2018)")
+        parser.add_argument("-Z","--timezone",
+            type=str,
+            help="set timezone (default UTC)")
+
         parser.add_argument("-o","--output",
             help="set output file name")
         parser.add_argument("-B","--building_type",
@@ -146,84 +162,23 @@ def main(*args:list[str]) -> int:
                 file=sys.stderr,
                 )
 
-        # get data
-        match args.dataset:
- 
-            case "residential":
-                source = (RESstock if args.building_type else Residential)
-                kwargs = source.makeargs(**vars(args))
-                data = source(**kwargs).round(args.precision)
- 
-            case "commercial":
-                source = (COMstock if args.building_type else Commercial)
-                kwargs = source.makeargs(**vars(args))
-                data = source(**kwargs).round(args.precision)
- 
-            case "industrial":
-                kwargs = Industry.makeargs(**vars(args))
-                data = Industry(**kwargs).round(args.precision)
- 
-            case "agricultural":
-                kwargs = Agriculture.makeargs(**vars(args))
-                data = Agriculture(**kwargs).round(args.precision)
- 
-            case "weather":
-                kwargs = Weather.makeargs(**vars(args))
-                data = Weather(**kwargs).round(args.precision)
- 
-            case None:
-                data = None
-                for source in [Residential,Commercial,Industry,Agriculture]:
-                    kwargs = source.makeargs(**vars(args))
-                    tmp = source(**kwargs)
-                    if data is None:
-                        data = source(**kwargs)
-                    elif not tmp.index.name is None:
-                        tmp = source(**kwargs)
-                        data += tmp
-                    else:
-                        for key,value in tmp.iterrows():
-                            data[key] += value[tmp.columns[0]]
+        data = _getdata(args)
+
+        match args.command:
+
+            case "print":
+
+                return _print(args,data)
+
+            case "plot":
+
+                return _plot(args,data)
 
             case "_":
-                raise ValueError(f"{args.sector=} is invalid")
 
-        # handle default output
-        if args.output is None:
-            if args.format is None:
-                pd.options.display.max_rows = None
-                pd.options.display.width = None
-                pd.options.display.max_columns = None
-                print(data)
-            elif args.format == "csv":
-                print(data.to_csv())
-            else:
-                raise ValueError(f"{args.format} if not valid for this output stream")
-            return E_OK
+                raise RuntimeError(f"command={args.command} is invalid")
 
-        # handle CSV output
-        if args.output.endswith(".csv") or args.format == "csv":
-            data.to_csv(args.output)
-            return E_OK
-
-        # handle GZIP output
-        if args.output.endswith(".csv.gz") or args.format == "gzip":
-            data.to_csv(args.output,compression="gzip")
-            return E_OK
-
-        # handle ZIP output
-        if args.output.endswith(".csv.zip") or args.format == "zip":
-            data.to_csv(args.output,compression="zip")
-            return E_OK
-
-        # handle XLSX output
-        if args.output.endswith(".xlsx") or args.format == "xlsx":
-            data.to_excel(args.output,
-                sheet_name="Form861",
-                merge_cells=False)
-            return E_OK
-
-        raise ValueError(f"output format '{args.format}' for '{args.output}' is invalid")
+        return E_FAILED
 
     # pylint: disable=broad-exception-caught
     except Exception as err:
@@ -234,6 +189,113 @@ def main(*args:list[str]) -> int:
         print(f"ERROR [loads]: {err}")
         return E_FAILED
 
+def _getdata(args):
+
+    # get data
+    match args.dataset:
+
+        case "residential":
+            source = (RESstock if args.building_type else Residential)
+            kwargs = source.makeargs(**vars(args))
+            data = source(**kwargs)
+
+        case "commercial":
+            source = (COMstock if args.building_type else Commercial)
+            kwargs = source.makeargs(**vars(args))
+            data = source(**kwargs)
+
+        case "industrial":
+            kwargs = Industry.makeargs(**vars(args))
+            data = Industry(**kwargs)
+
+        case "agricultural":
+            kwargs = Agriculture.makeargs(**vars(args))
+            data = Agriculture(**kwargs)
+
+        case "weather":
+            kwargs = Weather.makeargs(**vars(args))
+            data = Weather(**kwargs)
+
+        case None:
+            data = None
+            for source in [Residential,Commercial,Industry,Agriculture]:
+                kwargs = source.makeargs(**vars(args))
+                tmp = source(**kwargs)
+                if data is None:
+                    data = source(**kwargs)
+                elif not tmp.index.name is None:
+                    tmp = source(**kwargs)
+                    data += tmp
+                else:
+                    for key,value in tmp.iterrows():
+                        data[key] += value[tmp.columns[0]]
+
+        case "_":
+            raise ValueError(f"{args.sector=} is invalid")
+
+    # cast data to year
+    if not args.year is None:
+        data = Cast(data,args.year)
+    data.index.name = "timestamp"
+
+    return data.round(args.precision)
+
+def _print(args,data):
+
+    # handle default output
+    if args.output is None:
+        if args.format is None:
+            pd.options.display.max_rows = None
+            pd.options.display.width = None
+            pd.options.display.max_columns = None
+            print(data)
+        elif args.format == "csv":
+            print(data.to_csv())
+        else:
+            raise ValueError(f"{args.format} if not valid for this output stream")
+        return E_OK
+
+    # handle CSV output
+    if args.output.endswith(".csv") or args.format == "csv":
+        data.to_csv(args.output)
+        return E_OK
+
+    # handle GZIP output
+    if args.output.endswith(".csv.gz") or args.format == "gzip":
+        data.to_csv(args.output,compression="gzip")
+        return E_OK
+
+    # handle ZIP output
+    if args.output.endswith(".csv.zip") or args.format == "zip":
+        data.to_csv(args.output,compression="zip")
+        return E_OK
+
+    # handle XLSX output
+    if args.output.endswith(".xlsx") or args.format == "xlsx":
+        data.index = data.index.astype(str) # avoid sending tz-aware index to excel
+        data.index.name = "timestamp"
+        data.to_excel(args.output,
+            sheet_name=args.dataset if args.dataset else "loads",
+            merge_cells=False)
+        return E_OK
+
+    raise RuntimeError(f"output={args.output} is not valid")
+
+def _plot(args,data):
+
+    data[["elec_baseload_MW","elec_cooling_MW","elec_heating_MW","elec_dg_MW",
+        "nonelec_baseload_MW","nonelec_cooling_MW","nonelec_heating_MW"]].plot(
+            figsize=(20,10),
+            kind="area",
+            grid=True,
+            xlabel="Date & time (UTC)",
+            ylabel="Load (MW)",
+            )
+    if args.output is None:
+        plt.show()
+    else:
+        plt.savefig(args.output)
+
 if __name__ == "__main__":
 
-    main("print","-S=CA","-C=Alameda")
+    main("plot","-d",state="CA",county="Alameda",year=2020,output="/tmp/test.png")
