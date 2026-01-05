@@ -1,32 +1,70 @@
-"""Load casting module
+r"""Load casting module
 
-The load casting module is used to backcast and forecast loads. Loads can be
-cast from the source year to any year by adjusting the load data according to
-the weekday. The source year is based on the year for which to source data
-was developed. For residential and commercial loads, this is 2018. For industrial
-and agricultural loads this is 2019. 
+The load casting module is used to backcast and forecast loads based on
+weather. Loads are cast from the source year to any year by adjusting the
+load data according to the weekday. The source year is based on the year for
+which to source data was developed. For residential and commercial loads,
+this is 2018. For industrial and agricultural loads this is 2019.
 
 Note that the weather data provided by NREL for commercial and residential
 loads is considered the actual load for the given county. Therefore casting
 from 2018 to 2018 does not change the weather, but
 `loads.cast.Cast.apply_weather` does apply the specified load model to actual
 weather provided with the original load data.
+
+# Methodology
+
+The date/time alignment moves the day of year such that weekends align with
+the original day of week from the source year.  For example 2019 days are
+shifted by 1 day to align with the weekdays of 2018. If the target year is a
+leap year, then the first day is appended to the last day to provide 8784
+hours instead of 8760 hours.
+
+The heating and cooling loads are adjusted by computing the heating and
+cooling weather sensitivity curves that fit the function $P(x) = \frac L{1+e^
+{-k(x-x_0)}}+b$ where $L$, $k$, $x_0$, and $b$ are the parameters of the
+sensitivity curve. The load difference between the reference $B(T)$ and
+target $B(T')$ weather is applied to the reference load.
+
+The distributed generation is TODO.
 """
 
-import os
 import datetime as dt
-import warnings
+import calendar
+from collections import namedtuple
 from typing import TypeVar
 
 import pandas as pd
 import numpy as np
 import scipy as sp
 
+import matplotlib.pyplot as plt
+
+WEATHER_FIELDS = namedtuple("weather",
+    ["temperature","horizontal","normal","diffuse"])(
+        "temperature_degF","global_Wpms","direct_Wpms","diffuse_Wpms",
+        )
+"""Weather data fields"""
+
+ELEC_FIELDS = namedtuple("elec",
+    ["baseload","cooling","heating","total","dg","net"])(
+        "elec_baseload_MW","elec_cooling_MW","elec_heating_MW",
+        "elec_total_MW","elec_dg_MW","elec_net_MW",
+        )
+"""Electric load data fields"""
+
+NONELEC_FIELDS = namedtuple("nonelec",
+    ["baseload","cooling","heating","total"])(
+        "nonelec_baseload_MW","nonelec_cooling_MW","nonelec_heating_MW",
+        "nonelec_total_MW",
+        )
+"""Electric load data fields"""
+
 class Cast(pd.DataFrame):
     """Load casting class implementation"""
 
-    DYNAMIC_MODEL_ORDER = 3
-    """Dynamic model transfer function order (used by `loads.cast.Cast.pwld` model)"""
+    DYNAMIC_MODEL_ORDER = 2
+    """Dynamic model order (used by `loads.cast.Cast.dynamic_model`)"""
 
     PERIOD_HARMONICS = {
         365.2425:4, # year
@@ -48,258 +86,205 @@ class Cast(pd.DataFrame):
 
         - `year`: year to which load is cast
 
-        - `weather`: reference weather to use with `loads.cast.Cast.apply_weather`
+        - `weather`: target weather to use with `loads.cast.Cast.apply_weather`
         """
+
+        # pylint: disable=too-many-locals,invalid-name
         assert isinstance(data,pd.DataFrame), "data is not a Pandas data frame"
         assert isinstance(data.index,pd.DatetimeIndex), "data frame must have datetime index"
         assert isinstance(year,int), "year must be an integer"
 
-        # merge weather data if any...
-        if not weather is None:
-            data = pd.concat([data,weather],axis=1)
+        #
+        # Adjust for weekday and year change
+        #
+        # print("\nPROJECTION TO",year,"...\n")
 
-        # ...or make a copy of data before munging the index
-        else:
-            data = data.copy()
+        # protect original data
+        data = data.copy()
 
-        # adjust for weekday and year change
+        # calculate day shift
         shift = dt.date(year,1,1).weekday() - data.index[0].weekday()
+
+        # reindex using day shift
         data.index = pd.DatetimeIndex([str(x).replace("2018",f"{year}")
             for x in data.index]) - dt.timedelta(days=shift)
+
+        # rotate day from beginning of year to end of year
         data.index = pd.DatetimeIndex([str(x).replace(f"{year-1}",f"{year}")
             for x in data.index])
 
-        super().__init__(data.sort_index())
+        # sort timestamps
+        data.sort_index(inplace=True)
 
-    def apply_weather(self,
-        weather:TypeVar('loads.weather.Weather'),
-        model:str,
-        **kwargs,
-        ) -> pd.DataFrame:
-        """Apply weather model
+        # add leap day if necessary
+        if calendar.isleap(year) and len(data) == 8760:
+            leap_day = pd.DataFrame(
+                    data=data.iloc[:24].values,
+                    columns=data.columns,
+                    index=pd.date_range(
+                        start=f"{year}-12-31 00:00:00+00:00",
+                        end=f"{year}-12-31 23:59:59+00:00",
+                        freq="1h",
+                        ))
+            data = pd.concat([
+                        data.reset_index(drop=True),
+                        leap_day.reset_index(drop=True)
+                    ],
+                    axis=0)\
+                .set_index(pd.date_range(
+                        start=f"{year}-01-01 00:00:00+00:00",
+                        end=f"{year}-12-31 23:59:59+00:00",
+                        freq="1h",
+                        ))
 
-        # Arguments
+        # preserve reference weather
+        for column in WEATHER_FIELDS._asdict().values():
+            assert column in data.columns, f"weather {column=} is missing in data"
+        reference = data[WEATHER_FIELDS._asdict().values()].copy()
 
-        - `weather`: weather data to use for model
+        # apply target weather data
+        if not weather is None:
+            assert (weather.index == data.index).all(), "weather index does not match data index"
+            for column in WEATHER_FIELDS._asdict().values():
+                assert column in weather.columns, f"weather {column=} is missing in weather"
+                data[column] = weather[column]
 
-        - `model`: modeling method to use for weather update to model, i.e.,
+        #
+        # Calculate cooling and heating sensitivity
+        #
+        X = data[WEATHER_FIELDS.temperature].ffill().fillna(0)
+        Xr = reference[WEATHER_FIELDS.temperature].ffill().fillna(0)
+        def fit_curve(x, L, x0, k, b):
+            return L / (1 + np.exp(-k*(x-x0))) + b
 
-          - `"pwls"`: piecewise linear static model with heating and cooling balance
-            temperatures as specified by
-            `loads.cast.Cast.HEATING_BALANCE_TEMPERATURE` and
-            `loads.cast.Cast.COOLING_BALANCE_TEMPERATURE`, respectively.
-
-          - `"pwld"`: piecewise linear dynamic model with heating and cooling balance
-            temperatures as specified by
-            `loads.cast.HEATING_BALANCE_TEMPERATURE` and
-            `loads.cast.COOLING_BALANCE_TEMPERATURE`, respectively.
-
-          - `"smp"`: smooth multi-periodic model from https://github.com/cvxgrp/spcqe.
-
-        - `**kwargs`: model options (see `apply_{model}` for details)
-
-        # Returns
-
-        - `pandas.DataFrame`: load modeled with weather data provided
-        """
-        if hasattr(self,f"{model}_model"):
-            return getattr(self,f"{model}_model")(weather,**kwargs)
-        raise ValueError("f{model=} is invalid")
-
-    def static_model(self,
-        weather:TypeVar('loads.weather.Weather')|None=None,
-        return_model:bool=False
-        ) -> pd.DataFrame:
-        r"""Apply static  model
-
-        # Arguments
-
-        - `weather`: target weather data (None uses original reference data)
-
-        - `return_model`: enable returning callable model function instead of data frame
-
-        # Returns
-
-        - `pandas.DataFrame`: load cast static (baseline) model
-
-        - `dict[str, callable]: callable load model as a function of weather parameter
-
-          Parameters:
-
-            - `cooling` parameter is `temperature_degF`
-
-            - `heating` parameter is `temperature_degF`
-
-            - `baseload` parameter is `timestamp`
-
-            - `dg` parameters are `global_Wpms`, `direct_Wpms`, and `diffuse_Wpms`
-
-        # Description
-
-        The static model fits a sigmoid baseline temperature-dependent model
-        to the heating and cooling loads, a temperature-dependent Fourier
-        baseline model to the baseline loads, and a solar-dependent DG model.
-        The total and net loads are summed as usual.
-
-        # Methodology
-
-        The cooling and heating static models are constructed in two steps.
-
-        1. Compute the baseline model $B=(L, k, T_0,b)$ such that
-        $$
-            \frac L {1+\exp(-k(T[k]-T_0))} + b - \bar P[k]
-        $$
-        is least-squares minimal over the samples $k \in (1,8760)$ 
-
-        2. Fit the discrete-time dynamic model $A=(a_0,a_1,a_2,a_3)$ such that
-        $$
-            a_0 \bar P[k] + a_1 P[k-1] + a_2 P[k-2] + a_3 T[k] - P[k]
-        $$
-        is least-squares minimal over the samples $k \in (3,8760)$.
-
-        The baseload model is TODO.
-
-        The DG model is TODO.
-        """
-        if weather is None:
-            weather = self
-        assert isinstance(weather,pd.DataFrame), "weather is not a Pandas data frame"
-        assert isinstance(weather.index,pd.DatetimeIndex), "weather frame must have datetime index"
-        assert (weather.index == self.index).all(), "weather index must match load data index"
-        for column in ["temperature_degF","global_Wpms","diffuse_Wpms","direct_Wpms"]:
-            assert column in self.columns, f"{column} not found"
-
-        X = self["temperature_degF"]
-        Y = self[f"elec_cooling_MW"]
-        t = self.index.values
-
-        # cooling model fit
-        sigmoid = lambda x, L, x0, k, b: L / (1 + np.exp(-k * (x - x0))) + b
-        initial_guess = [max(Y)*0.8, 70, 0.2, 0]
-        sfit, err = sp.optimize.curve_fit(
-            sigmoid, X ,Y, initial_guess,
+        # Cooling model fit
+        Y = data[ELEC_FIELDS.cooling].ffill().fillna(0)
+        cooling_fit, _ = sp.optimize.curve_fit(
+            f=fit_curve,
+            xdata=X ,
+            ydata=Y,
+            p0=[max(Y)*0.8, 70, 0.2, 0],
+            bounds=[
+                (0, 40, 0, 0),
+                (np.inf, 100, np.inf, max(Y) if max(Y)>0 else np.inf)
+                ],
             method="trf",
-            bounds=[(0, 40, 0, 0), (np.inf, 100, np.inf, max(Y))],
             )
+        def C(x):
+            return fit_curve(x,*cooling_fit)
+        data[ELEC_FIELDS.cooling] = (data[ELEC_FIELDS.cooling] + C(X) - C(Xr)).clip(lower=0)
 
-        if not return_model:
-            result = self.copy()
-            result["elec_cooling_MW"] = sigmoid(X, *sfit)
-            return result
-        else:
-            return {
-                "cooling": lambda x:sigmoid(x,*sfit)
-                }
+        # Heating model fit
+        Y = data[ELEC_FIELDS.heating].ffill().fillna(0)
+        heating_fit, _ = sp.optimize.curve_fit(
+            f=fit_curve,
+            xdata=X ,
+            ydata=Y,
+            p0=[max(Y)*0.8, 70, -0.2, max(Y)],
+            bounds=[
+                (0, -40, -np.inf, 0),
+                (np.inf, 80, 0, max(Y) if max(Y)>0 else np.inf)
+                ],
+            method="trf",
+            )
+        def H(x):
+            return fit_curve(x,*heating_fit)
+        data[ELEC_FIELDS.heating] = (data[ELEC_FIELDS.heating] + H(X) - H(Xr)).clip(lower=0)
 
-    def dynamic_model(self,
-        baseline:list[float],
-        weather:TypeVar('loads.weather.Weather')|None=None,
-        order:int=None,
-        ):
-        """Apply dynamic model
+        data[ELEC_FIELDS.total] = sum(data[getattr(ELEC_FIELDS,x)]
+            for x in ["baseload","heating","cooling"])
+        data[ELEC_FIELDS.net] = data[ELEC_FIELDS.total] + data[ELEC_FIELDS.dg]
 
-        # Arguments
+        # plt.clf()
+        # plt.plot(Xr,Dc(Xr),'.b',label="Cooling sensitivity")
+        # plt.plot(Xr,Dh(Xr),'.r',label="Heating sensitivity")
+        # plt.xlabel("Temperature (degF)")
+        # plt.ylabel("Sensitivity (MW/degF)")
+        # plt.grid()
+        # plt.show()
 
-        - `weather`: target weather data (None uses original reference data)
-
-        - `order`: dynamic model order (defaults to
-          `loads.cast.Cast.DYNAMIC_MODEL_ORDER`)
-
-        # Returns
-
-        - `pandas.DataFrame`: load cast using model
-        """
-        if weather is None:
-            weather = self
-        assert isinstance(weather,pd.DataFrame), "weather is not a Pandas data frame"
-        assert isinstance(weather.index,pd.DatetimeIndex), "weather frame must have datetime index"
-        assert weather.index == self.index, "weather index must match load data index"
-        for column in ["temperature_degF","global_Wpms","diffuse_Wpms","direct_Wpms"]:
-            assert column in self.columns, f"{column} not found"
-
-        raise NotImplementedError("TODO")
-    
-    def spcqe_model(self,
-        weather:TypeVar('loads.weather.Weather')|None=None,
-        periods:np.ndarray|None=None,
-        harmonics:np.ndarray|None=None,
-        ):
-        """Apply smooth multi-period consistent quantile estimator (SPCQE) model
-
-        # Arguments
-
-        - `weather`: target weather data (None uses original reference data)
-
-        - `periods`: periods to use (defaults to
-          `loads.cast.Cast.PERIOD_HARMONICS` keys)
-
-        - `harmonics`: number of harmonics to use (defaults to
-          `loads.cast.Cast.PERIOD_HARMONICS` values)
-
-        # Returns
-
-        - `pandas.DataFrame`: load cast using model
-        """
-        assert isinstance(weather,pd.DataFrame), "weather is not a Pandas data frame"
-        assert isinstance(weather.index,pd.DatetimeIndex), "weather frame must have datetime index"
-        assert weather.index == self.index, "weather index must match load data index"
-        assert "temperature_degF" in self.columns
-        raise NotImplementedError("TODO")
+        super().__init__(data.sort_index())
 
 if __name__ == '__main__':
 
+    TARGET_YEAR = 2019
+    SHOW_PLOTS = False
     try:
         from residential import Residential
         from weather import Weather
     except ImportError:
         from .residential import Residential
         from .weather import Weather
-
-    STATE = "CA"
-    COUNTY = "Alameda"
+    from fips.counties import Counties
 
     pd.options.display.max_columns = None
     pd.options.display.width = None
 
-    print("Testing",COUNTY,STATE,"...",flush=True)
-    cache = os.path.join(".cache",f"{STATE}_{COUNTY}_R.csv")
-    if os.path.exists(cache):
-        test = pd.read_csv(cache,index_col=0,parse_dates=[0])
-    else:
+    if SHOW_PLOTS:
+        plt.rcParams["figure.figsize"] = (40,20)
+        plt.figure()
+
+    for STATE,COUNTY in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index:
+        # print("Testing",COUNTY,STATE,"...",flush=True)
+
         test = Residential(state=STATE,county=COUNTY)
-        test.to_csv(cache)
+        reference_weather = Weather(STATE,COUNTY)
+        test[reference_weather.columns] = reference_weather
 
-    START = "01-01"
-    END = '01-08'
-    test.loc[pd.date_range(
-        f"2018-{START} 00:00:00-0700",
-        f"2018-{END} 00:00:00-0700",
-        freq="1h")]["elec_baseload_MW"].plot(grid=True).figure.savefig(f".cache/cast_{STATE}_{COUNTY}_2018_w01.png")
+        target_weather = reference_weather.copy()
+        if calendar.isleap(TARGET_YEAR):
+            target_weather = pd.concat([target_weather,target_weather.iloc[:24]])
+        target_weather.index = pd.date_range(
+            start=f"{TARGET_YEAR}-01-01 00:00:00+00:00",
+            end=f"{TARGET_YEAR}-12-31 23:59:59+00:00",
+            freq="1h",
+            )
 
-    import matplotlib.pyplot as plt
-    
-    for YEARTO in range(2019,2025):
-        plt.clf()
-        result = Cast(test,YEARTO,Weather(STATE,COUNTY))
+        test_ref = Cast(test,2018,reference_weather)
+        test_data = Cast(test,TARGET_YEAR,target_weather)
 
-        result.loc[pd.date_range(
-            f"{YEARTO}-{START} 00:00:00-0700",
-            f"{YEARTO}-{END} 00:00:00-0700",
-            freq="1h")]["elec_baseload_MW"].plot(grid=True).figure.savefig(f".cache/cast_{STATE}_{COUNTY}_{YEARTO}_w01.png")
+        diff_pc = (1-test_ref["elec_total_MW"].sum()/test_data["elec_total_MW"].sum())
+        print(f"{STATE} {COUNTY} {TARGET_YEAR}: {diff_pc*100:+.1f}%",flush=True)
 
-    X = result["temperature_degF"].values
-    model = result.static_model()
-    for LOAD in ["cooling"]:
+        if SHOW_PLOTS:
+            plt.clf()
 
-        Y = result[f"elec_{LOAD}_MW"]
-        Yr = model[f"elec_{LOAD}_MW"]
-        
-        plt.clf()
-        plt.plot(X,Y,".b",label="Actual")
-        plt.plot(X,Yr,".r",label="Model")
-        plt.xlabel("Temperature ($^\\circ$F)")
-        plt.title(f"{COUNTY} {STATE} {LOAD}")
-        plt.ylabel("Load (MW)")
-        plt.grid()
+            plt.suptitle(f"{COUNTY} {STATE} {TARGET_YEAR}")
+            plt.subplot(2,2,1)
+            plt.plot(test_data.index[:len(test_ref)],
+                test_ref.reset_index()["elec_total_MW"],
+                label="Reference year")
+            plt.plot(test_data["elec_total_MW"],label="Target year")
+            plt.xlabel("Hour of year")
+            plt.ylabel("Load (MW)")
+            plt.title("Load projection")
+            plt.grid()
+            plt.legend()
 
-        plt.show()
+            plt.subplot(2,2,3)
+            plt.plot(test_data.index[:len(test_ref)],
+                test_ref.reset_index()["temperature_degF"],
+                label="Reference year")
+            plt.plot(test_data["temperature_degF"],label="Target year")
+            plt.xlabel("Hour of year")
+            plt.ylabel("Temperature ($^\\circ$F)")
+            plt.title("Temperature projection")
+            plt.grid()
+            plt.legend()
+
+            plt.subplot(1,2,2)
+            plt.plot(test_ref["temperature_degF"],
+                test_ref["elec_total_MW"],
+                '.b',
+                label="Reference year")
+            plt.plot(test_data["temperature_degF"],
+                test_data["elec_total_MW"],
+                '.r',
+                label="Target year")
+            plt.xlabel("Temperature ($^\\circ$F)")
+            plt.ylabel("Load (MW)")
+            plt.title("Temperature vs Load")
+            plt.grid()
+            plt.legend()
+
+            plt.show()
