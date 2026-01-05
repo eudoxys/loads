@@ -27,6 +27,14 @@ sensitivity curve. The load difference between the reference $B(T)$ and
 target $B(T')$ weather is applied to the reference load.
 
 The distributed generation is TODO.
+
+# Caveat
+
+- The methodology described above usually results in an increase in total
+  heating and cooling energy use. This occurs because negative heating and
+  cooling loads clipped to zero. Negative heating and cooling loads arise
+  when the temperature difference is sufficiently large that the load drops
+  by more then than the load itself.
 """
 
 import datetime as dt
