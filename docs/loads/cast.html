@@ -149,10 +149,10 @@ target $B(T')$ weather is applied to the reference load.</p>
 
 <ul>
 <li>The methodology described above usually results in an increase in total
-heating and cooling energy use. This occurs because negative heating and
-cooling loads clipped to zero. Negative heating and cooling loads arise
-when the temperature difference is sufficiently large that the load drops
-by more then than the load itself.</li>
+heating and cooling energy use. This occurs when projected negative heating
+and cooling loads are clipped to zero. These arise when the temperature
+sensitivity is sufficiently large that the load drops by more than the load
+itself.</li>
 </ul>
 </div>
 
@@ -193,10 +193,10 @@ by more then than the load itself.</li>
 </span><span id="L-31"><a href="#L-31"><span class="linenos"> 31</span></a><span class="sd"># Caveat</span>
 </span><span id="L-32"><a href="#L-32"><span class="linenos"> 32</span></a>
 </span><span id="L-33"><a href="#L-33"><span class="linenos"> 33</span></a><span class="sd">- The methodology described above usually results in an increase in total</span>
-</span><span id="L-34"><a href="#L-34"><span class="linenos"> 34</span></a><span class="sd">  heating and cooling energy use. This occurs because negative heating and</span>
-</span><span id="L-35"><a href="#L-35"><span class="linenos"> 35</span></a><span class="sd">  cooling loads clipped to zero. Negative heating and cooling loads arise</span>
-</span><span id="L-36"><a href="#L-36"><span class="linenos"> 36</span></a><span class="sd">  when the temperature difference is sufficiently large that the load drops</span>
-</span><span id="L-37"><a href="#L-37"><span class="linenos"> 37</span></a><span class="sd">  by more then than the load itself.</span>
+</span><span id="L-34"><a href="#L-34"><span class="linenos"> 34</span></a><span class="sd">  heating and cooling energy use. This occurs when projected negative heating</span>
+</span><span id="L-35"><a href="#L-35"><span class="linenos"> 35</span></a><span class="sd">  and cooling loads are clipped to zero. These arise when the temperature</span>
+</span><span id="L-36"><a href="#L-36"><span class="linenos"> 36</span></a><span class="sd">  sensitivity is sufficiently large that the load drops by more than the load</span>
+</span><span id="L-37"><a href="#L-37"><span class="linenos"> 37</span></a><span class="sd">  itself.</span>
 </span><span id="L-38"><a href="#L-38"><span class="linenos"> 38</span></a><span class="sd">&quot;&quot;&quot;</span>
 </span><span id="L-39"><a href="#L-39"><span class="linenos"> 39</span></a>
 </span><span id="L-40"><a href="#L-40"><span class="linenos"> 40</span></a><span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dt</span>
@@ -252,11 +252,11 @@ by more then than the load itself.</li>
 </span><span id="L-90"><a href="#L-90"><span class="linenos"> 90</span></a>
 </span><span id="L-91"><a href="#L-91"><span class="linenos"> 91</span></a><span class="sd">        # Argument</span>
 </span><span id="L-92"><a href="#L-92"><span class="linenos"> 92</span></a>
-</span><span id="L-93"><a href="#L-93"><span class="linenos"> 93</span></a><span class="sd">        - `data`: load data frame containing load data to cast</span>
+</span><span id="L-93"><a href="#L-93"><span class="linenos"> 93</span></a><span class="sd">        - `data`: load and weather data frame containing load data to cast</span>
 </span><span id="L-94"><a href="#L-94"><span class="linenos"> 94</span></a>
 </span><span id="L-95"><a href="#L-95"><span class="linenos"> 95</span></a><span class="sd">        - `year`: year to which load is cast</span>
 </span><span id="L-96"><a href="#L-96"><span class="linenos"> 96</span></a>
-</span><span id="L-97"><a href="#L-97"><span class="linenos"> 97</span></a><span class="sd">        - `weather`: target weather to use with `loads.cast.Cast.apply_weather`</span>
+</span><span id="L-97"><a href="#L-97"><span class="linenos"> 97</span></a><span class="sd">        - `weather`: target year weather</span>
 </span><span id="L-98"><a href="#L-98"><span class="linenos"> 98</span></a><span class="sd">        &quot;&quot;&quot;</span>
 </span><span id="L-99"><a href="#L-99"><span class="linenos"> 99</span></a>
 </span><span id="L-100"><a href="#L-100"><span class="linenos">100</span></a>        <span class="c1"># pylint: disable=too-many-locals,invalid-name</span>
@@ -540,11 +540,11 @@ by more then than the load itself.</li>
 </span><span id="Cast-91"><a href="#Cast-91"><span class="linenos"> 91</span></a>
 </span><span id="Cast-92"><a href="#Cast-92"><span class="linenos"> 92</span></a><span class="sd">        # Argument</span>
 </span><span id="Cast-93"><a href="#Cast-93"><span class="linenos"> 93</span></a>
-</span><span id="Cast-94"><a href="#Cast-94"><span class="linenos"> 94</span></a><span class="sd">        - `data`: load data frame containing load data to cast</span>
+</span><span id="Cast-94"><a href="#Cast-94"><span class="linenos"> 94</span></a><span class="sd">        - `data`: load and weather data frame containing load data to cast</span>
 </span><span id="Cast-95"><a href="#Cast-95"><span class="linenos"> 95</span></a>
 </span><span id="Cast-96"><a href="#Cast-96"><span class="linenos"> 96</span></a><span class="sd">        - `year`: year to which load is cast</span>
 </span><span id="Cast-97"><a href="#Cast-97"><span class="linenos"> 97</span></a>
-</span><span id="Cast-98"><a href="#Cast-98"><span class="linenos"> 98</span></a><span class="sd">        - `weather`: target weather to use with `loads.cast.Cast.apply_weather`</span>
+</span><span id="Cast-98"><a href="#Cast-98"><span class="linenos"> 98</span></a><span class="sd">        - `weather`: target year weather</span>
 </span><span id="Cast-99"><a href="#Cast-99"><span class="linenos"> 99</span></a><span class="sd">        &quot;&quot;&quot;</span>
 </span><span id="Cast-100"><a href="#Cast-100"><span class="linenos">100</span></a>
 </span><span id="Cast-101"><a href="#Cast-101"><span class="linenos">101</span></a>        <span class="c1"># pylint: disable=too-many-locals,invalid-name</span>
@@ -688,11 +688,11 @@ by more then than the load itself.</li>
 </span><span id="Cast.__init__-91"><a href="#Cast.__init__-91"><span class="linenos"> 91</span></a>
 </span><span id="Cast.__init__-92"><a href="#Cast.__init__-92"><span class="linenos"> 92</span></a><span class="sd">        # Argument</span>
 </span><span id="Cast.__init__-93"><a href="#Cast.__init__-93"><span class="linenos"> 93</span></a>
-</span><span id="Cast.__init__-94"><a href="#Cast.__init__-94"><span class="linenos"> 94</span></a><span class="sd">        - `data`: load data frame containing load data to cast</span>
+</span><span id="Cast.__init__-94"><a href="#Cast.__init__-94"><span class="linenos"> 94</span></a><span class="sd">        - `data`: load and weather data frame containing load data to cast</span>
 </span><span id="Cast.__init__-95"><a href="#Cast.__init__-95"><span class="linenos"> 95</span></a>
 </span><span id="Cast.__init__-96"><a href="#Cast.__init__-96"><span class="linenos"> 96</span></a><span class="sd">        - `year`: year to which load is cast</span>
 </span><span id="Cast.__init__-97"><a href="#Cast.__init__-97"><span class="linenos"> 97</span></a>
-</span><span id="Cast.__init__-98"><a href="#Cast.__init__-98"><span class="linenos"> 98</span></a><span class="sd">        - `weather`: target weather to use with `loads.cast.Cast.apply_weather`</span>
+</span><span id="Cast.__init__-98"><a href="#Cast.__init__-98"><span class="linenos"> 98</span></a><span class="sd">        - `weather`: target year weather</span>
 </span><span id="Cast.__init__-99"><a href="#Cast.__init__-99"><span class="linenos"> 99</span></a><span class="sd">        &quot;&quot;&quot;</span>
 </span><span id="Cast.__init__-100"><a href="#Cast.__init__-100"><span class="linenos">100</span></a>
 </span><span id="Cast.__init__-101"><a href="#Cast.__init__-101"><span class="linenos">101</span></a>        <span class="c1"># pylint: disable=too-many-locals,invalid-name</span>
@@ -818,9 +818,9 @@ by more then than the load itself.</li>
 <h1 id="argument">Argument</h1>
 
 <ul>
-<li><p><code>data</code>: load data frame containing load data to cast</p></li>
+<li><p><code>data</code>: load and weather data frame containing load data to cast</p></li>
 <li><p><code>year</code>: year to which load is cast</p></li>
-<li><p><code>weather</code>: target weather to use with <code>loads.cast.Cast.apply_weather</code></p></li>
+<li><p><code>weather</code>: target year weather</p></li>
 </ul>
 </div>
 

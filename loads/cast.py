@@ -31,10 +31,10 @@ The distributed generation is TODO.
 # Caveat
 
 - The methodology described above usually results in an increase in total
-  heating and cooling energy use. This occurs because negative heating and
-  cooling loads clipped to zero. Negative heating and cooling loads arise
-  when the temperature difference is sufficiently large that the load drops
-  by more then than the load itself.
+  heating and cooling energy use. This occurs when projected negative heating
+  and cooling loads are clipped to zero. These arise when the temperature
+  sensitivity is sufficiently large that the load drops by more than the load
+  itself.
 """
 
 import datetime as dt
@@ -90,11 +90,11 @@ class Cast(pd.DataFrame):
 
         # Argument
 
-        - `data`: load data frame containing load data to cast
+        - `data`: load and weather data frame containing load data to cast
 
         - `year`: year to which load is cast
 
-        - `weather`: target weather to use with `loads.cast.Cast.apply_weather`
+        - `weather`: target year weather
         """
 
         # pylint: disable=too-many-locals,invalid-name
