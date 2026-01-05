@@ -26,7 +26,7 @@ cooling weather sensitivity curves that fit the function $P(x) = \frac L{1+e^
 sensitivity curve. The load difference between the reference $B(T)$ and
 target $B(T')$ weather is applied to the reference load.
 
-The distributed generation is TODO.
+The distributed generation is a least-squares fit to all the weather data.
 
 # Caveat
 
@@ -36,7 +36,7 @@ The distributed generation is TODO.
   sensitivity is sufficiently large that the load drops by more than the load
   itself.
 
-- Industrial and agricultural loads are assign a uniform loadshape for the
+- Industrial and agricultural loads are assigned a uniform loadshape for the
   entire target year.
 """
 
@@ -155,13 +155,8 @@ class Cast(pd.DataFrame):
         # project solar dg
         self._solar(data,reference)
 
-        # plt.clf()
-        # plt.plot(Xr,Dc(Xr),'.b',label="Cooling sensitivity")
-        # plt.plot(Xr,Dh(Xr),'.r',label="Heating sensitivity")
-        # plt.xlabel("Temperature (degF)")
-        # plt.ylabel("Sensitivity (MW/degF)")
-        # plt.grid()
-        # plt.show()
+        # update net load
+        data[ELEC_FIELDS.net] = data[ELEC_FIELDS.total] + data[ELEC_FIELDS.net]
 
         super().__init__(data.sort_index())
 
@@ -188,21 +183,22 @@ class Cast(pd.DataFrame):
 
         X = data[WEATHER_FIELDS.temperature].ffill().fillna(0)
         Xr = reference[WEATHER_FIELDS.temperature].ffill().fillna(0)
-        Y = data[ELEC_FIELDS.cooling].ffill().fillna(0)
-        cooling_fit, _ = sp.optimize.curve_fit(
-            f=fit_curve,
-            xdata=X ,
-            ydata=Y,
-            p0=[max(Y)*0.8, 70, 0.2, 0],
-            bounds=[
-                (0, 40, 0, 0),
-                (np.inf, 100, np.inf, max(Y) if max(Y)>0 else np.inf)
-                ],
-            method="trf",
-            )
-        def C(x):
-            return fit_curve(x,*cooling_fit)
-        data[ELEC_FIELDS.cooling] = (data[ELEC_FIELDS.cooling] + C(X) - C(Xr)).clip(lower=0)
+        for fields in [ELEC_FIELDS,NONELEC_FIELDS]:
+            Y = data[fields.cooling].ffill().fillna(0)
+            cooling_fit, _ = sp.optimize.curve_fit(
+                f=fit_curve,
+                xdata=X ,
+                ydata=Y,
+                p0=[max(Y)*0.8, 70, 0.2, 0],
+                bounds=[
+                    (0, 40, 0, 0),
+                    (np.inf, 100, np.inf, max(Y) if max(Y)>0 else np.inf)
+                    ],
+                method="trf",
+                )
+            def C(x):
+                return fit_curve(x,*cooling_fit)
+            data[fields.cooling] = (data[fields.cooling] + C(X) - C(Xr)).clip(lower=0)
 
     def _heating(self,data,reference,fit_curve):
         """Project heating change"""
@@ -210,28 +206,39 @@ class Cast(pd.DataFrame):
 
         X = data[WEATHER_FIELDS.temperature].ffill().fillna(0)
         Xr = reference[WEATHER_FIELDS.temperature].ffill().fillna(0)
-        Y = data[ELEC_FIELDS.heating].ffill().fillna(0)
-        heating_fit, _ = sp.optimize.curve_fit(
-            f=fit_curve,
-            xdata=X ,
-            ydata=Y,
-            p0=[max(Y)*0.8, 70, -0.2, max(Y)],
-            bounds=[
-                (0, -40, -np.inf, 0),
-                (np.inf, 80, 0, max(Y) if max(Y)>0 else np.inf)
-                ],
-            method="trf",
-            )
-        def H(x):
-            return fit_curve(x,*heating_fit)
-        data[ELEC_FIELDS.heating] = (data[ELEC_FIELDS.heating] + H(X) - H(Xr)).clip(lower=0)
+        for fields in [ELEC_FIELDS,NONELEC_FIELDS]:
+            Y = data[fields.heating].ffill().fillna(0)
+            heating_fit, _ = sp.optimize.curve_fit(
+                f=fit_curve,
+                xdata=X ,
+                ydata=Y,
+                p0=[max(Y)*0.8, 70, -0.2, max(Y)],
+                bounds=[
+                    (0, -40, -np.inf, 0),
+                    (np.inf, 80, 0, max(Y) if max(Y)>0 else np.inf)
+                    ],
+                method="trf",
+                )
+            def H(x):
+                return fit_curve(x,*heating_fit)
+            data[fields.heating] = (data[fields.heating] + H(X) - H(Xr)).clip(lower=0)
 
-        data[ELEC_FIELDS.total] = sum(data[getattr(ELEC_FIELDS,x)]
-            for x in ["baseload","heating","cooling"])
-        data[ELEC_FIELDS.net] = data[ELEC_FIELDS.total] + data[ELEC_FIELDS.dg]
+            data[fields.total] = sum(data[getattr(fields,x)]
+                for x in ["baseload","heating","cooling"])
 
     def _solar(self,data,reference):
         """Project solar DG change"""
+        X = data[[
+            WEATHER_FIELDS.horizontal,
+            WEATHER_FIELDS.diffuse,
+            WEATHER_FIELDS.normal,
+            WEATHER_FIELDS.temperature,
+            ]].ffill().fillna(0)
+        Y = -data[ELEC_FIELDS.dg].ffill().fillna(0)
+        Ym = Y.mean()
+        if Ym > 0:
+            fit = np.linalg.lstsq(X.values,Y.values)
+            data[ELEC_FIELDS.dg] = -X@fit[0]
 
 if __name__ == '__main__':
 
@@ -297,9 +304,9 @@ if __name__ == '__main__':
             plt.suptitle(f"{COUNTY} {STATE} {TARGET_YEAR}")
             plt.subplot(2,2,1)
             plt.plot(test_data.index[:len(test_ref)],
-                test_ref.reset_index()["elec_total_MW"],
+                test_ref.reset_index()["elec_net_MW"],
                 label="Reference year")
-            plt.plot(test_data["elec_total_MW"],label="Target year")
+            plt.plot(test_data["elec_net_MW"],label="Target year")
             plt.xlabel("Hour of year")
             plt.ylabel("Load (MW)")
             plt.title("Load projection")
@@ -319,11 +326,11 @@ if __name__ == '__main__':
 
             plt.subplot(1,2,2)
             plt.plot(test_ref["temperature_degF"],
-                test_ref["elec_total_MW"],
+                test_ref["elec_net_MW"],
                 '.b',
                 label="Reference year")
             plt.plot(test_data["temperature_degF"],
-                test_data["elec_total_MW"],
+                test_data["elec_net_MW"],
                 '.r',
                 label="Target year")
             plt.xlabel("Temperature ($^\\circ$F)")
