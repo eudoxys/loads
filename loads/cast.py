@@ -35,6 +35,9 @@ The distributed generation is TODO.
   and cooling loads are clipped to zero. These arise when the temperature
   sensitivity is sufficiently large that the load drops by more than the load
   itself.
+
+- Industrial and agricultural loads are assign a uniform loadshape for the
+  entire target year.
 """
 
 import datetime as dt
@@ -96,33 +99,17 @@ class Cast(pd.DataFrame):
 
         - `weather`: target year weather
         """
-
         # pylint: disable=too-many-locals,invalid-name
+
         assert isinstance(data,pd.DataFrame), "data is not a Pandas data frame"
         assert isinstance(data.index,pd.DatetimeIndex), "data frame must have datetime index"
         assert isinstance(year,int), "year must be an integer"
 
-        #
-        # Adjust for weekday and year change
-        #
-        # print("\nPROJECTION TO",year,"...\n")
-
         # protect original data
         data = data.copy()
 
-        # calculate day shift
-        shift = dt.date(year,1,1).weekday() - data.index[0].weekday()
-
-        # reindex using day shift
-        data.index = pd.DatetimeIndex([str(x).replace("2018",f"{year}")
-            for x in data.index]) - dt.timedelta(days=shift)
-
-        # rotate day from beginning of year to end of year
-        data.index = pd.DatetimeIndex([str(x).replace(f"{year-1}",f"{year}")
-            for x in data.index])
-
-        # sort timestamps
-        data.sort_index(inplace=True)
+        # adjust for weekday and year change
+        self._dayshift(data,year)
 
         # add leap day if necessary
         if calendar.isleap(year) and len(data) == 8760:
@@ -157,15 +144,50 @@ class Cast(pd.DataFrame):
                 assert column in weather.columns, f"weather {column=} is missing in weather"
                 data[column] = weather[column]
 
-        #
-        # Calculate cooling and heating sensitivity
-        #
-        X = data[WEATHER_FIELDS.temperature].ffill().fillna(0)
-        Xr = reference[WEATHER_FIELDS.temperature].ffill().fillna(0)
+        # calculate cooling and heating sensitivity
         def fit_curve(x, L, x0, k, b):
             return L / (1 + np.exp(-k*(x-x0))) + b
 
-        # Cooling model fit
+        # project cooling and heating loads
+        self._cooling(data,reference,fit_curve)
+        self._heating(data,reference,fit_curve)
+
+        # project solar dg
+        self._solar(data,reference)
+
+        # plt.clf()
+        # plt.plot(Xr,Dc(Xr),'.b',label="Cooling sensitivity")
+        # plt.plot(Xr,Dh(Xr),'.r',label="Heating sensitivity")
+        # plt.xlabel("Temperature (degF)")
+        # plt.ylabel("Sensitivity (MW/degF)")
+        # plt.grid()
+        # plt.show()
+
+        super().__init__(data.sort_index())
+
+    def _dayshift(self,data,year):
+        """Project day of week change"""
+
+        # calculate day shift
+        shift = dt.date(year,1,1).weekday() - data.index[0].weekday()
+
+        # reindex using day shift
+        data.index = pd.DatetimeIndex([str(x).replace("2018",f"{year}")
+            for x in data.index]) - dt.timedelta(days=shift)
+
+        # rotate day from beginning of year to end of year
+        data.index = pd.DatetimeIndex([str(x).replace(f"{year-1}",f"{year}")
+            for x in data.index])
+
+        # sort timestamps
+        data.sort_index(inplace=True)
+
+    def _cooling(self,data,reference,fit_curve):
+        """Project cooling change"""
+        # pylint: disable=too-many-locals,invalid-name
+
+        X = data[WEATHER_FIELDS.temperature].ffill().fillna(0)
+        Xr = reference[WEATHER_FIELDS.temperature].ffill().fillna(0)
         Y = data[ELEC_FIELDS.cooling].ffill().fillna(0)
         cooling_fit, _ = sp.optimize.curve_fit(
             f=fit_curve,
@@ -182,7 +204,12 @@ class Cast(pd.DataFrame):
             return fit_curve(x,*cooling_fit)
         data[ELEC_FIELDS.cooling] = (data[ELEC_FIELDS.cooling] + C(X) - C(Xr)).clip(lower=0)
 
-        # Heating model fit
+    def _heating(self,data,reference,fit_curve):
+        """Project heating change"""
+        # pylint: disable=too-many-locals,invalid-name
+
+        X = data[WEATHER_FIELDS.temperature].ffill().fillna(0)
+        Xr = reference[WEATHER_FIELDS.temperature].ffill().fillna(0)
         Y = data[ELEC_FIELDS.heating].ffill().fillna(0)
         heating_fit, _ = sp.optimize.curve_fit(
             f=fit_curve,
@@ -203,25 +230,25 @@ class Cast(pd.DataFrame):
             for x in ["baseload","heating","cooling"])
         data[ELEC_FIELDS.net] = data[ELEC_FIELDS.total] + data[ELEC_FIELDS.dg]
 
-        # plt.clf()
-        # plt.plot(Xr,Dc(Xr),'.b',label="Cooling sensitivity")
-        # plt.plot(Xr,Dh(Xr),'.r',label="Heating sensitivity")
-        # plt.xlabel("Temperature (degF)")
-        # plt.ylabel("Sensitivity (MW/degF)")
-        # plt.grid()
-        # plt.show()
-
-        super().__init__(data.sort_index())
+    def _solar(self,data,reference):
+        """Project solar DG change"""
 
 if __name__ == '__main__':
 
-    TARGET_YEAR = 2019
+    TARGET_YEAR = 2020
     SHOW_PLOTS = False
+
     try:
         from residential import Residential
+        from commercial import Commercial
+        from industry import Industry
+        from agriculture import Agriculture
         from weather import Weather
     except ImportError:
+        from .commercial import Commercial
         from .residential import Residential
+        from .industry import Industry
+        from .agriculture import Agriculture
         from .weather import Weather
     from fips.counties import Counties
 
@@ -235,7 +262,17 @@ if __name__ == '__main__':
     for STATE,COUNTY in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index:
         # print("Testing",COUNTY,STATE,"...",flush=True)
 
-        test = Residential(state=STATE,county=COUNTY)
+        buildings = Commercial(state=STATE,county=COUNTY)\
+            + Residential(state=STATE,county=COUNTY)
+        loadshape = pd.DataFrame(
+            data=np.ones(len(buildings.index)),
+            index=buildings.index,
+            )
+        ind_agr = Industry(STATE,COUNTY,loadshape) + Agriculture(STATE,COUNTY,loadshape)
+        for column in buildings.columns:
+            if column not in ind_agr.columns:
+                ind_agr[column] = 0.0
+        test = buildings + ind_agr
         reference_weather = Weather(STATE,COUNTY)
         test[reference_weather.columns] = reference_weather
 
@@ -252,7 +289,7 @@ if __name__ == '__main__':
         test_data = Cast(test,TARGET_YEAR,target_weather)
 
         diff_pc = (1-test_ref["elec_total_MW"].sum()/test_data["elec_total_MW"].sum())
-        print(f"{STATE} {COUNTY} {TARGET_YEAR}: {diff_pc*100:+.1f}%",flush=True)
+        print(f"{STATE} {COUNTY} {TARGET_YEAR}: MWh {diff_pc*100:+.1f}%",flush=True)
 
         if SHOW_PLOTS:
             plt.clf()
