@@ -20,6 +20,8 @@ except ImportError:
     from agriculture import Agriculture
 from fips.counties import Counties
 
+total = None
+
 if __name__ == "__main__":
     counties = Counties(use_index="RO").loc["WECC"].set_index(["ST","COUNTY"]).sort_index()
     errors = 0
@@ -34,6 +36,11 @@ if __name__ == "__main__":
         data.ffill(inplace=True)
         data.fillna(0.0,inplace=True)
 
+        if total is None:
+            total = data.copy()
+        else:
+            total += data
+
         # check MW totals
         error_index = []
         precision = 3
@@ -41,8 +48,8 @@ if __name__ == "__main__":
 
             # check that MW enduses add up to MW totals
             enduse = data[[f"{source}_{x}_MW" for x in ["baseload","cooling","heating"]]]
-            total = enduse.sum(axis=1)
-            diff = (total - data[f"{source}_total_MW"]).round(precision)
+            subtotal = enduse.sum(axis=1)
+            diff = (subtotal - data[f"{source}_total_MW"]).round(precision)
             if ( diff != 0 ).any():
                 print(f"ERROR [loads.tests]: {source} MW total load test failed!",file=sys.stderr)
                 error_index.extend(diff[diff!=0].index)
@@ -65,3 +72,9 @@ if __name__ == "__main__":
         print(f"{errors} error found!")
     else:
         print("No errors found")
+
+    print(f"Summary")
+    print("--------")
+    print(f"Total energy... {total["elec_net_MW"].sum()/1e6:8.3f} TWh")
+    print(f"Max power...... {total["elec_net_MW"].max()/1e3:8.3f} GW")
+    print(f"Min power...... {total["elec_net_MW"].min()/1e3:8.3f} GW")
