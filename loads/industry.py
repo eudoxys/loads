@@ -3,8 +3,12 @@
 Collects industrial load data at state/county level. Data is based on[NREL US
 County-Level Industrial Energy Use](https://data.nrel.gov/submissions/97).
 
-Industrial non-electric total load and electric net load are converted average
-MW. All industries in each county are aggregated. 
+Industrial non-electric total load and electric net load are converted from
+total annual energy use to average MWh/h assuming a flat load. If you wish to
+impose a load shape, use the `loadshape` argument of the
+`loads.industry.Industry` constructor. 
+
+All industries in each county are aggregated. 
 
 # Examples
 
@@ -107,6 +111,14 @@ which output the following
 - Any industry for which a county FIPS code in the NREL data does not match a
   valid county FIPS code is matched to the previous county FIPS code, e.g.,
   `2270` is aggregated with `2265` and not `2275`.
+
+- Many industries have cooling and heating loads that are weather sensitive.
+  However there is no data available to enable computing this sensitivity.
+  Consequently the `(non)elec_heating_MW` and `(non)elec_cooling_MW` data is zero.
+
+- Some industries have distributed generation. However there is no data available
+  to enable computing this power. Consequenty the `elec_dg_MW` data is zero and
+  the `elec_total_MW` and `elec_net_MW` are equal.
 """
 
 import os
