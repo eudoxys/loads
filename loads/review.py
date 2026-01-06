@@ -112,18 +112,34 @@ def _(
     data = Weather(STATE, COUNTY)
     for field in ["baseload", "heating", "cooling", "dg", "total", "net"]:
         data[f"elec_{field}_MW"] = data[f"nonelec_{field}_MW"] = 0.0
-    for ui, dataset, transpose in [
-        (residential_ui, Residential, False),
-        (commercial_ui, Commercial, False),
-        (industrial_ui, Industry, True),
-        (agricultural_ui, Agriculture, True),
+    loadshape = pd.DataFrame(
+        data=[1.0] * 8760,
+        index=pd.date_range(
+            start="2018-01-01 00:00:00+00:00",
+            end="2018-12-31 23:59:59+00:00",
+            freq="1h",
+        ),
+    )
+    datasets = {
+        "Residential": Residential(STATE, COUNTY),
+        "Commercial": Commercial(STATE, COUNTY),
+        "Industry": Industry(STATE, COUNTY, loadshape),
+        "Agriculture": Agriculture(STATE, COUNTY, loadshape),
+    }
+    for column in datasets["Residential"].columns:
+        for dataset in ["Industry", "Agriculture"]:
+            if column not in datasets[dataset]:
+                datasets[dataset][column] = 0.0
+    for ui, dataset in [
+        (residential_ui, "Residential"),
+        (commercial_ui, "Commercial"),
+        (industrial_ui, "Industry"),
+        (agricultural_ui, "Agriculture"),
     ]:
         if ui.value:
-            _data = dataset(STATE, COUNTY)
-            if transpose:
-                _data = _data.T
+            _data = datasets[dataset]
             for field in _data.columns:
-                data[field] += _data[field].values[0] if transpose else _data[field]
+                data[field] += _data[field]
     source = data.copy()
     year = int(year_ui.value)
     timestamps = pd.date_range(
@@ -131,14 +147,16 @@ def _(
         end=f"{year}-12-31 23:59:59+00:00",
         freq="1h",
     )
-    weather = Weather(STATE,COUNTY)
-    weather.index = timestamps[:len(weather)]
+    weather = Weather(STATE, COUNTY)
+    weather.index = timestamps[: len(weather)]
     if len(timestamps) > len(weather):
-        weather = pd.concat([weather,weather.iloc[:len(timestamps)-len(weather)]],axis=0)
+        weather = pd.concat(
+            [weather, weather.iloc[: len(timestamps) - len(weather)]], axis=0
+        )
         weather.index = timestamps
-    data = Cast(data, year,weather)
+    data = Cast(data, year, weather)
     data.index.name = "timestamp"
-    return data, year
+    return COUNTY, STATE, data, datasets, year
 
 
 @app.cell
@@ -175,7 +193,11 @@ def _(
         value=get_yaxis(),
         on_change=set_yaxis,
     )
-    plotter_options = {"line": px.line, "scatter": px.scatter}
+    plotter_options = {
+        "line": px.line, 
+        "scatter": px.scatter, 
+        # "area": px.area,
+    }
     plotter_ui = mo.ui.radio(
         label="Plotter:",
         options=plotter_options.keys(),
@@ -188,12 +210,27 @@ def _(
 
 
 @app.cell
+def _(COUNTY, STATE, datasets, plt, yaxis_ui):
+    _piedata = {x:datasets[x][yaxis_ui.value].sum() for x in datasets}
+    _pie = plt.pie(
+        x=[y for x,y in _piedata.items() if y > 0],
+        labels=[f"{x} ({y/1000:.1f} GWh)" for x,y in _piedata.items() if y > 0],
+    )
+    plt.title(f"{COUNTY} {STATE} {yaxis_ui.value.replace('_',' ').title()}")
+    pieplot = plt.gca()
+    return (pieplot,)
+
+
+@app.cell
 def _(
+    COUNTY,
+    STATE,
     data,
     get_plotter,
     mo,
     month_ui,
     pd,
+    pieplot,
     plotter_options,
     xaxis_ui,
     yaxis_ui,
@@ -202,11 +239,15 @@ def _(
     if month_ui.value is None:
         _data = data
     else:
-        _data = data.loc[pd.date_range(
-            start=f"{year}-{month_ui.value}-01 00:00:00+00:00",
-            end=f"{year}-{month_ui.value+1}-01 00:00:00+00:00",
-            freq="1h")]
+        _data = data.loc[
+            pd.date_range(
+                start=f"{year}-{month_ui.value}-01 00:00:00+00:00",
+                end=f"{year}-{month_ui.value+1}-01 00:00:00+00:00",
+                freq="1h",
+            )
+        ]
         _data.index.name = "timestamp"
+
     mo.ui.tabs(
         {
             "Plot": mo.ui.plotly(
@@ -214,6 +255,7 @@ def _(
                     _data.reset_index(),
                     x=xaxis_ui.value,
                     y=yaxis_ui.value,
+                    title=f"{COUNTY} {STATE}",
                 )
             ),
             "Data": mo.ui.table(
@@ -222,6 +264,7 @@ def _(
                 text_justify_columns={x: "right" for x in data.columns},
                 page_size=24,
             ),
+            "Pie": pieplot,
         }
     )
     return
@@ -257,6 +300,7 @@ def _():
         mo,
         os,
         pd,
+        plt,
         px,
     )
 
