@@ -4,4 +4,5 @@ pyxlsb
 requests
 pytz
 matplotlib
+marimo
 fips @ git+https://github.com/eudoxys/fips
