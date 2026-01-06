@@ -332,7 +332,7 @@
 </span><span id="L-237"><a href="#L-237"><span class="linenos">237</span></a>    <span class="n">year</span><span class="p">,</span>
 </span><span id="L-238"><a href="#L-238"><span class="linenos">238</span></a><span class="p">):</span>
 </span><span id="L-239"><a href="#L-239"><span class="linenos">239</span></a>    <span class="k">if</span> <span class="n">month_ui</span><span class="o">.</span><span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="L-240"><a href="#L-240"><span class="linenos">240</span></a>        <span class="n">_data</span> <span class="o">=</span> <span class="n">data</span>
+</span><span id="L-240"><a href="#L-240"><span class="linenos">240</span></a>        <span class="n">_data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
 </span><span id="L-241"><a href="#L-241"><span class="linenos">241</span></a>    <span class="k">else</span><span class="p">:</span>
 </span><span id="L-242"><a href="#L-242"><span class="linenos">242</span></a>        <span class="n">_data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span>
 </span><span id="L-243"><a href="#L-243"><span class="linenos">243</span></a>            <span class="n">pd</span><span class="o">.</span><span class="n">date_range</span><span class="p">(</span>
@@ -340,7 +340,7 @@
 </span><span id="L-245"><a href="#L-245"><span class="linenos">245</span></a>                <span class="n">end</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">year</span><span class="si">}</span><span class="s2">-</span><span class="si">{</span><span class="n">month_ui</span><span class="o">.</span><span class="n">value</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">-01 00:00:00+00:00&quot;</span><span class="p">,</span>
 </span><span id="L-246"><a href="#L-246"><span class="linenos">246</span></a>                <span class="n">freq</span><span class="o">=</span><span class="s2">&quot;1h&quot;</span><span class="p">,</span>
 </span><span id="L-247"><a href="#L-247"><span class="linenos">247</span></a>            <span class="p">)</span>
-</span><span id="L-248"><a href="#L-248"><span class="linenos">248</span></a>        <span class="p">]</span>
+</span><span id="L-248"><a href="#L-248"><span class="linenos">248</span></a>        <span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
 </span><span id="L-249"><a href="#L-249"><span class="linenos">249</span></a>        <span class="n">_data</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;timestamp&quot;</span>
 </span><span id="L-250"><a href="#L-250"><span class="linenos">250</span></a>
 </span><span id="L-251"><a href="#L-251"><span class="linenos">251</span></a>    <span class="n">mo</span><span class="o">.</span><span class="n">ui</span><span class="o">.</span><span class="n">tabs</span><span class="p">(</span>
