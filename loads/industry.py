@@ -1,6 +1,6 @@
 """Industrial load data
 
-Collects industrial load data at state/county level. Data is based on[NREL US
+Collects industrial load data at state/county level. Data is based on [NREL US
 County-Level Industrial Energy Use](https://data.nrel.gov/submissions/97).
 
 Industrial non-electric total load and electric net load are converted from

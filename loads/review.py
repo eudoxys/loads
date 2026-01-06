@@ -237,7 +237,7 @@ def _(
     year,
 ):
     if month_ui.value is None:
-        _data = data
+        _data = data.round(1)
     else:
         _data = data.loc[
             pd.date_range(
@@ -245,7 +245,7 @@ def _(
                 end=f"{year}-{month_ui.value+1}-01 00:00:00+00:00",
                 freq="1h",
             )
-        ]
+        ].round(1)
         _data.index.name = "timestamp"
 
     mo.ui.tabs(
