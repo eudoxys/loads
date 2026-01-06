@@ -108,16 +108,22 @@ flowchart TD
     Units --> Residential
 
 
-    NREL --> Industry
+    NREL ---> Industry
 
-    NREL --> Agriculture
+    NREL ---> Agriculture
 
-    NREL --> Weather
+    NREL ---> Weather
 
     NREL --> COMstock
 
     COMstock --> Commercial
     Floorarea --> Commercial
+
+    Residential --> Cast
+    Industry --> Cast
+    Agriculture --> Cast
+    Weather --> Cast
+    Commercial --> Cast
 ```
 
 - `loads.agriculture`: 2019 agricultural load data
