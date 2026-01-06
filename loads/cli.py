@@ -63,6 +63,7 @@ display the following image
 """
 # pylint: enable=line-too-long
 
+import os
 import sys
 import argparse
 import warnings
@@ -117,7 +118,7 @@ def main(*args:list[str],**kwargs:dict[str,str]) -> int:
             )
 
         parser.add_argument("command",
-            choices=["print","plot"]
+            choices=["print","plot","viewer","test"]
             )
         parser.add_argument("-S","--state")
         parser.add_argument("-C","--county")
@@ -159,17 +160,25 @@ def main(*args:list[str],**kwargs:dict[str,str]) -> int:
                 file=sys.stderr,
                 )
 
-        data = _getdata(args)
-
         match args.command:
 
             case "print":
 
+                data = _getdata(args)
                 return _print(args,data)
 
             case "plot":
 
+                data = _getdata(args)
                 return _plot(args,data)
+
+            case "viewer":
+
+                return os.system(f"marimo run {os.path.join(os.path.dirname(__file__),'viewer.py')}")
+
+            case "test":
+
+                return os.system(f"python3 {os.path.join(os.path.dirname(__file__),'tests.py')}")
 
             case "_":
 
