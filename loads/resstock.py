@@ -140,7 +140,6 @@ class RESstock(pd.DataFrame):
         state:str,
         county:str=None,
         building_type:list[str]=None,
-        freq:str|None="1h",
         refresh:bool=False
         ):
         """Construct a RESstock data frame
@@ -153,8 +152,6 @@ class RESstock(pd.DataFrame):
           entire state
 
         - `building_type`: specifies the building type (e.g., "house")
-
-        - `freq`: specifies the sampling interval (None for raw sampling)
 
         - `refresh`: force download of data from source
         """
@@ -192,7 +189,7 @@ class RESstock(pd.DataFrame):
                     ndx = pd.date_range(
                         start="2018-01-01 05:00:00+00:00",
                         end="2019-01-01 04:00:00+00:00",
-                        freq=freq)
+                        freq="1h")
                     zeros = [0.0]*len(ndx)
                     data = pd.DataFrame(data={x:zeros for x in self.COLUMNS},index=ndx)
                     data.index.name = "timestamp"
@@ -230,12 +227,11 @@ class RESstock(pd.DataFrame):
         for value in self.COLUMNS.values():
             data[value] = [_float(x)/units*1000 for x in data[value]] if units > 0 else 0.0
 
+        # recover number of units represented
         data["units"] = units
 
-        # resample if necessary
-        if not freq is None:
-            ts = data.index.diff().mean().total_seconds()/3600
-            data = (data/ts).resample(freq).ffill()
+        # resample to hourly frequency
+        data = data.resample("1h").sum()
 
         # move year-end data to beginning
         data.index = pd.DatetimeIndex([str(x).replace("2019","2018") for x in data.index])

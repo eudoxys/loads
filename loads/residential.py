@@ -131,7 +131,6 @@ class Residential(pd.DataFrame):
         # pylint: disable=too-many-arguments,too-many-positional-arguments
         state:str,
         county:str,
-        freq:str="1h",
         collect=None,
         year:int=None,
         refresh:bool=False,
@@ -143,8 +142,6 @@ class Residential(pd.DataFrame):
         - `state`: specify the state abbreviation (required)
 
         - `county`: specify the county name (required)
-
-        - `freq`: specify the data sampling frequency (default is "1h"")
 
         - `collect`: specify how RESstock columns are collected
 
@@ -171,7 +168,7 @@ class Residential(pd.DataFrame):
         cache = Cache([state,county,"R.csv.gz"])
 
         data = None
-        if cache.exists():
+        if cache.exists() and not refresh:
 
             try:
                 data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
@@ -193,7 +190,6 @@ class Residential(pd.DataFrame):
                     state=state,
                     county=county,
                     building_type=btype,
-                    freq=freq,
                     )
                 for aggr,columns in collect.items():
                     data[f"{btype}_{aggr}_MW"] = bdata[columns].sum(axis=1) / 1e6
@@ -249,7 +245,7 @@ if __name__ == "__main__":
     for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
         print("Processing",state,county,end="...",flush=True)
         try:
-            print(pd.DataFrame(Residential(state,county).sum()).T)
+            print(pd.DataFrame(Residential(state,county,refresh=True).mean()).T.round(3))
             print("done")
         except Exception as err:
             print("ERROR:",err)

@@ -102,7 +102,6 @@ class Commercial(pd.DataFrame):
         # pylint: disable=too-many-arguments,too-many-positional-arguments
         state:str,
         county:str,
-        freq:str="1h",
         collect=None,
         year:int=None,
         refresh:bool=False,
@@ -114,8 +113,6 @@ class Commercial(pd.DataFrame):
         - `state`: specify the state abbreviation (required)
 
         - `county`: specify the county name (required)
-
-        - `freq`: specify the data sampling frequency (default is "1h"")
 
         - `collect`: specify how COMstock columns are collected (default is `COLLECT`)
 
@@ -172,7 +169,6 @@ class Commercial(pd.DataFrame):
                     state=state,
                     county=county,
                     building_type=btype,
-                    freq=freq,
                     refresh=refresh,
                     )
                 for aggr,columns in collect.items():
@@ -235,6 +231,6 @@ if __name__ == "__main__":
         print("Processing",state,county,end="...",flush=True)
         try:
             print("ok")
-            print(pd.DataFrame(Commercial(state,county,refresh=False).sum()).T)
+            print(pd.DataFrame(Commercial(state,county,refresh=True).sum()).T.round(3))
         except Exception as err:
             raise
