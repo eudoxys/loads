@@ -45,11 +45,29 @@ def _(mo):
 
 
 @app.cell
-def _(county_ui, mo, state_ui, year_ui):
+def _(mo):
+    get_month, set_month = mo.state(None)
+    return get_month, set_month
+
+
+@app.cell
+def _(dt, get_month, mo, set_month):
+    month_ui = mo.ui.dropdown(
+        label="Month:",
+        options={dt.date(2018, n + 1, 1).strftime("%B"): n + 1 for n in range(12)},
+        value=get_month(),
+        on_change=set_month,
+    )
+    return (month_ui,)
+
+
+@app.cell
+def _(county_ui, mo, month_ui, state_ui, year_ui):
     mo.hstack([
         state_ui, 
         county_ui,
         year_ui,
+        month_ui,
     ], justify="start")
     return
 
@@ -120,7 +138,7 @@ def _(
         weather.index = timestamps
     data = Cast(data, year,weather)
     data.index.name = "timestamp"
-    return (data,)
+    return data, year
 
 
 @app.cell
@@ -170,27 +188,50 @@ def _(
 
 
 @app.cell
-def _(data, get_plotter, mo, plotter_options, xaxis_ui, yaxis_ui):
-    mo.ui.tabs({
-        "Plot": mo.ui.plotly(
-            plotter_options[get_plotter()](
-                data.reset_index(), x=xaxis_ui.value, y=yaxis_ui.value
-            )
-        ),
-        "Data": mo.ui.table(
-                data=data.round(4),
+def _(
+    data,
+    get_plotter,
+    mo,
+    month_ui,
+    pd,
+    plotter_options,
+    xaxis_ui,
+    yaxis_ui,
+    year,
+):
+    if month_ui.value is None:
+        _data = data
+    else:
+        _data = data.loc[pd.date_range(
+            start=f"{year}-{month_ui.value}-01 00:00:00+00:00",
+            end=f"{year}-{month_ui.value+1}-01 00:00:00+00:00",
+            freq="1h")]
+        _data.index.name = "timestamp"
+    mo.ui.tabs(
+        {
+            "Plot": mo.ui.plotly(
+                plotter_options[get_plotter()](
+                    _data.reset_index(),
+                    x=xaxis_ui.value,
+                    y=yaxis_ui.value,
+                )
+            ),
+            "Data": mo.ui.table(
+                data=_data.round(4),
                 selection=None,
                 text_justify_columns={x: "right" for x in data.columns},
                 page_size=24,
             ),
-    })
+        }
+    )
     return
 
 
 @app.cell
 def _():
-    import os
     import marimo as mo
+    import os
+    import datetime as dt
     import pandas as pd
     import numpy as np
     import matplotlib.pyplot as plt
@@ -212,6 +253,7 @@ def _():
         Industry,
         Residential,
         Weather,
+        dt,
         mo,
         os,
         pd,
