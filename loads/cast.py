@@ -238,7 +238,7 @@ class Cast(pd.DataFrame):
         Ym = Y.mean()
         if Ym > 0:
             fit = np.linalg.lstsq(X.values,Y.values)
-            data[ELEC_FIELDS.dg] = -X@fit[0]
+            data[ELEC_FIELDS.dg] = (-X@fit[0]).clip(upper=0)
 
 if __name__ == '__main__':
 

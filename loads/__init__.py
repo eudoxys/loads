@@ -122,7 +122,7 @@ flowchart TD
 
 # Example
 
-    loads CA Alameda residential
+    loads plot -S=CA -C=Alameda -Y=2020
 
 # Caveats
 

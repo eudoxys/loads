@@ -232,7 +232,9 @@ def _getdata(args):
 
     # cast data to year
     if not args.year is None:
-        data = Cast(data,args.year)
+        kwargs = Weather.makeargs(**vars(args))
+        weather = Weather(**kwargs)
+        data = Cast(pd.concat([data,weather],axis=1),args.year)
     data.index.name = "timestamp"
 
     return data.round(args.precision)
