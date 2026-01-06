@@ -120,6 +120,30 @@ flowchart TD
     Floorarea --> Commercial
 ```
 
+- `loads.agriculture`: 2019 agricultural load data
+
+- `loads.cache`: manage local data cache
+
+- `loads.cast`: cast data to years other than 2018/2019
+
+- `loads.cli`: command line interface
+
+- `loads.commercial`: 2018 commercial building compiled load data
+
+- `loads.comstock`: 2018 commercial building end-use load data
+
+- `loads.floorarea`: 2020-era commercial building floor area data
+
+- `loads.industry`: 2019 industrial load data
+
+- `loads.residential`: 2018 residential building compiled load data
+
+- `loads.resstock`: 2018 residential building end-use load data
+
+- `loads.units`: 2020-era residential units data
+
+- `loads.weather`: 2018 reference weather data
+
 # Example
 
     loads plot -S=CA -C=Alameda -Y=2020
