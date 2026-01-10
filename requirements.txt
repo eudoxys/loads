@@ -5,4 +5,8 @@ requests
 pytz
 matplotlib
 marimo
+h5pyd
+plotly
 fips @ git+https://github.com/eudoxys/fips
+weather @ git+https://github.com/eudoxys/weather
+cache @ git+https://github.com/eudoxys/cache

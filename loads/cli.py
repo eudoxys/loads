@@ -11,7 +11,8 @@ type is returned, the columns of which depend on the building type.  If
 entire sector is returned in columns of MW electric and non-electric base,
 cooling, heating, total, distributed generation, and net loads.
 
-# Examples
+Examples
+--------
 
 To print the raw residential single-family detached house loads in Alameda
 County CA as a table, the command
@@ -56,10 +57,12 @@ display the following image
 
 ![image](https://github.com/eudoxys/loads/blob/main/docs/CA_Alameda_2020.png?raw=true)
 
-# Caveats
+Caveats
+-------
 
-* Compiling data can be time consuming. To help with performance data is cached
-  locally in the package library. 
+  - Compiling data can be time consuming. To help with performance data is
+    cached locally in the package library. See https://eudoxys.com/cache for
+    information on managing the cache data.
 """
 # pylint: enable=line-too-long
 
@@ -72,13 +75,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # pylint: disable=unused-import
+from weather import Weather
+
 from loads.resstock import RESstock
 from loads.residential import Residential
 from loads.comstock import COMstock
 from loads.commercial import Commercial
 from loads.industry import Industry
 from loads.agriculture import Agriculture
-from loads.weather import Weather
 from loads.cast import Cast
 
 E_OK = 0
@@ -93,13 +97,15 @@ E_SYNTAX = 2
 def main(*args:list[str],**kwargs:dict[str,str]) -> int:
     """RESstock form accessor main command line processor
 
-    # Argument
+    Arguments
+    ---------
 
-    - `*args`: command line arguments (`None` is `sys.argv`)
+      - `*args`: command line arguments (`None` reverts to `sys.argv`)
 
-    # Returns
+    Returns
+    -------
 
-    - `int`: return/exit code
+      - `int`: return/exit code
     """
     # pylint: disable=too-many-return-statements,too-many-branches
     try:
@@ -118,7 +124,7 @@ def main(*args:list[str],**kwargs:dict[str,str]) -> int:
             )
 
         parser.add_argument("command",
-            choices=["print","plot","viewer","test"]
+            choices=["print","plot","viewer","test","help","info"]
             )
         parser.add_argument("-S","--state")
         parser.add_argument("-C","--county")
@@ -184,6 +190,18 @@ def main(*args:list[str],**kwargs:dict[str,str]) -> int:
 
                 raise RuntimeError(f"command={args.command} is invalid")
 
+            case "viewer":
+
+                return os.system(f"marimo run {os.path.dirname(__file__)}/viewer.py")
+
+            case "help":
+                webbrowser.open(_URLS["Documentation"])
+                return E_OK
+
+            case "info":
+                print(*[f"{x}: {y}" for x,y in _URLS.items()],sep="\n")
+                return E_OK
+
         return E_FAILED
 
     # pylint: disable=broad-exception-caught
@@ -196,7 +214,7 @@ def main(*args:list[str],**kwargs:dict[str,str]) -> int:
         return E_FAILED
 
 def _getdata(args):
-
+    """@private Get sector data"""
     # get data
     match args.dataset:
 
@@ -249,7 +267,7 @@ def _getdata(args):
     return data.round(args.precision)
 
 def _print(args,data):
-
+    """@private Print sector data"""
     # handle default output
     if args.output is None:
         if args.format is None:
@@ -290,7 +308,7 @@ def _print(args,data):
     raise RuntimeError(f"output={args.output} is not valid")
 
 def _plot(args,data):
-
+    """@private Plot sector data"""
     data[["elec_baseload_MW","elec_cooling_MW","elec_heating_MW","elec_dg_MW",
         "nonelec_baseload_MW","nonelec_cooling_MW","nonelec_heating_MW"]].plot(
             figsize=(20,10),

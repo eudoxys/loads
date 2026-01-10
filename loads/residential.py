@@ -3,7 +3,8 @@
 The residential load data frame collects and consolidates `RESstock` data. Housing units are
 obtained from `Units` data to scale loads for the specified year.
 
-# Example
+Examples
+--------
 
 The residential load data for Alameda County CA is obtained using the command
 
@@ -32,11 +33,11 @@ which outputs the following
 import os
 import pandas as pd
 
-from fips.states import States
-from fips.counties import Counties
+from fips import States
+from fips import Counties
 from loads.units import Units
 from loads.resstock import RESstock
-from loads.cache import Cache
+from cache import Cache
 
 class Residential(pd.DataFrame):
     """Residential building data frame class
@@ -137,20 +138,22 @@ class Residential(pd.DataFrame):
         ):
         """Construct building types data frame
 
-        # Arguments
+        Arguments
+        ---------
 
-        - `state`: specify the state abbreviation (required)
+          - `state`: specify the state abbreviation (required)
 
-        - `county`: specify the county name (required)
+          - `county`: specify the county name (required)
 
-        - `collect`: specify how RESstock columns are collected
+          - `collect`: specify how RESstock columns are collected
 
-        - `year`: specify the year on which the number of housing units is
-          based (default most recent in `Units()`)
+          - `year`: specify the year on which the number of housing units is
+            based (default most recent in `Units()`)
 
-        - `refresh`: force download of data from source
+          - `refresh`: force download of data from source
 
-        # Description
+        Description
+        -----------
 
         This class compiles the building type data for a county by collecting
         RESstock columns, scaling by the number of housing units in that year,
@@ -165,7 +168,7 @@ class Residential(pd.DataFrame):
 
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
-        cache = Cache([state,county,"R.csv.gz"])
+        cache = Cache([state,county,"R.csv.gz"],package=__package__,version=0)
 
         data = None
         if cache.exists() and not refresh:
@@ -216,8 +219,10 @@ class Residential(pd.DataFrame):
                     data[f"{ctype}_MW"] += data[f"{btype}_{ctype}_MW"]
                     data.drop(f"{btype}_{ctype}_MW",axis=1,inplace=True)
 
-            # update net total with DG
+            # update totals
+            data["elec_total_MW"] = sum(data[f"elec_{x}_MW"] for x in ["baseload","cooling","heating"])
             data["elec_net_MW"] = data["elec_total_MW"] + data["elec_dg_MW"]
+            data["nonelec_total_MW"] = sum(data[f"nonelec_{x}_MW"] for x in ["baseload","cooling","heating"])
             data.drop("nonelec_dg_MW",axis=1,inplace=True)
 
             # move year-end data to beginning

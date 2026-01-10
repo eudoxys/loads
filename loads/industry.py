@@ -10,7 +10,8 @@ impose a load shape, use the `loadshape` argument of the
 
 All industries in each county are aggregated. 
 
-# Examples
+Examples
+--------
 
 Get the industrial load data for all US counties using the command
 
@@ -106,61 +107,34 @@ which output the following
     2020-08-01 23:00:00+00:00         44.723672    44.723672      44.723672            97.102689         97.102689
     2020-08-02 00:00:00+00:00         22.361836    22.361836      22.361836            48.551344         48.551344
 
-# Caveat
+Caveats
+-------
 
-- Any industry for which a county FIPS code in the NREL data does not match a
-  valid county FIPS code is matched to the previous county FIPS code, e.g.,
-  `2270` is aggregated with `2265` and not `2275`.
+  - Any industry for which a county FIPS code in the NREL data does not match
+    a valid county FIPS code is matched to the previous county FIPS code,
+    e.g., `2270` is aggregated with `2265` and not `2275`.
 
-- Many industries have cooling and heating loads that are weather sensitive.
-  However there is no data available to enable computing this sensitivity.
-  Consequently the `(non)elec_heating_MW` and `(non)elec_cooling_MW` data is zero.
+  - Many industries have cooling and heating loads that are weather sensitive.
+    However there is no data available to enable computing this sensitivity.
+    Consequently the `(non)elec_heating_MW` and `(non)elec_cooling_MW` data
+    is zero.
 
-- Some industries have distributed generation. However there is no data available
-  to enable computing this power. Consequenty the `elec_dg_MW` data is zero and
-  the `elec_total_MW` and `elec_net_MW` are equal.
+  - Some industries have distributed generation. However there is no data
+    available to enable computing this power. Consequenty the `elec_dg_MW`
+    data is zero and the `elec_total_MW` and `elec_net_MW` are equal.
 """
 
 import os
 import numpy as np
 import pandas as pd
-from fips.counties import Counties
-from loads.cache import Cache
+from fips import Counties
+from cache import Cache
 
 CACHE = None
 """Global cache of industrial load data"""
 
 class Industry(pd.DataFrame):
-    """Construct industrial loads data frame
-
-Description:
-
-By default the Industry loads data frame contains on the annual total
-non-electric and net electric energy consumed by industry in US counties,
-rescaled to a average hourly power in MW.
-
-The load can be shaped using the `loadshape` parameter. Loadshapes can be
-a Pandas data frame or a dict. If a data frame is used it must have only
-1 column for the scaling of the load data and the index must be a Pandas
-date/time index.  If a dict is used, the following must be included
-
-- `shape`: the load scaling vector, which may be shorter than the
-  date/time index implied by the start/end/freq values given, in
-  which case the shape is repeated and/or truncated to fit the
-  date/time index.
-
-- `start`: the start date/time of the date/time index
-
-- `end`: the end date/time of the date/time index (inclusive)
-
-- `freq`: the interval of the date/time index, e.g., (`"1h"`)
-
-Caveat: 
-
-The load shape must total 1.0 and fit evenly into the date/time
-index for the total annual energy use to match the original industry
-energy use data.
-    """
+    """Industrial loads data"""
 
     # pylint: disable=invalid-name
     CACHEDIR = None
@@ -189,13 +163,44 @@ energy use data.
         ):
         """Construct an industrial load data frame
 
-        # Arguments
+        Arguments
+        ---------
 
-        - `state`: state (default all states)
+          - `state`: state (default all states)
 
-        - `county`: county (default all counties)
+          - `county`: county (default all counties)
 
-        - `loadshape`: load shape to roll out county load
+          - `loadshape`: load shape to roll out county load
+
+        Description
+        -----------
+
+        By default the Industry loads data frame contains on the annual total
+        non-electric and net electric energy consumed by industry in US counties,
+        rescaled to a average hourly power in MW.
+
+        The load can be shaped using the `loadshape` parameter. Loadshapes can be
+        a Pandas data frame or a dict. If a data frame is used it must have only
+        1 column for the scaling of the load data and the index must be a Pandas
+        date/time index.  If a dict is used, the following must be included
+
+          - `shape`: the load scaling vector, which may be shorter than the
+            date/time index implied by the start/end/freq values given, in
+            which case the shape is repeated and/or truncated to fit the
+            date/time index.
+
+          - `start`: the start date/time of the date/time index
+
+          - `end`: the end date/time of the date/time index (inclusive)
+
+          - `freq`: the interval of the date/time index, e.g., (`"1h"`)
+
+        Caveats
+        -------
+
+          - The load shape must total 1.0 and fit evenly into the date/time
+            index for the total annual energy use to match the original
+            industry energy use data.
         """
 
         # set cache location
@@ -205,7 +210,7 @@ energy use data.
         # load data
         global CACHE
         if CACHE is None:
-            cache = Cache(["industry.csv.gz"])
+            cache = Cache(["industry.csv.gz"],package=__package__,version=0)
             if not os.path.exists(cache.pathname):
                 data = pd.read_csv(self.SOURCE,
                     low_memory=False).sort_values("fips_matching")
@@ -258,6 +263,11 @@ energy use data.
             data["elec_baseload_MW"] = data["elec_net_MW"]
             data["elec_total_MW"] = data["elec_net_MW"]
             data["nonelec_baseload_MW"] = data["nonelec_total_MW"]
+            data["elec_cooling_MW"] = 0.0
+            data["elec_heating_MW"] = 0.0
+            data["elec_dg_MW"] = 0.0
+            data["nonelec_cooling_MW"] = 0.0
+            data["nonelec_heating_MW"] = 0.0
             super().__init__(data)
 
         # return requested state
@@ -265,6 +275,11 @@ energy use data.
             data["elec_baseload_MW"] = data["elec_net_MW"]
             data["elec_total_MW"] = data["elec_net_MW"]
             data["nonelec_baseload_MW"] = data["nonelec_total_MW"]
+            data["elec_cooling_MW"] = 0.0
+            data["elec_heating_MW"] = 0.0
+            data["elec_dg_MW"] = 0.0
+            data["nonelec_cooling_MW"] = 0.0
+            data["nonelec_heating_MW"] = 0.0
             super().__init__(data.loc[state,:])
 
         # return requested county raw data
@@ -272,6 +287,11 @@ energy use data.
             data["elec_baseload_MW"] = data["elec_net_MW"]
             data["elec_total_MW"] = data["elec_net_MW"]
             data["nonelec_baseload_MW"] = data["nonelec_total_MW"]
+            data["elec_cooling_MW"] = 0.0
+            data["elec_heating_MW"] = 0.0
+            data["elec_dg_MW"] = 0.0
+            data["nonelec_cooling_MW"] = 0.0
+            data["nonelec_heating_MW"] = 0.0
             super().__init__(data.loc[state,county])
 
         # return rollout of county load
@@ -285,6 +305,11 @@ energy use data.
                 "elec_total_MW":loadshape[0]*elec_net_MW,
                 "nonelec_baseload_MW":loadshape[0]*nonelec_total_MW,
                 "nonelec_total_MW":loadshape[0]*nonelec_total_MW,
+                "elec_heating_MW":loadshape[0]*0.0,
+                "elec_cooling_MW":loadshape[0]*0.0,
+                "elec_dg_MW":loadshape[0]*0.0,
+                "nonelec_heating_MW":loadshape[0]*0.0,
+                "nonelec_cooling_MW":loadshape[0]*0.0,
                 },
                 index=loadshape.index,
                 ))
@@ -308,6 +333,11 @@ energy use data.
                 "elec_total_MW":shape*elec_net_MW,
                 "nonelec_baseload_MW":shape*nonelec_total_MW,
                 "nonelec_total_MW":shape*nonelec_total_MW,
+                "elec_heating_MW":shape*0.0,
+                "elec_cooling_MW":shape*0.0,
+                "elec_dg_MW":shape*0.0,
+                "nonelec_heating_MW":shape*0.0,
+                "nonelec_cooling_MW":shape*0.0,
                 },
                 index=dt_index,
                 ))

@@ -4,7 +4,8 @@
 The commercial load data frame collects and consolidates `COMstock` data. Floor areas are
 obtained from `Floorarea` data to scale loads for the specified year.
 
-# Example
+Examples
+--------
 
 To get the commercial building load data for Alameda County CA, use the following command
 
@@ -33,11 +34,11 @@ import os
 import pandas as pd
 import warnings
 
-from fips.states import States
-from fips.counties import Counties
+from fips import States
+from fips import Counties
 from loads.floorarea import Floorarea
 from loads.comstock import COMstock
-from loads.cache import Cache
+from cache import Cache
 
 class Commercial(pd.DataFrame):
     """Commercial building data frame class
@@ -108,18 +109,19 @@ class Commercial(pd.DataFrame):
         ):
         """Construct building types data frame
 
-        # Arguments
+        Arguments
+        ---------
 
-        - `state`: specify the state abbreviation (required)
+          - `state`: specify the state abbreviation (required)
 
-        - `county`: specify the county name (required)
+          - `county`: specify the county name (required)
 
-        - `collect`: specify how COMstock columns are collected (default is `COLLECT`)
+          - `collect`: specify how COMstock columns are collected (default is `COLLECT`)
 
-        - `year`: specify the year on which the floor area is based
-          (default most recent in `Floorarea()`)
+          - `year`: specify the year on which the floor area is based
+            (default most recent in `Floorarea()`)
 
-        - `refresh`: force cache refresh from source data
+          - `refresh`: force cache refresh from source data
 
         This class compiles the building type data for a county by collecting
         COMstock columns, scaling by the floor area in that year, and finally
@@ -153,7 +155,7 @@ class Commercial(pd.DataFrame):
 
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
-        cache = Cache([state,county,"C.csv.gz"])
+        cache = Cache([state,county,"C.csv.gz"],package=__package__,version=0)
         if cache.exists() and not refresh:
             try:
                 data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
@@ -197,8 +199,10 @@ class Commercial(pd.DataFrame):
                     data[f"{ctype}_MW"] += data[f"{btype}_{ctype}_MW"]
                     data.drop(f"{btype}_{ctype}_MW",axis=1,inplace=True)
 
-            # update net total with DG
+            # update totals
+            data["elec_total_MW"] = sum(data[f"elec_{x}_MW"] for x in ["baseload","cooling","heating"])
             data["elec_net_MW"] = data["elec_total_MW"] + data["elec_dg_MW"]
+            data["nonelec_total_MW"] = sum(data[f"nonelec_{x}_MW"] for x in ["baseload","cooling","heating"])
             data.drop("nonelec_dg_MW",axis=1,inplace=True)
 
             # move year-end data to beginning

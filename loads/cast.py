@@ -12,7 +12,8 @@ from 2018 to 2018 does not change the weather, but
 `loads.cast.Cast.apply_weather` does apply the specified load model to actual
 weather provided with the original load data.
 
-# Methodology
+Methodology
+-----------
 
 The date/time alignment moves the day of year such that weekends align with
 the original day of week from the source year.  For example 2019 days are
@@ -28,22 +29,23 @@ target $B(T')$ weather is applied to the reference load.
 
 The distributed generation is a least-squares fit to all the weather data.
 
-# Caveat
+Caveats
+-------
 
-- The methodology described above usually results in an increase in total
-  heating and cooling energy use. This occurs when projected negative heating
-  and cooling loads are clipped to zero. These arise when the temperature
-  sensitivity is sufficiently large that the load drops by more than the load
-  itself.
+  - The methodology described above usually results in an increase in total
+    heating and cooling energy use. This occurs when projected negative
+    heating and cooling loads are clipped to zero. These arise when the
+    temperature sensitivity is sufficiently large that the load drops by more
+    than the load itself.
 
-- Industrial and agricultural loads are assigned a uniform loadshape for the
-  entire target year.
+  - Industrial and agricultural loads are assigned a uniform loadshape for the
+    entire target year.
 """
 
 import datetime as dt
 import calendar
 from collections import namedtuple
-from typing import TypeVar
+from typing import TypeVar, Callable
 
 import pandas as pd
 import numpy as np
@@ -91,13 +93,14 @@ class Cast(pd.DataFrame):
         ):
         """Construct a load caster
 
-        # Argument
+        Arguments
+        ---------
 
-        - `data`: load and weather data frame containing load data to cast
+          - `data`: load and weather data frame containing load data to cast
 
-        - `year`: year to which load is cast
+          - `year`: year to which load is cast
 
-        - `weather`: target year weather
+          - `weather`: target year weather
         """
         # pylint: disable=too-many-locals,invalid-name
 
@@ -155,13 +158,18 @@ class Cast(pd.DataFrame):
         # project solar dg
         self._solar(data,reference)
 
-        # update net load
-        data[ELEC_FIELDS.net] = data[ELEC_FIELDS.total] + data[ELEC_FIELDS.net]
+        # update totals
+        data[ELEC_FIELDS.total] = data[ELEC_FIELDS.baseload] + data[ELEC_FIELDS.cooling] + data[ELEC_FIELDS.heating]
+        data[ELEC_FIELDS.net] = data[ELEC_FIELDS.total] + data[ELEC_FIELDS.dg]
+        data[NONELEC_FIELDS.total] = data[NONELEC_FIELDS.baseload] + data[NONELEC_FIELDS.cooling] + data[NONELEC_FIELDS.heating]
+        data = data.round(4)
 
         super().__init__(data.sort_index())
 
-    def _dayshift(self,data,year):
-        """Project day of week change"""
+    def _dayshift(self,data:pd.DataFrame,year:int):
+        """@private 
+        Project day of week change
+        """
 
         # calculate day shift
         shift = dt.date(year,1,1).weekday() - data.index[0].weekday()
@@ -177,8 +185,10 @@ class Cast(pd.DataFrame):
         # sort timestamps
         data.sort_index(inplace=True)
 
-    def _cooling(self,data,reference,fit_curve):
-        """Project cooling change"""
+    def _cooling(self,data:pd.DataFrame,reference:pd.DataFrame,fit_curve:Callable):
+        """@private
+        Project cooling change
+        """
         # pylint: disable=too-many-locals,invalid-name
 
         X = data[WEATHER_FIELDS.temperature].ffill().fillna(0)
@@ -200,8 +210,10 @@ class Cast(pd.DataFrame):
                 return fit_curve(x,*cooling_fit)
             data[fields.cooling] = (data[fields.cooling] + C(X) - C(Xr)).clip(lower=0)
 
-    def _heating(self,data,reference,fit_curve):
-        """Project heating change"""
+    def _heating(self,data:pd.DataFrame,reference:pd.DataFrame,fit_curve:Callable):
+        """@private
+        Project heating change
+        """
         # pylint: disable=too-many-locals,invalid-name
 
         X = data[WEATHER_FIELDS.temperature].ffill().fillna(0)
@@ -226,8 +238,10 @@ class Cast(pd.DataFrame):
             data[fields.total] = sum(data[getattr(fields,x)]
                 for x in ["baseload","heating","cooling"])
 
-    def _solar(self,data,reference):
-        """Project solar DG change"""
+    def _solar(self,data:pd.DataFrame,reference:pd.DataFrame):
+        """@private
+        Project solar DG change
+        """
         X = data[[
             WEATHER_FIELDS.horizontal,
             WEATHER_FIELDS.diffuse,

@@ -8,7 +8,8 @@ Commercial building types are coded using three characters `C`,
 `{'F','H','L','O','E','R','W'}` (food, health, lodging, office,
 education, retail, and warehouse). Load values are given in W/sf.
 
-# Example
+Examples
+--------
 
 To get the large office load data for Alameda CA use the command
 
@@ -30,6 +31,11 @@ which outputs the following
     2018-12-31 23:00:00+00:00          0.005937  ...  1.673457e+09
 
     [8760 rows x 26 columns]
+
+References
+----------
+
+  - https://comstock.nrel.gov/
 """
 
 import os
@@ -40,8 +46,8 @@ import warnings
 import pytz
 import pandas as pd
 
-from fips.counties import County
-from loads.cache import Cache
+from fips import County
+from cache import Cache
 
 def _float(s,default=0.0):
     try:
@@ -124,16 +130,16 @@ class COMstock(pd.DataFrame):
         ):
         """Construct a COMstock data frame
 
-        # Arguments
+        Arguments
 
-        - `state`: specifies the state (e.g., "CA")
+          - `state`: specifies the state (e.g., "CA")
 
-        - `county`: specifies the county (e.g., "Alameda") or None for the
-          entire state
+          - `county`: specifies the county (e.g., "Alameda") or None for the
+            entire state
 
-        - `building_type`: specifies the building type (e.g., "house")
+          - `building_type`: specifies the building type (e.g., "house")
 
-        - `refresh`: force download of data from source
+          - `refresh`: force download of data from source
         """
         assert building_type in self.BUILDING_TYPES, \
             f"{building_type=} is not one of {self.BUILDING_TYPES}"
@@ -149,11 +155,11 @@ class COMstock(pd.DataFrame):
             else f"{state}_{county}_{building_type}.csv.gz"
         if county is None:
             url = f"{self.SOURCE}/by_state/state={state.upper()}/{state.lower()}-{btype}.csv"
-            cache = Cache([state,f"{building_type}.csv.gz"]) # whole state data
+            cache = Cache([state,f"{building_type}.csv.gz"],package=__package__,version=0) # whole state data
         else:
             fips = County(ST=state,COUNTY=county).FIPS
             url = f"{self.SOURCE}/by_county/state={state.upper()}/g{fips[:2]}0{fips[2:]}0-{btype}.csv"
-            cache = Cache([state,county,f"{building_type}.csv.gz"])
+            cache = Cache([state,county,f"{building_type}.csv.gz"],package=__package__,version=0)
 
         # check cache
         data = None

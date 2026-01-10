@@ -12,7 +12,8 @@ one COMstock building types matches, the split is weighted equally. Floor
 areas that do not match any COMstock building type are not given any
 (i.e., `BUILDING_TYPE` is blank).
 
-# Example
+Examples
+--------
 
 Get the commercial building floor areas for Alameda County CA using the code
 
@@ -37,17 +38,18 @@ which generates the following output
        06001           CMR    1994200
        06001           CMW  158914200
 
-References: 
+References
+----------
 
-- https://data.openei.org/submissions/906
+  - https://data.openei.org/submissions/906
 """
 
 import os
 
 import pandas as pd
 
-from fips.counties import County
-from loads.cache import Cache
+from fips import County
+from cache import Cache
 
 class Floorarea(pd.DataFrame):
     """Commercial building floor area data frame implementation"""
@@ -86,14 +88,15 @@ class Floorarea(pd.DataFrame):
         ):
         """Commercial floor area data frame constructor
 
-        # Arguments
+        Arguments
+        ---------
 
-        - `state`: specify the state abbreviation (required)
+          - `state`: specify the state abbreviation (required)
 
-        - `county`: specify the county name (required)
+          - `county`: specify the county name (required)
 
-        - `year`: specify the year on which the floor area is based
-          (default most recent in `Units()`)
+          - `year`: specify the year on which the floor area is based
+            (default most recent in `Units()`)
         """
 
         # set cache location
@@ -105,7 +108,7 @@ class Floorarea(pd.DataFrame):
             year = self.YEAR
 
         # load county commercial floor area data
-        cache = Cache("floorarea.csv.gz")
+        cache = Cache("floorarea.csv.gz",package=__package__,version=0)
         if not cache.exists():
             data = []
             for n,region in enumerate([
@@ -116,7 +119,7 @@ class Floorarea(pd.DataFrame):
                 "West",
                 ]):
 
-                file = Cache(f"floorarea_region{n}.csv.gz")
+                file = Cache(f"floorarea_region{n}.csv.gz",package=__package__,version=0)
                 if file.exists():
                     try:
                         result = pd.read_csv(file.pathname)

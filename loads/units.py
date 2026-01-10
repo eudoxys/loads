@@ -1,6 +1,7 @@
 """Housing units
 
-# Example
+Examples
+--------
 
 The number of housing units in Alameda County CA in 2020 is obtained with the code
 
@@ -11,8 +12,10 @@ which gives the following output
 
     623350.0
 
-See https://www.census.gov/data/tables/time-series/demo/popest/2020s-total-housing-units.html
+References
+----------
 
+  - https://www.census.gov/data/tables/time-series/demo/popest/2020s-total-housing-units.html
 """
 
 import os
@@ -21,8 +24,8 @@ import socket
 
 import pandas as pd
 
-from fips.states import State
-from loads.cache import Cache
+from fips import State
+from cache import Cache
 
 # pylint: disable=redefined-outer-name
 class Units(float):
@@ -40,18 +43,19 @@ class Units(float):
         ):
         """Load housing units from Census Bureau
 
-        # Arguments
+        Arguments
+        ---------
 
-        - `state`: state for which to read data
+          - `state`: state for which to read data
 
-        - `county`: county for which to read data (default entire state)
+          - `county`: county for which to read data (default entire state)
 
-        - `year`: year for which to read data (default most recent)
+          - `year`: year for which to read data (default most recent)
         """
 
         if cls.CACHEDIR:
             Cache.CACHEDIR = cls.CACHEDIR
-        cache = Cache([state,"units.csv.gz"])
+        cache = Cache([state,"units.csv.gz"],package=__package__,version=0)
 
         data = None
         if cache.exists():

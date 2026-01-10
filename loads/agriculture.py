@@ -7,7 +7,8 @@ includes agricultural load data.
 Agricultural non-electric total load and electric net load are converted to average
 MW. All agricultural loads in each county are aggregated. 
 
-# Example
+Example
+-------
 
 Get the agricultural load data for all California counties using the command
 
@@ -30,18 +31,19 @@ which outputs the following
 
 For more examples, see `loads.industry.Industry`, which uses the same syntax.
 
-# Caveat
+Caveat
+------
 
-- Any agriculture for which a county FIPS code in the NREL data does not match a
-  valid county FIPS code is matched to the previous county FIPS code, e.g.,
-  `2270` is aggregated with `2265` and not `2275`.
+    - Any agriculture for which a county FIPS code in the NREL data does not match a
+      valid county FIPS code is matched to the previous county FIPS code, e.g.,
+      `2270` is aggregated with `2265` and not `2275`.
 """
 
 import os
 import numpy as np
 import pandas as pd
-from fips.counties import Counties
-from loads.cache import Cache
+from fips import Counties
+from cache import Cache
 
 CACHE = None
 """Global cache of agricultural load data"""
@@ -73,13 +75,14 @@ class Agriculture(pd.DataFrame):
         ):
         """Construct an agricultural load data frame
 
-        # Arguments
+        Arguments
+        ---------
 
-        - `state`: state (default all states)
+          - `state`: state (default all states)
 
-        - `county`: county (default all counties)
+          - `county`: county (default all counties)
 
-        - `loadshape`: load shape to roll out county load
+          - `loadshape`: load shape to roll out county load
         """
 
         # set cache location
@@ -89,7 +92,7 @@ class Agriculture(pd.DataFrame):
         # load data
         global CACHE
         if CACHE is None:
-            cache = Cache(["agriculture.csv.gz"])
+            cache = Cache(["agriculture.csv.gz"],package=__package__,version=0)
             if not os.path.exists(cache.pathname):
                 data = pd.read_csv(self.SOURCE,
                     low_memory=False).sort_values("fips_matching")
@@ -142,6 +145,11 @@ class Agriculture(pd.DataFrame):
             data["elec_baseload_MW"] = data["elec_net_MW"]
             data["elec_total_MW"] = data["elec_net_MW"]
             data["nonelec_baseload_MW"] = data["nonelec_total_MW"]
+            data["elec_cooling_MW"] = 0.0
+            data["elec_heating_MW"] = 0.0
+            data["elec_dg_MW"] = 0.0
+            data["nonelec_cooling_MW"] = 0.0
+            data["nonelec_heating_MW"] = 0.0
             super().__init__(data)
 
         # return requested state
@@ -149,6 +157,11 @@ class Agriculture(pd.DataFrame):
             data["elec_baseload_MW"] = data["elec_net_MW"]
             data["elec_total_MW"] = data["elec_net_MW"]
             data["nonelec_baseload_MW"] = data["nonelec_total_MW"]
+            data["elec_cooling_MW"] = 0.0
+            data["elec_heating_MW"] = 0.0
+            data["elec_dg_MW"] = 0.0
+            data["nonelec_cooling_MW"] = 0.0
+            data["nonelec_heating_MW"] = 0.0
             super().__init__(data.loc[state,:])
 
         # return requested county raw data
@@ -156,6 +169,11 @@ class Agriculture(pd.DataFrame):
             data["elec_baseload_MW"] = data["elec_net_MW"]
             data["elec_total_MW"] = data["elec_net_MW"]
             data["nonelec_baseload_MW"] = data["nonelec_total_MW"]
+            data["elec_cooling_MW"] = 0.0
+            data["elec_heating_MW"] = 0.0
+            data["elec_dg_MW"] = 0.0
+            data["nonelec_cooling_MW"] = 0.0
+            data["nonelec_heating_MW"] = 0.0
             super().__init__(data.loc[state,county])
 
         # return rollout of county load
@@ -169,6 +187,11 @@ class Agriculture(pd.DataFrame):
                 "elec_total_MW":loadshape[0]*elec_net_MW,
                 "nonelec_baseload_MW":loadshape[0]*nonelec_total_MW,
                 "nonelec_total_MW":loadshape[0]*nonelec_total_MW,
+                "elec_heating_MW":loadshape[0]*0.0,
+                "elec_cooling_MW":loadshape[0]*0.0,
+                "elec_dg_MW":loadshape[0]*0.0,
+                "nonelec_heating_MW":loadshape[0]*0.0,
+                "nonelec_cooling_MW":loadshape[0]*0.0,
                 },
                 index=loadshape.index,
                 ))
@@ -192,6 +215,11 @@ class Agriculture(pd.DataFrame):
                 "elec_total_MW":shape*elec_net_MW,
                 "nonelec_baseload_MW":shape*nonelec_total_MW,
                 "nonelec_total_MW":shape*nonelec_total_MW,
+                "elec_heating_MW":shape*0.0,
+                "elec_cooling_MW":shape*0.0,
+                "elec_dg_MW":shape*0.0,
+                "nonelec_heating_MW":shape*0.0,
+                "nonelec_cooling_MW":shape*0.0,
                 },
                 index=dt_index,
                 ))

@@ -8,7 +8,8 @@ residential, `{'SA','SD','SM','LM','MH'}` for single-family attached,
 single-family detached, small multi-family, large multi-family, and
 mobile-home. Values are given in W/unit.
 
-# Example
+Examples
+--------
 
 To get the detached single-family home load data for Alameda CA use the command
 
@@ -31,6 +32,11 @@ which outputs the following
     2018-12-31 23:00:00+00:00      0.278238  ...  1253270.056
 
     [8760 rows x 55 columns]
+
+References
+----------
+
+  - https://resstock.nrel.gov/
 """
 
 import os
@@ -41,8 +47,8 @@ import warnings
 import pytz
 import pandas as pd
 
-from fips.counties import County
-from loads.cache import Cache
+from fips import County
+from cache import Cache
 
 def _float(s,default=0.0):
     try:
@@ -51,15 +57,8 @@ def _float(s,default=0.0):
         return default
 
 class RESstock(pd.DataFrame):
-    """Construct a RESstock data frame
+    """Construct a RESstock data"""
 
-    The data frame includes the columns specified by `COLUMNS` constant, which
-    maps the RESstock data to the data frame columns. The values are given in
-    average Watts per housing unit. The number of units from RESstock is
-    given by the `units` column. Note that the number of units is that used
-    in the RESstock model, which may not be accurately reflect the actual
-    number of units in any given year.
-    """
     # pylint: disable=invalid-name,too-many-locals
     CACHEDIR = None
     """Cache folder path (`None` is package source folder)"""
@@ -144,16 +143,27 @@ class RESstock(pd.DataFrame):
         ):
         """Construct a RESstock data frame
 
-        # Arguments
+        Arguments
+        ---------
 
-        - `state`: specifies the state (e.g., "CA")
+          - `state`: specifies the state (e.g., "CA")
 
-        - `county`: specifies the county (e.g., "Alameda") or None for the
-          entire state
+          - `county`: specifies the county (e.g., "Alameda") or None for the
+            entire state
 
-        - `building_type`: specifies the building type (e.g., "house")
+          - `building_type`: specifies the building type (e.g., "house")
 
-        - `refresh`: force download of data from source
+          - `refresh`: force download of data from source
+
+        Description
+        -----------
+
+        The data frame includes the columns specified by `COLUMNS` constant, which
+        maps the RESstock data to the data frame columns. The values are given in
+        average Watts per housing unit. The number of units from RESstock is
+        given by the `units` column. Note that the number of units is that used
+        in the RESstock model, which may not be accurately reflect the actual
+        number of units in any given year.
         """
         assert building_type is not None, "building_type must be specified"
         assert building_type in self.BUILDING_TYPES, \
@@ -165,11 +175,11 @@ class RESstock(pd.DataFrame):
         btype = self.BUILDING_TYPES[building_type]
         if county is None:
             url = f"{self.SOURCE}/by_state/state={state.upper()}/{state.lower()}-{btype}.csv"
-            cache = Cache([state,f"{building_type}.csv.gz"]) # whole state data
+            cache = Cache([state,f"{building_type}.csv.gz"],package=__package__,version=0) # whole state data
         else:
             fips = County(ST=state,COUNTY=county).FIPS
             url = f"{self.SOURCE}/by_county/state={state.upper()}/g{fips[:2]}0{fips[2:]}0-{btype}.csv"
-            cache = Cache([state,county,f"{building_type}.csv.gz"])
+            cache = Cache([state,county,f"{building_type}.csv.gz"],package=__package__,version=0)
 
         # check cache
         data = None

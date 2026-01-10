@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.18.4"
+__generated_with = "0.19.1"
 app = marimo.App(width="full")
 
 
@@ -273,21 +273,18 @@ def _(
 @app.cell
 def _():
     import marimo as mo
-    import os
-    import datetime as dt
-    import pandas as pd
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import plotly.express as px
-    import plotly.graph_objects as go
-    from scipy.optimize import curve_fit
-    from fips.counties import Counties
-    from loads.residential import Residential
-    from loads.commercial import Commercial
-    from loads.industry import Industry
-    from loads.agriculture import Agriculture
-    from loads.weather import Weather
-    from loads.cast import Cast
+    with mo.status.spinner("Loading modules...") as spinner:
+        import os
+        import datetime as dt
+        import pandas as pd
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import plotly.express as px
+        import plotly.graph_objects as go
+        from scipy.optimize import curve_fit
+        from fips import Counties
+        from loads import Residential, Commercial, Industry, Agriculture, Cast
+        from weather import Weather
     return (
         Agriculture,
         Cast,
