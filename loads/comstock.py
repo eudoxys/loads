@@ -192,7 +192,7 @@ class COMstock(pd.DataFrame):
             try:
                 data = pd.read_csv(cache.pathname,dtype=str,na_filter=False,low_memory=False)
             except:
-                os.unlink(cache)
+                cache.delete()
                 maxretry -= 1
                 if maxretry == 0:
                     raise RuntimeError(f"'{cache.pathname}' read error retry limit reached")

@@ -25,11 +25,42 @@ year = 2020
 refresh = False
 precision = 3
 
+def get_total_load(state,county,refresh=refresh,progress=lambda *x:None):
+    progress(f"Residential({state=},{county=},{refresh=})")
+    data = Residential(state,county,refresh=refresh)
+    progress(f"Commercial({state=},{county=},{refresh=})")
+    data += Commercial(state,county,refresh=refresh)
+    progress(f"Industrial({state=},{county=})")
+    loadshape = pd.DataFrame(
+        data = np.ones(len(data.index)),
+        index = data.index,
+        )
+    data += Industry(state,county,loadshape)
+    progress(f"Agricultural({state=},{county=})")
+    data += Agriculture(state,county,loadshape)
+    progress(f"Weather({state=},{county=})")
+    weather = Weather(state,county)
+    data = Cast(
+        data=pd.merge(data.reset_index(),weather.reset_index()).set_index("timestamp"),
+        year=year)
+    data.index.name = "timestamp"
+    return data
+
 if __name__ == "__main__":
 
     pd.options.display.width = None
     pd.options.display.max_columns = None
 
+    # WECC load test
+    print("Testing WECC...")
+    wecc_counties = Counties(use_index="RO").loc["WECC"].reset_index().set_index(["ST","COUNTY"]).sort_index()
+    for state,county in wecc_counties.index.values:
+        print("Reading",county,state,end="... ",flush=True)
+        get_total_load(state,county,progress=lambda x:print(x[:3].lower(),flush=True,end=" "))
+        print("... ok")
+
+    # CAISO load test
+    print("Testing CAISO...")
     caiso_data = pd.read_csv(
         os.path.join(os.path.dirname(__file__),f"caiso/{year}.csv"),
         usecols=["CAISO Total"],
@@ -60,19 +91,20 @@ if __name__ == "__main__":
     errors = 0
     for state,county in caiso_counties.index.values:
 
-        print("Testing",county,state,end="...",flush=True)
-        data = Residential(state,county,refresh=refresh)
-        data += Commercial(state,county,refresh=refresh)
-        for sector in [Industry,Agriculture]:
-            for field,value in sector(state,county).iterrows():
-                data[field] += value[(state,county)]
-        data.ffill(inplace=True)
-        data.fillna(0.0,inplace=True)
-        weather = Weather(state,county)
-        data = Cast(
-            data=pd.merge(data.reset_index(),weather.reset_index()).set_index("timestamp"),
-            year=year)
-        data.index.name = "timestamp"
+        print("Reading",county,state,end="...",flush=True)
+        data = get_total_load(state,county)
+        # data = Residential(state,county,refresh=refresh)
+        # data += Commercial(state,county,refresh=refresh)
+        # for sector in [Industry,Agriculture]:
+        #     for field,value in sector(state,county).iterrows():
+        #         data[field] += value[(state,county)]
+        # data.ffill(inplace=True)
+        # data.fillna(0.0,inplace=True)
+        # weather = Weather(state,county)
+        # data = Cast(
+        #     data=pd.merge(data.reset_index(),weather.reset_index()).set_index("timestamp"),
+        #     year=year)
+        # data.index.name = "timestamp"
 
         if total is None:
             total = data.copy()
