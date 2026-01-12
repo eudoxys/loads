@@ -95,20 +95,8 @@ if __name__ == "__main__":
         for state,county in caiso_counties.index.values:
 
             print("Reading",county,state,end="...",flush=True)
-            data = get_total_load(state,county,progress=lambda x:print(x[:3].lower(),flush=True,end=" "))
-            # data = Residential(state,county,refresh=refresh)
-            # data += Commercial(state,county,refresh=refresh)
-            # for sector in [Industry,Agriculture]:
-            #     for field,value in sector(state,county).iterrows():
-            #         data[field] += value[(state,county)]
-            # data.ffill(inplace=True)
-            # data.fillna(0.0,inplace=True)
-            # weather = Weather(state,county)
-            # data = Cast(
-            #     data=pd.merge(data.reset_index(),weather.reset_index()).set_index("timestamp"),
-            #     year=year)
-            # data.index.name = "timestamp"
 
+            data = get_total_load(state,county,progress=lambda x:print(x[:3].lower(),flush=True,end=" "))
             if total is None:
                 total = data.copy()
             else:
