@@ -168,10 +168,12 @@ class Calibrate(pd.DataFrame):
           state be loaded before any scalars can be computed. This can take a
           long time to complete.
 
-        - By default only residential (`'R'`) and commercial (`'C'`) load
-          calibations are computed. Industry (`'I'`) is also available but
-          usually does not need to be computed since the uncalibrated
-          industrial and agricultural loads come from EIA as well.
+        - Only residential (`'R'`) and commercial (`'C'`) load
+          calibations can be computed. Industry (`'I'`) and agriculture (`'A'`)
+          comes from EIA sources at the state-level and cannot be recalibrated at the county level. 
+
+        - Transportation is not included in the load model at this time, despite
+          the availability of state-level transportation energy consumption.
         """
         sector_specs = {
             "R":(Residential,"res_energy_mwh"),
