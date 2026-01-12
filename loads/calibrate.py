@@ -36,17 +36,43 @@ def integrate(data,range=None,rename=False):
 
       - `rename`: rename columns to their integrals, i.e., `'*_MW'` becomes
         `*_MWh`
+
+    Returns
+    -------
+
+      - `pd.DataFrame`: the resulting power integrals over time as single row
+
+    Description
+    -----------
+
+    The time-integration of a power dataframe results in an energy value. Use
+    the `rename=True` option to enable renaming the columns to their energy.
+    The index name indicates the date/time range over which the integration was
+    performed.
     """
-    columns = [x for x in data.columns if x.endswith("_MW")]
-    result = data.loc[... if range is None else range,columns].sum(axis=0).to_frame().T
+
+    # only handle columns names that end in a power unit
+    columns = [x for x in data.columns if x.endswith("W")]
+
+    # select the data range to process
+    samples = data.loc[... if range is None else range,columns] 
+
+    # sample the data range
+    result = samples.sum(axis=0).to_frame().T
+
+    # rename the columns if desired
     if rename:
         result.columns = [f"{x}h" for x in result.columns]
+
+    # identify the start and end date/times and use it as the index name
+    start = samples.index[0].strftime(Calibrate.DATETIME_FORMAT)
+    end = samples.index[-1].strftime(Calibrate.DATETIME_FORMAT)
+    result.index = [f"sum({start=},{end=},freq='1h')"]
+
     return result
 
 class Calibrate(pd.DataFrame):
-    """Load calibration data frame
-
-    """
+    """Load calibration data frame"""
 
     DATETIME_INDEX = "timestamp"
     """Name of date/time index column"""

@@ -132,6 +132,8 @@ flowchart TD
     Agriculture --> Cast
     Weather --> Cast
     Commercial --> Cast
+
+    Cast --> Calibrate
 ```
 
   - `loads.agriculture`: 2019 agricultural load data
