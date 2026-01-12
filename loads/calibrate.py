@@ -1,8 +1,8 @@
 r"""Load calibration module
 
 The `calibration` module is used to rescale loads to match know energy
-consumptions over a specified time period.  The rescaling such that
-for each column of the data table with a name ending in `'_MW'`
+consumptions over a specified time period.  The rescaling is performed such
+that for each column of the data table with a name ending in `'_MW'`
 
 $$
     \frac {P_{new}} {P_{old}} = \frac {E_{new}} {E_{old}}
