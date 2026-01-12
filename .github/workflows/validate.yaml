@@ -32,6 +32,6 @@ jobs:
 
     - name: Run tests
       run: |
-        cd tests
+        cd loads
         pip install ..
         python3 tests.py
