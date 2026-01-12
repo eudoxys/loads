@@ -1,22 +1,24 @@
 r"""Load calibration module
 
-The `calibration` module is used to rescale loads to match know energy
+The `loads.calibrate` module is used to rescale loads to match know energy
 consumptions over a specified time period.  The rescaling is performed such
 that for each column of the data table with a name ending in `'_MW'`
 
 $$
-    \frac {P_{new}} {P_{old}} = \frac {E_{new}} {E_{old}}
+    P_{new}  = P_{old} ~ \frac {E_{new}} {E_{old}}
 $$
 
-where
+when $E_{old} /ne 0$, where
 
-  - $P_{new}$ is the new load data
+  - $P_{new}$ is the new load data,
 
-  - $P_{old}$ is the old load data
+  - $P_{old}$ is the old load data,
 
-  - $E_{new}$ is the new energy consumption
+  - $E_{new}$ is the new energy consumption, and
 
-  - $E_{old}$ is the old energy consumption
+  - $E_{old}$ is the old energy consumption.
+
+The values of $E_{old}$ and $E_{new}$ are the sum of the $P_{old}$ and $P_{new}$, respectively, over the date/time range given, or the entire data frame if no date/time range is given.
 """
 
 import datetime as dt
