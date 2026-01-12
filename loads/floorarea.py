@@ -46,6 +46,7 @@ References
 
 import os
 
+import numpy as np
 import pandas as pd
 
 from fips import County
@@ -108,7 +109,8 @@ class Floorarea(pd.DataFrame):
             year = self.YEAR
 
         # load county commercial floor area data
-        cache = Cache("floorarea.csv.gz",package=__package__,version=0)
+        cache = Cache("floorarea.csv.gz",package="loads",version=0)
+        columns = ["ST","FIPS","BUILDING_TYPE","FLOORAREA"]
         if not cache.exists():
             data = []
             for n,region in enumerate([
@@ -138,7 +140,7 @@ class Floorarea(pd.DataFrame):
                     result = result.groupby(["statecode","countyid","doe_prototype"])\
                         .sum()\
                         .reset_index()
-                    result.columns = ["ST","FIPS","BUILDING_TYPE","FLOORAREA"]
+                    result.columns = columns
                     result.to_csv(file.pathname,index=False,header=True,compression="gzip")
                 result.FLOORAREA = result.FLOORAREA.astype(float)
                 data.append(result)
@@ -159,9 +161,22 @@ class Floorarea(pd.DataFrame):
             super().__init__(data.set_index("ST").loc[state])
         else:
             fips = County(ST=state,COUNTY=county).FIPS
-            super().__init__(data.set_index(["ST","FIPS"]).sort_index().loc[state,fips])
+            if fips in data.FIPS.values.tolist():
+                super().__init__(data.set_index(["ST","FIPS"]).sort_index().loc[state,fips])
+            else:
+                btypes = data.BUILDING_TYPE.unique()
+                super().__init__(pd.DataFrame({
+                    "ST":[state]*len(btypes),
+                    "FIPS":[fips]*len(btypes),
+                    "BUILDING_TYPE":btypes,
+                    "FLOORAREA": [0]*len(btypes),
+                    },
+                    index=range(len(btypes))
+                    ))
 
 if __name__ == '__main__':
     
-    test = Floorarea()
-    print(test)
+    print(Floorarea("CA","Alameda"))
+    print(Floorarea("CA"))
+    print(Floorarea("SD","Mellette"))
+    print(Floorarea())

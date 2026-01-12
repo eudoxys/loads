@@ -22,6 +22,7 @@ where
 import datetime as dt
 import numpy as np
 import pandas as pd
+from fips import States, Counties
 
 def integrate(data,range=None,rename=False):
     """Integrate data frame over time range
@@ -82,7 +83,8 @@ class Calibrate(pd.DataFrame):
 
     def __init__(self,
         load:pd.DataFrame,
-        energy:float,
+        energy:float|None=None,
+        scale:float=1.0,
         start:dt.datetime|str=None,
         end:dt.datetime|str=None,
         ):
@@ -95,6 +97,8 @@ class Calibrate(pd.DataFrame):
 
           - `energy`: new energy consumption to calibrate load with
 
+          - `scale`: scalar to apply to final result
+
           - `start`: start date of new energy consumption
 
           - `end`: end date of new energy consumption
@@ -102,38 +106,107 @@ class Calibrate(pd.DataFrame):
 
         data = load.copy().reset_index().set_index(self.DATETIME_INDEX)
         
-        if start is None:
-            start = data.index[0]
-        elif isinstance(start,str):
-            start = pd.datetime.strptime(start,self.DATETIME_FORMAT)
-        assert isinstance(start,(dt.datetime,np.datetime64)), f"{start=} is invalid"
-        if end is None:
-            end = data.index[-1]
-        elif isinstance(end,str):
-            end = pd.datetime.strptime(end,self.DATETIME_FORMAT)
-        assert isinstance(end,(dt.datetime,np.datetime64)), f"{end=} is invalid"
-        assert start < end, f"{start=} must be before {end=}"
-        assert len(new_energy) == 1 and (new_energy.columns == data.columns).all(), f"new_energy is not valid"
+        assert isinstance(scale,float), f"{scale=} is invalid"
+        if not energy is None:
+            if start is None:
+                start = data.index[0]
+            elif isinstance(start,str):
+                start = pd.datetime.strptime(start,self.DATETIME_FORMAT)
+            assert isinstance(start,(dt.datetime,np.datetime64)), f"{start=} is invalid"
+            if end is None:
+                end = data.index[-1]
+            elif isinstance(end,str):
+                end = pd.datetime.strptime(end,self.DATETIME_FORMAT)
+            assert isinstance(end,(dt.datetime,np.datetime64)), f"{end=} is invalid"
+            assert start < end, f"{start=} must be before {end=}"
+            assert len(new_energy) == 1 and (new_energy.columns == data.columns).all(), f"new_energy is not valid"
 
-        date_range = pd.date_range(start,end,freq="1h")
-        old_energy = integrate(data,date_range)
+            date_range = pd.date_range(start,end,freq="1h")
+            old_energy = integrate(data,date_range)
 
-        for column in [x for x in data.columns if x.endswith("_MW")]:
-            value = old_energy[column].values[0]
-            if value != 0:
-                data[column] *= energy[column].values[0] / value
+            for column in [x for x in data.columns if x.endswith("_MW")]:
+                value = old_energy[column].values[0]
+                if value != 0:
+                    data[column] *= energy[column].values[0] / value
 
-        super().__init__(data)
+        super().__init__(data*scale)
+
+    @staticmethod
+    def state(
+        state:str,
+        sectors:list[str]|None=None,
+        year:int|None=None,
+        ) -> pd.DataFrame:
+        """Compute state load calibration values
+
+        Arguments
+        ---------
+
+          - `state`: state for which to compute calibrations
+
+          - `sectors`: list of sector for which calibrations are desired
+
+          - `year`: the year for which loads are calibrated
+
+        Returns
+        -------
+
+          - `pd.DataFrame`: data frame contain sector calibration factor
+
+        Description
+        -----------
+
+        The residential and commercial load data is obtained from the NLR
+        RESstock and COMstock data repositories. These data set have not been
+        calibrated against the state-level EIA energy use. The `loads.calibrate.Calibrate.state` function is used to obtain the
+        state-level calibrations for any given year available from EIA. See `eia.hs860m.HS860m` for details.
+
+        Caveats
+        -------
+
+        - The methodology requires that all the loads for each county in the
+          state be loaded before any scalars can be computed. This can take a
+          long time to complete.
+
+        - By default only residential (`'R'`) and commercial (`'C'`) load
+          calibations are computed. Industry (`'I'`) is also available but
+          usually does not need to be computed since the uncalibrated
+          industrial and agricultural loads come from EIA as well.
+        """
+        sector_specs = {
+            "R":(Residential,"res_energy_mwh"),
+            "C":(Commercial,"com_energy_mwh"),
+        }
+        result = []
+        for sector in sectors if sectors else sector_specs:
+            specs = sector_specs[sector]
+            old_energy = 0.0
+            for county in Counties(use_index=["ST"]).loc[state]["COUNTY"]:
+                old_energy += specs[0](state,county,year)["elec_total_MW"].sum()
+            new_energy = 0.0
+            for month in range(1,13):
+                new_energy += HS861m(year if year else 2018,month).loc[state,specs[1]]
+
+            scalar = new_energy / old_energy
+            result.append(pd.DataFrame(
+                data={"scalar":[scalar],"state":[state],"sector":[sector]},
+                index=[len(result)]))
+        return pd.concat(result).set_index(["state","sector"])
 
 if __name__ == '__main__':
     
+    from fips import Counties
+    from eia import HS861m
     from loads.residential import Residential
+    from loads.commercial import Commercial
 
     pd.options.display.max_columns = None
     pd.options.display.width = None
 
-    test = Residential("CA","Alameda")
-    old_energy = integrate(test)
-    new_energy = old_energy * 2
-    result = Calibrate(test,new_energy)
-    assert ((result-2*test).sum()==0).all(), f"Test failed!"
+    states = sorted(Counties(use_index="SYSTEM").loc["WECC"]["ST"].unique())
+    result = []
+    for state in states:
+        print("Processing",state,end="...",flush=True)
+        result.append(Calibrate.state(state).unstack())
+        print("ok")
+    print(pd.concat(result))
