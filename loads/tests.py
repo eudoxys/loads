@@ -51,13 +51,14 @@ if __name__ == "__main__":
     pd.options.display.width = None
     pd.options.display.max_columns = None
 
-    # WECC load test
-    print("Testing WECC...")
-    wecc_counties = Counties(use_index="RO").loc["WECC"].reset_index().set_index(["ST","COUNTY"]).sort_index()
-    for state,county in wecc_counties.index.values:
-        print("Reading",county,state,end="... ",flush=True)
-        get_total_load(state,county,progress=lambda x:print(x[:3].lower(),flush=True,end=" "))
-        print("... ok")
+    if not "GITHUB_ACTIONS" in os.environ:
+        # WECC load test
+        print("Testing WECC...")
+        wecc_counties = Counties(use_index="RO").loc["WECC"].reset_index().set_index(["ST","COUNTY"]).sort_index()
+        for state,county in wecc_counties.index.values:
+            print("Reading",county,state,end="... ",flush=True)
+            get_total_load(state,county,progress=lambda x:print(x[:3].lower(),flush=True,end=" "))
+            print("... ok")
 
     # CAISO load test
     print("Testing CAISO...")
