@@ -219,5 +219,6 @@ from loads.floorarea import Floorarea
 from loads.industry import Industry
 from loads.resstock import RESstock
 from loads.residential import Residential
+from loads.total import Total
 from loads.units import Units
 

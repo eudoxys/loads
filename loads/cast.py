@@ -163,6 +163,7 @@ class Cast(pd.DataFrame):
         data[ELEC_FIELDS.net] = data[ELEC_FIELDS.total] + data[ELEC_FIELDS.dg]
         data[NONELEC_FIELDS.total] = data[NONELEC_FIELDS.baseload] + data[NONELEC_FIELDS.cooling] + data[NONELEC_FIELDS.heating]
         data = data.round(4)
+        data.index.name = "timestamp"
 
         super().__init__(data.sort_index())
 
