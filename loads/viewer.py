@@ -62,12 +62,19 @@ def _(dt, get_month, mo, set_month):
 
 
 @app.cell
-def _(county_ui, mo, month_ui, state_ui, year_ui):
+def _(mo):
+    calibrate_ui = mo.ui.checkbox(label="Calibrate",value=True)
+    return (calibrate_ui,)
+
+
+@app.cell
+def _(calibrate_ui, county_ui, mo, month_ui, state_ui, year_ui):
     mo.hstack([
         state_ui, 
         county_ui,
         year_ui,
         month_ui,
+        calibrate_ui,
     ], justify="start")
     return
 
@@ -79,27 +86,31 @@ def _(agricultural_ui, commercial_ui, industrial_ui, mo, residential_ui):
 
 
 @app.cell
+def _(county_ui, state_ui):
+    STATE = state_ui.value
+    COUNTY = county_ui.value
+    return COUNTY, STATE
+
+
+@app.cell
 def _(
     Agriculture,
+    COUNTY,
     Cast,
     Commercial,
     Industry,
     Residential,
+    STATE,
     Weather,
     agricultural_ui,
+    calibration,
     commercial_ui,
-    county_ui,
     industrial_ui,
     mo,
-    os,
     pd,
     residential_ui,
-    state_ui,
     year_ui,
 ):
-    STATE = state_ui.value
-    COUNTY = county_ui.value
-
     mo.stop(
         COUNTY is None,
         mo.md("**<font color=blue>HINT**: you need to select a county</font)"),
@@ -108,7 +119,6 @@ def _(
     pd.options.display.max_columns = None
     pd.options.display.width = None
 
-    cache = os.path.join(".cache", f"{STATE}_{COUNTY}_R.csv")
     data = Weather(STATE, COUNTY)
     for field in ["baseload", "heating", "cooling", "dg", "total", "net"]:
         data[f"elec_{field}_MW"] = data[f"nonelec_{field}_MW"] = 0.0
@@ -121,8 +131,8 @@ def _(
         ),
     )
     datasets = {
-        "Residential": Residential(STATE, COUNTY),
-        "Commercial": Commercial(STATE, COUNTY),
+        "Residential": Residential(STATE, COUNTY)*calibration["R"],
+        "Commercial": Commercial(STATE, COUNTY)*calibration["C"],
         "Industry": Industry(STATE, COUNTY, loadshape),
         "Agriculture": Agriculture(STATE, COUNTY, loadshape),
     }
@@ -155,8 +165,18 @@ def _(
         )
         weather.index = timestamps
     data = Cast(data, year, weather)
+
     data.index.name = "timestamp"
-    return COUNTY, STATE, data, datasets, year
+    return data, datasets, year
+
+
+@app.cell
+def _(Calibrate, STATE, calibrate_ui, year_ui):
+    if calibrate_ui.value:
+        calibration = Calibrate.state(STATE, ["R", "C"], year_ui.value).to_dict()["scalar"]
+    else:
+        calibration = {"R":1.0,"C":1.0}
+    return (calibration,)
 
 
 @app.cell
@@ -283,10 +303,11 @@ def _():
         import plotly.graph_objects as go
         from scipy.optimize import curve_fit
         from fips import Counties
-        from loads import Residential, Commercial, Industry, Agriculture, Cast
+        from loads import Residential, Commercial, Industry, Agriculture, Cast, Calibrate
         from weather import Weather
     return (
         Agriculture,
+        Calibrate,
         Cast,
         Commercial,
         Counties,
@@ -295,7 +316,6 @@ def _():
         Weather,
         dt,
         mo,
-        os,
         pd,
         plt,
         px,
