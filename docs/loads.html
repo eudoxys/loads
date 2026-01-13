@@ -273,6 +273,7 @@ constructed.</p></li>
 <li><a href="https://pypi.org/project/pyxlsb/">pyxlsb</a></li>
 <li><a href="https://pypi.org/project/requests/">requests</a></li>
 <li><a href="https://github.com/eudoxys/cache/">cache</a></li>
+<li><a href="https://github.com/eudoxys/eia/">eia</a></li>
 <li><a href="https://github.com/eudoxys/fips/">fips</a></li>
 <li><a href="https://github.com/eudoxys/weather/">weather</a></li>
 </ul></li>
@@ -488,22 +489,23 @@ constructed.</p></li>
 </span><span id="L-203"><a href="#L-203"><span class="linenos">203</span></a><span class="sd">    - [pyxlsb](https://pypi.org/project/pyxlsb/)</span>
 </span><span id="L-204"><a href="#L-204"><span class="linenos">204</span></a><span class="sd">    - [requests](https://pypi.org/project/requests/)</span>
 </span><span id="L-205"><a href="#L-205"><span class="linenos">205</span></a><span class="sd">    - [cache](https://github.com/eudoxys/cache/)</span>
-</span><span id="L-206"><a href="#L-206"><span class="linenos">206</span></a><span class="sd">    - [fips](https://github.com/eudoxys/fips/)</span>
-</span><span id="L-207"><a href="#L-207"><span class="linenos">207</span></a><span class="sd">    - [weather](https://github.com/eudoxys/weather/)</span>
-</span><span id="L-208"><a href="#L-208"><span class="linenos">208</span></a>
-</span><span id="L-209"><a href="#L-209"><span class="linenos">209</span></a><span class="sd">&quot;&quot;&quot;</span>
-</span><span id="L-210"><a href="#L-210"><span class="linenos">210</span></a>
-</span><span id="L-211"><a href="#L-211"><span class="linenos">211</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.agriculture</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agriculture</span>
-</span><span id="L-212"><a href="#L-212"><span class="linenos">212</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.calibrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">Calibrate</span>
-</span><span id="L-213"><a href="#L-213"><span class="linenos">213</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.cast</span><span class="w"> </span><span class="kn">import</span> <span class="n">Cast</span>
-</span><span id="L-214"><a href="#L-214"><span class="linenos">214</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.cli</span><span class="w"> </span><span class="kn">import</span> <span class="n">main</span>
-</span><span id="L-215"><a href="#L-215"><span class="linenos">215</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.comstock</span><span class="w"> </span><span class="kn">import</span> <span class="n">COMstock</span>
-</span><span id="L-216"><a href="#L-216"><span class="linenos">216</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.commercial</span><span class="w"> </span><span class="kn">import</span> <span class="n">Commercial</span>
-</span><span id="L-217"><a href="#L-217"><span class="linenos">217</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.floorarea</span><span class="w"> </span><span class="kn">import</span> <span class="n">Floorarea</span>
-</span><span id="L-218"><a href="#L-218"><span class="linenos">218</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.industry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Industry</span>
-</span><span id="L-219"><a href="#L-219"><span class="linenos">219</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.resstock</span><span class="w"> </span><span class="kn">import</span> <span class="n">RESstock</span>
-</span><span id="L-220"><a href="#L-220"><span class="linenos">220</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.residential</span><span class="w"> </span><span class="kn">import</span> <span class="n">Residential</span>
-</span><span id="L-221"><a href="#L-221"><span class="linenos">221</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.units</span><span class="w"> </span><span class="kn">import</span> <span class="n">Units</span>
+</span><span id="L-206"><a href="#L-206"><span class="linenos">206</span></a><span class="sd">    - [eia](https://github.com/eudoxys/eia/)</span>
+</span><span id="L-207"><a href="#L-207"><span class="linenos">207</span></a><span class="sd">    - [fips](https://github.com/eudoxys/fips/)</span>
+</span><span id="L-208"><a href="#L-208"><span class="linenos">208</span></a><span class="sd">    - [weather](https://github.com/eudoxys/weather/)</span>
+</span><span id="L-209"><a href="#L-209"><span class="linenos">209</span></a>
+</span><span id="L-210"><a href="#L-210"><span class="linenos">210</span></a><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="L-211"><a href="#L-211"><span class="linenos">211</span></a>
+</span><span id="L-212"><a href="#L-212"><span class="linenos">212</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.agriculture</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agriculture</span>
+</span><span id="L-213"><a href="#L-213"><span class="linenos">213</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.calibrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">Calibrate</span>
+</span><span id="L-214"><a href="#L-214"><span class="linenos">214</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.cast</span><span class="w"> </span><span class="kn">import</span> <span class="n">Cast</span>
+</span><span id="L-215"><a href="#L-215"><span class="linenos">215</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.cli</span><span class="w"> </span><span class="kn">import</span> <span class="n">main</span>
+</span><span id="L-216"><a href="#L-216"><span class="linenos">216</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.comstock</span><span class="w"> </span><span class="kn">import</span> <span class="n">COMstock</span>
+</span><span id="L-217"><a href="#L-217"><span class="linenos">217</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.commercial</span><span class="w"> </span><span class="kn">import</span> <span class="n">Commercial</span>
+</span><span id="L-218"><a href="#L-218"><span class="linenos">218</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.floorarea</span><span class="w"> </span><span class="kn">import</span> <span class="n">Floorarea</span>
+</span><span id="L-219"><a href="#L-219"><span class="linenos">219</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.industry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Industry</span>
+</span><span id="L-220"><a href="#L-220"><span class="linenos">220</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.resstock</span><span class="w"> </span><span class="kn">import</span> <span class="n">RESstock</span>
+</span><span id="L-221"><a href="#L-221"><span class="linenos">221</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.residential</span><span class="w"> </span><span class="kn">import</span> <span class="n">Residential</span>
+</span><span id="L-222"><a href="#L-222"><span class="linenos">222</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.units</span><span class="w"> </span><span class="kn">import</span> <span class="n">Units</span>
 </span></pre></div>
 
 

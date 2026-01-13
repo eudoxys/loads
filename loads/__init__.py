@@ -203,6 +203,7 @@ Package information
     - [pyxlsb](https://pypi.org/project/pyxlsb/)
     - [requests](https://pypi.org/project/requests/)
     - [cache](https://github.com/eudoxys/cache/)
+    - [eia](https://github.com/eudoxys/eia/)
     - [fips](https://github.com/eudoxys/fips/)
     - [weather](https://github.com/eudoxys/weather/)
 
