@@ -1,12 +1,14 @@
-pandas
+h5pyd
+marimo
+matplotlib
 openpyxl
+pandas
+plotly
+pytz
 pyxlsb
 requests
-pytz
-matplotlib
-marimo
-h5pyd
-plotly
+
+cache @ git+https://github.com/eudoxys/cache
+eia @ git+https://github.com/eudoxys/eia
 fips @ git+https://github.com/eudoxys/fips
 weather @ git+https://github.com/eudoxys/weather
-cache @ git+https://github.com/eudoxys/cache
