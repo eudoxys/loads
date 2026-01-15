@@ -12,3 +12,4 @@ cache @ git+https://github.com/eudoxys/cache
 eia @ git+https://github.com/eudoxys/eia
 fips @ git+https://github.com/eudoxys/fips
 weather @ git+https://github.com/eudoxys/weather
+geohash @ git+https://github.com/eudoxys/geohash
