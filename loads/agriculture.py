@@ -40,10 +40,15 @@ Caveat
 """
 
 import os
+import logging
+
 import numpy as np
 import pandas as pd
+
 from fips import Counties
 from cache import Cache
+
+_logger = logging.getLogger(__file__)
 
 CACHE = None
 """Global cache of agricultural load data"""
@@ -72,6 +77,7 @@ class Agriculture(pd.DataFrame):
         state:str=None,
         county:str=None,
         loadshape:pd.DataFrame|dict|None=None,
+        refresh:bool=False,
         ):
         """Construct an agricultural load data frame
 
@@ -83,6 +89,8 @@ class Agriculture(pd.DataFrame):
           - `county`: county (default all counties)
 
           - `loadshape`: load shape to roll out county load
+
+          - `refresh`: force reload of data from the online source
         """
 
         # set cache location
@@ -92,14 +100,27 @@ class Agriculture(pd.DataFrame):
         # load data
         global CACHE
         if CACHE is None:
-            cache = Cache(["agriculture.csv.gz"],package=__package__,version=0)
-            if not os.path.exists(cache.pathname):
-                data = pd.read_csv(self.SOURCE,
-                    low_memory=False).sort_values("fips_matching")
-                data.to_csv(cache.pathname,index=False,header=True,compression="gzip"
-                    if cache.pathname.endswith(".gz") else None)
+            cache = Cache(package="loads",version=0,path=["agriculture.csv.gz"])
+            if cache.exists() and not refresh:
+                try:
+                    data = pd.read_csv(cache.pathname,low_memory=False)
+                    _logger.debug(f"{cache=} ok")
+                except Exception as err:
+                    data = None
+                    _logger.error(f"{cache=} {err}")
             else:
-                data = pd.read_csv(cache.pathname,low_memory=False)
+                data = None
+                _logger.debug(f"{cache=} (re)generation required")
+            if data is None:
+                try:
+                    data = pd.read_csv(self.SOURCE,
+                        low_memory=False).sort_values("fips_matching")
+                    _logger.debug(f"download of '{self.SOURCE}' ok")
+                    data.to_csv(cache.pathname,index=False,header=True,compression="gzip"
+                        if cache.pathname.endswith(".gz") else None)
+                except Exception as err:
+                    _logger.error(f"url={self.SOURCE}, {err=}")
+                    raise
 
             # remove unwanted columns, aggregate, and convert from TBTU/y to MWh/h
             data = data\
@@ -195,6 +216,8 @@ class Agriculture(pd.DataFrame):
                 },
                 index=loadshape.index,
                 ))
+
+        # return loadshape rollout of county load
         elif isinstance(loadshape,dict):
             assert "shape" in loadshape, "'shape' required in loadshape"
             assert "start" in loadshape, "'start' required in loadshape"
@@ -232,25 +255,28 @@ class Agriculture(pd.DataFrame):
 
 if __name__ == "__main__":
 
-    import matplotlib.pyplot as plt
-    from fips.counties import Counties
+    refresh = True
+
+    # import matplotlib.pyplot as plt
+
+    logging.basicConfig(level=logging.DEBUG)
+
     counties = Counties(use_index="RO").loc["WECC"].set_index(["ST","COUNTY"]).sort_index()
     loads = {}
     last = None
     for state,county in counties.index.values:
+
         if state != last:
             if not last is None:
-                plt.figure(figsize=(20,10))
-                plt.bar(loads.keys(),height=loads.values())
-                plt.xticks(rotation=90)
-                plt.grid()
-                plt.ylabel("Electric load annual average (MW)")
-                plt.xlabel("County")
-                plt.title(f"{last} Agriculture")
-                plt.savefig(f"/tmp/{last}_A.png")
+                # plt.figure(figsize=(20,10))
+                # plt.bar(loads.keys(),height=loads.values())
+                # plt.xticks(rotation=90)
+                # plt.grid()
+                # plt.ylabel("Electric load annual average (MW)")
+                # plt.xlabel("County")
+                # plt.title(f"{last} Agriculture")
+                # plt.savefig(f"/tmp/{last}_A.png")
                 loads = {}
             last = state
-        loads[county] = Agriculture(state,county).T.elec_net_MW.values[0].round(1)
-        print(state,county,loads[county],"MW",flush=True)
-
-            
+        loads[county] = Agriculture(state,county,refresh=refresh).T.elec_net_MW.values[0].round(1)
+        _logger.info(f"{county} {state} agriculture load is {loads[county]} MW")

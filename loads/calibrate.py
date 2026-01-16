@@ -19,17 +19,35 @@ when $E_{old} /ne 0$, where
   - $E_{old}$ is the old energy consumption.
 
 The values of $E_{old}$ and $E_{new}$ are the sum of the $P_{old}$ and $P_{new}$, respectively, over the date/time range given, or the entire data frame if no date/time range is given.
+
+Examples
+--------
+
+To calibrate a load to a known `total_energy` and `peak_demand`:
+
+    Calibrate(load,
+        energy={"elec_net_MW":total_energy},
+        peak={"elec_net_MW":peak_demand},
+        )
+
+To calibrate a load with a known `scale` and `offset`:
+
+    Calibrate(load,scale=scale,offset=offset)
+
 """
 
 import datetime as dt
 import numpy as np
 import pandas as pd
+import logging
 
 from fips import States, Counties
 from eia import HS861m
 from loads.residential import Residential
 from loads.commercial import Commercial
 from cache import Cache
+
+_logger = logging.getLogger(__file__)
 
 def integrate(data,range=None,rename=False):
     """Integrate data frame over time range
@@ -59,11 +77,8 @@ def integrate(data,range=None,rename=False):
     performed.
     """
 
-    # only handle columns names that end in a power unit
-    columns = [x for x in data.columns if x.endswith("W")]
-
     # select the data range to process
-    samples = data.loc[... if range is None else range,columns] 
+    samples = data.loc[... if range is None else range,data.columns] 
 
     # sample the data range
     result = samples.sum(axis=0).to_frame().T
@@ -79,6 +94,100 @@ def integrate(data,range=None,rename=False):
 
     return result
 
+def fit_load(x, *,
+             energy:float|None=None, 
+             peak:float|None=None, 
+             precision:float=1e-3, 
+             maxiter:int=100,
+             damping:float = 1.0,
+             exception:Exception|None=RuntimeError,
+             constraints:list[str]=None,
+            ) -> [float,float]:
+    """Fit load to energy and/or peak constraints
+
+    Arguments
+    ---------
+
+      - `energy`: energy constraint
+
+      - `peak: peak constraint
+
+      - `precision`: energy error
+
+      - `maxiter`: maximum iterations
+
+      - `damping`: error correct damping coefficient
+
+      - `exception`: exception to use
+
+      - `constraints`: constraints on resulting load
+
+    Returns
+    -------
+
+      - `np.array|None`: fit load or None if maximum iterations reached
+        without exception handler
+
+      - `float`: energy error
+
+    Description
+    -----------
+
+    The load data `x` the rescaled and offset to such that the sum of the `x`
+    is equal to the energy and the peak of `x` is equal to the peak. Note
+    that the peak is defined as the value which occurs at the maximum `x`
+    prior to rescaling, meaning that after rescaling the peak may shift and
+    may be greater than the rescaled value of the original peak (i.e., the
+    resulting load shape is inverted).
+
+    Two constraints are supported:
+
+      - `positive`: the resulting value may not be zero or negative.
+
+      - `inverted`: the resulting peaks may not be inverted.
+
+    Violating these constraints raises an exception.
+
+    Caveats
+    -------
+
+      - It is possible for the fit to have negative values or inverted peaks
+        if the energy and peak constraints are not otherwise feasible.
+    """
+    if constraints is None:
+        constraints = []
+    assert isinstance(constraints,list), f"{constraints=} must be a list of strings"
+    for constraint in constraints:
+        assert constraint in ["positive","inverted"], f"{constraint=} in invalid"
+
+    y0 = min(x)
+    N = len(x)
+    if energy is None:
+        energy = x.sum()
+    if peak is None:
+        peak = x.max()
+    y = np.array(x - max(x)) / (min(x) - max(x))  # normalized x
+    denormalize = lambda x, b: x * (b-peak) + peak
+    e = lambda x, b: energy - sum(denormalize(x, b))
+    iter = 1
+    while abs(err:=e(y, y0)) > precision:
+        y0 += err / N / damping  # correction to min
+        iter += 1
+        if iter > maxiter:
+            if exception:
+                raise exception(f"{maxiter=} reached")
+            return None,err
+    y = denormalize(y, y0)
+    err = float(err)
+    
+    assert "inverted" not in constraints or min(y) <= max(y), \
+        f"constraint='inverted' violated {min(y)=} > {max(y)=}"
+    
+    assert "positive" not in constraints or min(y) > 0.0, \
+        f"constraint='positive' violated {min(y) <= 0}"
+
+    return y,err
+
 class Calibrate(pd.DataFrame):
     """Load calibration data frame"""
 
@@ -92,12 +201,14 @@ class Calibrate(pd.DataFrame):
 
     def __init__(self,
         load:pd.DataFrame,
-        energy:float|None=None,
+        energy:dict[str,float]|None=None,
+        peak:dict[str,float]|None=None,
         scale:float=1.0,
+        offset:float=0.0,
         start:dt.datetime|str=None,
         end:dt.datetime|str=None,
         ):
-        """Construct a calibrated load data frame
+        r"""Construct a calibrated load data frame
 
         Arguments
         ---------
@@ -106,7 +217,11 @@ class Calibrate(pd.DataFrame):
 
           - `energy`: new energy consumption to calibrate load with
 
+          - `peak`: new peak load to calibration load with
+
           - `scale`: scalar to apply to final result
+
+          - `offset`: constant offset to apply to scaled final result
 
           - `start`: start date of new energy consumption
 
@@ -115,8 +230,10 @@ class Calibrate(pd.DataFrame):
 
         data = load.copy().reset_index().set_index(self.DATETIME_INDEX)
         
-        assert isinstance(scale,float), f"{scale=} is invalid"
-        if not energy is None:
+        assert isinstance(scale,(float,int)), f"{scale=} is invalid"
+        assert isinstance(offset,(float,int)), f"{offset=} is invalid"
+
+        if not energy is None or not peak is None:
             if start is None:
                 start = data.index[0]
             elif isinstance(start,str):
@@ -128,17 +245,23 @@ class Calibrate(pd.DataFrame):
                 end = pd.datetime.strptime(end,self.DATETIME_FORMAT)
             assert isinstance(end,(dt.datetime,np.datetime64)), f"{end=} is invalid"
             assert start < end, f"{start=} must be before {end=}"
-            assert len(new_energy) == 1 and (new_energy.columns == data.columns).all(), f"new_energy is not valid"
 
             date_range = pd.date_range(start,end,freq="1h")
-            old_energy = integrate(data,date_range)
+            for column in set(energy.keys())|set(peak.keys()):
+                try:
+                    data[column],_ = fit_load(
+                        data.loc[date_range][column],
+                        energy=energy[column] if column in energy else None,
+                        peak=peak[column] if column in peak else None,
+                        constraints=["positive","inverted"],
+                        )
+                except RuntimeError as err:
+                    energy = energy[column] if column in energy else None
+                    peak = peak[column] if column in peak else None
+                    _logger.debug(f"unable to fit {column=} to {energy=} and {peak=}")
+                    raise
 
-            for column in [x for x in data.columns if x.endswith("_MW")]:
-                value = old_energy[column].values[0]
-                if value != 0:
-                    data[column] *= energy[column].values[0] / value
-
-        super().__init__(data*scale)
+        super().__init__(data*scale+offset)
 
     @classmethod
     def state(cls,
@@ -170,19 +293,22 @@ class Calibrate(pd.DataFrame):
 
         The residential and commercial load data is obtained from the NLR
         RESstock and COMstock data repositories. These data set have not been
-        calibrated against the state-level EIA energy use. The `loads.calibrate.Calibrate.state` function is used to obtain the
-        state-level calibrations for any given year available from EIA. See `eia.hs860m.HS860m` for details.
+        calibrated against the state-level EIA energy use. The
+        `loads.calibrate.Calibrate.state` function is used to obtain the
+        state-level calibrations for any given year available from EIA. See
+        `eia.hs860m.HS860m` for details.
 
         Caveats
         -------
 
         - The methodology requires that all the loads for each county in the
           state be loaded before any scalars can be computed. This can take a
-          long time to complete.
+          long time to complete states with many counties, e.g., Texas.
 
-        - Only residential (`'R'`) and commercial (`'C'`) load
-          calibations can be computed. Industry (`'I'`) and agriculture (`'A'`)
-          comes from EIA sources at the state-level and cannot be recalibrated at the county level. 
+        - Only residential (`'R'`) and commercial (`'C'`) load calibations can
+          be computed. Industry (`'I'`) and agriculture (`'A'`) come from EIA
+          sources at the state-level and cannot be independently recalibrated
+          at the county level. 
 
         - Transportation is not included in the load model at this time, despite
           the availability of state-level transportation energy consumption.
@@ -232,13 +358,16 @@ if __name__ == '__main__':
     pd.options.display.max_columns = None
     pd.options.display.width = None
 
+    refresh = False
     states = sorted(Counties(use_index="SYSTEM").loc["WECC"]["ST"].unique())
     result = []
-    for state in states:
-        print("Processing",state,end="...",flush=True)
-        data = Calibrate.state(state,refresh=True).reset_index()
-        data["state"] = state
-        data.set_index(["state","sector"],inplace=True)
-        result.append(data.unstack())
-        print("ok")
+    for year in range(2018,2023):
+        for state in states:
+            print("Processing",year,state,end="...",flush=True)
+            data = Calibrate.state(state,year=year,refresh=refresh).reset_index()
+            data["state"] = state
+            data["year"] = year
+            data.set_index(["year","state","sector"],inplace=True)
+            result.append(data.unstack())
+            print("ok")
     print(pd.concat(result))

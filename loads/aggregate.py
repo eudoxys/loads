@@ -48,9 +48,17 @@ which outputs the following
 """
 
 import datetime as dt
+import logging
 
 import numpy as np
 import pandas as pd
+
+from cache import Cache
+from fips.counties import Counties
+from geohash import nearest2
+from loads.total import Total
+
+_logger = logging.getLogger(__file__)
 
 class Aggregator(pd.DataFrame):
     """Load aggregator class
@@ -94,43 +102,108 @@ class Aggregator(pd.DataFrame):
         """
         self[target] += data
 
+def aggregate(
+    targets:dict[str,list[float,float]],
+    year:int,
+    refresh:bool=False,
+    ) -> dict[str,pd.DataFrame]:
+    """Aggregate DG and total loads
+
+    Arguments
+    ---------
+
+      - `targets`: list of target 
+    """
+    total_cache = Cache(package="loads",version=0,path=["aggregated",year,"elec_total_MW.csv"])
+    dg_cache = Cache(package="loads",version=0,path=["aggregated",year,"elec_dg_MW.csv"])
+    mapping_cache = Cache(package="loads",version=0,path=["aggregated",year,"mapping.csv"])
+    if total_cache.exists() and dg_cache.exists() and mapping_cache.exists() and not refresh:
+
+        try:
+            elec_total_MW = pd.read_csv(total_cache.pathname,index_col="timestamp",parse_dates=["timestamp"])
+            _logger.debug(f"{total_cache=} ok")
+        except Exception as err:
+            _logger.error(f"{total_cache=} {err}")
+            elec_total_MW = None
+
+        try:
+            elec_dg_MW = pd.read_csv(dg_cache.pathname,index_col="timestamp",parse_dates=["timestamp"])
+            _logger.debug(f"{dg_cache=} ok")
+        except Exception as err:
+            _logger.error(f"{dg_cache=} {err}")
+            elec_dg_MW = None
+
+        try:
+            mapping = pd.read_csv(mapping_cache.pathname,index_col=0)
+            _logger.debug(f"{mapping_cache=} ok")
+        except Exception as err:
+            _logger.error(f"{dg_cache=} {err}")
+            mapping = None
+    else:
+        _logger.debug(f"cache generation required")
+        elec_total_MW = None
+        elec_dg_MW = None
+        mapping = None
+
+    if elec_total_MW is None or elec_dg_MW is None or mapping is None:
+
+        mapping = {}
+        start = f"{year}-01-01 00:00:00+00:00"
+        end = f"{year}-12-31 23:59:59+00:00"
+        elec_total_MW = Aggregator(sorted(targets.keys()),start,end)
+        elec_dg_MW = Aggregator(sorted(targets.keys()),start,end)
+        for state,county,lat,lon,geohash in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY","LAT","LON","GEOHASH"]].values:
+            nearest,_,dist = nearest2([lat,lon],targets.values())
+            target = locations[nearest]
+            _logger.debug(f"mapping {county} {state} ({geohash}) to {target} ({dist=:.1f} km)")
+            mapping[geohash] = target
+            total = Total(state,county,year) 
+            elec_total_MW.add(target,total.elec_total_MW)
+            elec_dg_MW.add(target,total.elec_dg_MW)
+
+        elec_total_MW.round(3).to_csv(total_cache.pathname,index=True,header=True)
+        elec_dg_MW.round(3).to_csv(dg_cache.pathname,index=True,header=True)
+
+        mapping = pd.DataFrame(data={"target":mapping.values()},index=mapping.keys())
+        mapping.index.name = "source"
+        mapping.sort_index().to_csv(mapping_cache.pathname,index=True,header=True)
+
+    return {
+        "elec_total_MW": elec_total_MW,
+        "elec_dg_MW": elec_dg_MW,
+        "mapping": mapping,
+        }
+
 if __name__ == "__main__":
 
-    from loads.cast import WEATHER_FIELDS, ELEC_FIELDS, NONELEC_FIELDS
-    from geohash import nearest2
-    from cache import Cache
+    refresh = True
 
-    from loads.total import Total
-    from fips.counties import Counties
+    # import matplotlib.pyplot as plt
 
-    pd.options.display.width = None
-    pd.options.display.max_columns = None
+    logging.basicConfig(level=logging.DEBUG)
 
-    wecc240_gis = pd.read_csv("wecc_gis.csv")
+    for year in range(2018,2023):
+        _logger.info(f"processing {year}")
 
-    locations,latlon = wecc240_gis.GEOHASH,list(zip(wecc240_gis.LAT,wecc240_gis.LON))
-    target_list = sorted(locations.unique())
-    print(f"{len(target_list)} targets found")
-    mapping = {}
-    elec_total_MW = Aggregator(target_list,"2018-08-01 00:00:00+00:00","2018-08-31 23:59:59+00:00")
-    elec_dg_MW = Aggregator(target_list,"2018-08-01 00:00:00+00:00","2018-08-31 23:59:59+00:00")
-    for state,county,lat,lon,geohash in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY","LAT","LON","GEOHASH"]].values:
-        nearest,_,dist = nearest2([lat,lon],latlon)
-        target = locations[nearest]
-        print(f"Mapping {county} {state} ({geohash}) to {target} ({dist=:.1f} km)",end="...",flush=True)
-        mapping[geohash] = target
-        total = Total(state,county,2018) 
-        elec_total_MW.add(target,total.elec_total_MW)
-        elec_dg_MW.add(target,total.elec_dg_MW)
-        print("ok")
+        pd.options.display.width = None
+        pd.options.display.max_columns = None
 
-    mapping = pd.DataFrame(data={"target":mapping.values()},index=mapping.keys())
-    mapping.index.name = "source"
-    cache = Cache(package="loads",version=0,path=["geodata","mapping.csv"])
-    mapping.sort_index().to_csv(cache.pathname,index=True,header=True)
+        wecc240_gis = pd.read_csv("wecc_gis.csv")
 
-    cache = Cache(package="loads",version=0,path=["geodata","elec_total_MW.csv"])
-    elec_total_MW.round(3).to_csv(cache.pathname,index=True,header=True)
+        locations,latlon = list(wecc240_gis.GEOHASH),list(zip(wecc240_gis.LAT,wecc240_gis.LON))
+        targets = {x:latlon[locations.index(x)] for x in set(locations)}
 
-    cache = Cache(package="loads",version=0,path=["geodata","elec_dg_MW.csv"])
-    elec_dg_MW.round(3).to_csv(cache.pathname,index=True,header=True)
+        aggregation = aggregate(targets,year,refresh=refresh)
+        
+        # for result in [x for x in aggregation if x.endswith("_MW")]:
+        #     labels = {
+        #         "elec_total_MW": "Total load (GW)",
+        #         "elec_dg_MW": "Total DG (GW)",
+        #     }
+        #     (aggregation[result].sum(axis=1)/1000).abs().plot(
+        #         grid=True,
+        #         xlabel="Date/Time",
+        #         ylabel=labels[result],
+        #         title=f"WECC {year} nodal loads",
+        #         )
+        #     plt.show()

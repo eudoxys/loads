@@ -157,7 +157,7 @@ def _(
         end=f"{year}-12-31 23:59:59+00:00",
         freq="1h",
     )
-    weather = Weather(STATE, COUNTY)
+    weather = Weather(STATE, COUNTY,year)
     weather.index = timestamps[: len(weather)]
     if len(timestamps) > len(weather):
         weather = pd.concat(
@@ -183,8 +183,18 @@ def _(Calibrate, STATE, calibrate_ui, year_ui):
 def _(mo):
     get_xaxis, set_xaxis = mo.state("timestamp")
     get_yaxis, set_yaxis = mo.state("elec_net_MW")
+    get_zaxis, set_zaxis = mo.state("temperature_degF")
     get_plotter, set_plotter = mo.state("line")
-    return get_plotter, get_xaxis, get_yaxis, set_plotter, set_xaxis, set_yaxis
+    return (
+        get_plotter,
+        get_xaxis,
+        get_yaxis,
+        get_zaxis,
+        set_plotter,
+        set_xaxis,
+        set_yaxis,
+        set_zaxis,
+    )
 
 
 @app.cell
@@ -193,11 +203,13 @@ def _(
     get_plotter,
     get_xaxis,
     get_yaxis,
+    get_zaxis,
     mo,
     px,
     set_plotter,
     set_xaxis,
     set_yaxis,
+    set_zaxis,
 ):
     xaxis_ui = mo.ui.radio(
         label="X axis:",
@@ -213,6 +225,13 @@ def _(
         value=get_yaxis(),
         on_change=set_yaxis,
     )
+    zaxis_ui = mo.ui.radio(
+        label="X axis:",
+        options=[x for x in data.reset_index().columns if not x.endswith("_MW") and x != "timestamp"],
+        inline=True,
+        value=get_zaxis(),
+        on_change=set_zaxis,
+    )
     plotter_options = {
         "line": px.line, 
         "scatter": px.scatter, 
@@ -225,19 +244,21 @@ def _(
         on_change=set_plotter,
         inline=True,
     )
-    mo.vstack([xaxis_ui, yaxis_ui, plotter_ui], justify="start")
-    return plotter_options, xaxis_ui, yaxis_ui
+    return plotter_options, plotter_ui, xaxis_ui, yaxis_ui, zaxis_ui
 
 
 @app.cell
 def _(COUNTY, STATE, datasets, plt, yaxis_ui):
-    _piedata = {x:datasets[x][yaxis_ui.value].sum() for x in datasets}
-    _pie = plt.pie(
-        x=[y for x,y in _piedata.items() if y > 0],
-        labels=[f"{x} ({y/1000:.1f} GWh)" for x,y in _piedata.items() if y > 0],
-    )
-    plt.title(f"{COUNTY} {STATE} {yaxis_ui.value.replace('_',' ').title()}")
-    pieplot = plt.gca()
+    try:
+        _piedata = {x:datasets[x][yaxis_ui.value].sum() for x in datasets}
+        _pie = plt.pie(
+            x=[y for x,y in _piedata.items() if y > 0],
+            labels=[f"{x} ({y/1000:.1f} GWh)" for x,y in _piedata.items() if y > 0],
+        )
+        plt.title(f"{COUNTY} {STATE} {yaxis_ui.value.replace('_',' ').title()}")
+        pieplot = plt.gca()
+    except:
+        pieplot = None
     return (pieplot,)
 
 
@@ -247,14 +268,19 @@ def _(
     STATE,
     data,
     get_plotter,
+    get_xaxis,
+    get_yaxis,
+    get_zaxis,
     mo,
     month_ui,
     pd,
     pieplot,
     plotter_options,
+    plotter_ui,
     xaxis_ui,
     yaxis_ui,
     year,
+    zaxis_ui,
 ):
     if month_ui.value is None:
         _data = data.round(1)
@@ -270,14 +296,27 @@ def _(
 
     mo.ui.tabs(
         {
-            "Plot": mo.ui.plotly(
-                plotter_options[get_plotter()](
+            "Plot": mo.vstack(
+                [
+                    mo.vstack([xaxis_ui, yaxis_ui, plotter_ui], justify="start"),
+                    mo.ui.plotly(
+                        plotter_options[get_plotter()](
+                            _data.reset_index(),
+                            x=get_xaxis(),
+                            y=get_yaxis(),
+                            title=f"{COUNTY} {STATE}",
+                        )
+                    ),
+                ]
+            ),
+            "Weather": mo.vstack([zaxis_ui,mo.ui.plotly(
+                plotter_options["line"](
                     _data.reset_index(),
-                    x=xaxis_ui.value,
-                    y=yaxis_ui.value,
+                    x="timestamp",
+                    y=get_zaxis(),
                     title=f"{COUNTY} {STATE}",
                 )
-            ),
+            )]),
             "Data": mo.ui.table(
                 data=_data.round(4),
                 selection=None,

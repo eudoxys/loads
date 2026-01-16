@@ -125,10 +125,15 @@ Caveats
 """
 
 import os
+import logging
+
 import numpy as np
 import pandas as pd
+
 from fips import Counties
 from cache import Cache
+
+_logger = logging.getLogger(__file__)
 
 CACHE = None
 """Global cache of industrial load data"""
@@ -210,14 +215,28 @@ class Industry(pd.DataFrame):
         # load data
         global CACHE
         if CACHE is None:
-            cache = Cache(["industry.csv.gz"],package=__package__,version=0)
-            if not os.path.exists(cache.pathname):
-                data = pd.read_csv(self.SOURCE,
-                    low_memory=False).sort_values("fips_matching")
-                data.to_csv(cache.pathname,index=False,header=True,compression="gzip"
-                    if cache.pathname.endswith(".gz") else None)
+            cache = Cache(package="loads",version=0,path=["industry.csv.gz"])
+            if cache.exists():
+                try:
+                    data = pd.read_csv(cache.pathname,low_memory=False)
+                    _logger.debug(f"{cache=} ok")
+                except Exception as err:
+                    data = None
+                    _logger.debug(f"{cache=} {err}")
             else:
-                data = pd.read_csv(cache.pathname,low_memory=False)
+                data = None
+                _logger.debug(f"{cache=} (re)generation required")
+
+            if data is None:
+                try:
+                    data = pd.read_csv(self.SOURCE,
+                        low_memory=False).sort_values("fips_matching")
+                    _logger.debug(f"download of '{self.SOURCE}' ok")
+                    data.to_csv(cache.pathname,index=False,header=True,compression="gzip"
+                        if cache.pathname.endswith(".gz") else None)
+                except Exception as err:
+                    _logger.error(f"url={self.SOURCE}, {err=}")
+                    raise
 
             # remove unwanted columns, aggregate, and convert from TBTU/y to MWh/h
             data = data\
@@ -350,23 +369,27 @@ class Industry(pd.DataFrame):
 
 if __name__ == "__main__":
 
-    import matplotlib.pyplot as plt
-    from fips.counties import Counties
+    refresh = True
+
+    # import matplotlib.pyplot as plt
+    
+    logging.basicConfig(level=logging.DEBUG)
+
     counties = Counties(use_index="RO").loc["WECC"].set_index(["ST","COUNTY"]).sort_index()
     last = None
     loads = {}
     for state,county in counties.index.values:
         if state != last:
             if not last is None:
-                plt.figure(figsize=(20,10))
-                plt.bar(loads.keys(),height=loads.values())
-                plt.xticks(rotation=90)
-                plt.grid()
-                plt.ylabel("Electric load annual average (MW)")
-                plt.xlabel("County")
-                plt.title(f"{last} Industry")
-                plt.savefig(f"/tmp/{last}_I.png")
+                # plt.figure(figsize=(20,10))
+                # plt.bar(loads.keys(),height=loads.values())
+                # plt.xticks(rotation=90)
+                # plt.grid()
+                # plt.ylabel("Electric load annual average (MW)")
+                # plt.xlabel("County")
+                # plt.title(f"{last} Industry")
+                # plt.savefig(f"/tmp/{last}_I.png")
                 loads = {}
             last = state
         loads[county] = Industry(state,county).T.elec_net_MW.values[0].round(1)
-        print(state,county,loads[county],"MW",flush=True)
+        _logger.info(f"{county} {state} industry load is {loads[county]} MW")
