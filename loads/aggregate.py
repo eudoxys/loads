@@ -87,7 +87,7 @@ class Aggregator(pd.DataFrame):
             index = timestamps,
             )
         data.index.name = "timestamp"
-        data.columns = targets
+        data.columns = sorted(targets)
         super().__init__(data)
 
     def add(self,target,data):
@@ -166,22 +166,25 @@ def aggregate(
 
         mapping = pd.DataFrame(data={"target":mapping.values()},index=mapping.keys())
         mapping.index.name = "source"
-        mapping.sort_index().to_csv(mapping_cache.pathname,index=True,header=True)
+        mapping.sort_index(inplace=True)
+        mapping.to_csv(mapping_cache.pathname,index=True,header=True)
 
     return {
-        "elec_total_MW": elec_total_MW,
-        "elec_dg_MW": elec_dg_MW,
+        "elec_total_MW": elec_total_MW[sorted(elec_total_MW.columns)],
+        "elec_dg_MW": elec_dg_MW[sorted(elec_dg_MW.columns)],
         "mapping": mapping,
         }
 
 if __name__ == "__main__":
 
-    refresh = True
+    refresh = False
 
-    # import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt
 
     logging.basicConfig(level=logging.DEBUG)
 
+    mapping = None
+    result = []
     for year in range(2018,2023):
         _logger.info(f"processing {year}")
 
@@ -195,6 +198,12 @@ if __name__ == "__main__":
 
         aggregation = aggregate(targets,year,refresh=refresh)
         
+        if mapping is None:
+            mapping = aggregation["mapping"].to_dict()
+        else:
+            assert mapping == aggregation["mapping"].to_dict(), f"mapping changed in {year}"
+
+        result.append(aggregation["elec_total_MW"]+aggregation["elec_dg_MW"])
         # for result in [x for x in aggregation if x.endswith("_MW")]:
         #     labels = {
         #         "elec_total_MW": "Total load (GW)",
@@ -207,3 +216,14 @@ if __name__ == "__main__":
         #         title=f"WECC {year} nodal loads",
         #         )
         #     plt.show()
+
+    result = pd.concat(result)
+    for column in result.columns:
+        if result[column].sum():
+            result[column].plot(
+                title=column,
+                xlabel="Date/Time",
+                ylabel="Net power (MW)",
+                grid=True,
+                )
+            plt.show()
