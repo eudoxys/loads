@@ -72,9 +72,8 @@ def integrate(data,range=None,rename=False):
     -----------
 
     The time-integration of a power dataframe results in an energy value. Use
-    the `rename=True` option to enable renaming the columns to their energy.
-    The index name indicates the date/time range over which the integration was
-    performed.
+    the `rename=True` option to enable renaming the columns to use energy
+    units instead of power units.
     """
 
     # select the data range to process
@@ -110,7 +109,7 @@ def fit_load(x, *,
 
       - `energy`: energy constraint
 
-      - `peak: peak constraint
+      - `peak`: peak constraint
 
       - `precision`: energy error
 
@@ -152,7 +151,7 @@ def fit_load(x, *,
     -------
 
       - It is possible for the fit to have negative values or inverted peaks
-        if the energy and peak constraints are not otherwise feasible.
+        if the energy and peak constraints are not otherwise feasible. You can use the `constraints` to raise an exception or return None when this occurs, making these fits infeasible.
     """
     if constraints is None:
         constraints = []
@@ -281,7 +280,7 @@ class Calibrate(pd.DataFrame):
 
           - `year`: the year for which loads are calibrated
 
-          - 
+          - `refresh`: force refresh of cache
 
         Returns
         -------
@@ -324,7 +323,7 @@ class Calibrate(pd.DataFrame):
         if cls.CACHEDIR :
             Cache.CACHEDIR = cls.CACHEDIR
         result = []
-        for sector in sectors:
+        for sector,specs in sector_specs.items():
             cache = Cache(
                 package="loads",
                 version=0,
@@ -337,7 +336,6 @@ class Calibrate(pd.DataFrame):
             if cache.exists() and not refresh:
                 result.append(pd.read_csv(cache.pathname))
             else:
-                specs = sector_specs[sector]
                 old_energy = 0.0
                 for county in Counties(use_index=["ST"]).loc[state]["COUNTY"]:
                     old_energy += specs[0](state,county,year)["elec_total_MW"].sum()

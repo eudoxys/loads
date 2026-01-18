@@ -21,11 +21,15 @@ References
 import os
 import warnings
 import socket
+import logging
+from typing import Callable
 
 import pandas as pd
 
 from fips import State
 from cache import Cache
+
+_logger = logging.getLogger(__file__)
 
 # pylint: disable=redefined-outer-name
 class Units(float):
@@ -40,6 +44,8 @@ class Units(float):
         state:str,
         county:str=None,
         year:str|int=None,
+        refresh:bool=False,
+        aggregate:Callable=sum
         ):
         """Load housing units from Census Bureau
 
@@ -51,25 +57,38 @@ class Units(float):
           - `county`: county for which to read data (default entire state)
 
           - `year`: year for which to read data (default most recent)
+
+          - `refresh`: force refresh of cache data
+
+          - `aggregate`: function to call when multiple values are found
+            (must return a float)
         """
 
         if cls.CACHEDIR:
             Cache.CACHEDIR = cls.CACHEDIR
-        cache = Cache([state,"units.csv.gz"],package=__package__,version=0)
+        cache = Cache(package="loads",version=0,path=[state,"units.csv.gz"])
 
         data = None
-        if cache.exists():
+        if cache.exists() and not refresh:
             try:
                 data = pd.read_csv(cache.pathname,index_col=[0])
+                _logger.debug(f"{cache=} ok")
             except:
+                data = None
                 cache.delete()
+                _logger.error(f"{cache=} {err}")
+        else:
+            data = None
+            _logger.debug(f"{cache=} (re)generation required")
+
         if data is None:
             info = State(ST=state)
             name = f"CO-EST2024-HU-{info.FIPS}"
             url = f"{cls.SOURCE}/{name}.xlsx"
             old_timeout = socket.getdefaulttimeout()
-            retry = 5
-            while retry > 0:
+            maxretry = 5
+            retry = 0
+            while data is None and retry < maxretry:
                 try:
                     socket.setdefaulttimeout(5)
                     data = pd.read_excel(url,
@@ -79,12 +98,13 @@ class Units(float):
                         index_col=[0],
                         usecols=[0,2,3,4,5,6],
                         ).dropna()
-                    break
+                    _logger.debug(f"{url=} download ok")
                 except socket.timeout:
                     retry -= 1
                 finally:
                     socket.setdefaulttimeout(old_timeout)
-            if retry == 0:
+            if data is None:
+                _logger.debug(f"{url=} download failed after {retry} retries")
                 raise socket.timeout(f"maximum retries exceeded getting {url=}")
             data.to_csv(cache.pathname,
                 index=True,
@@ -104,16 +124,25 @@ class Units(float):
             row = [x for x in data.index if x.startswith(f".{county}")]
 
         result = data.loc[row,year].values
-        if len(result) != 1:
-            warnings.warn(f"Units({state=},{county=},{year=}) "\
-                f"did not result in a single value ({result=})")
-            return float('nan')
+        if len(result) > 1:
+            _logger.warning(f"Units({state=},{county=},{year=}) "\
+                f"result has {len(result)} values ({', '.join(result.astype(str))})"\
+                f"--returning {aggregate.__name__}")
+            return aggregate(result)
+        if len(result) == 0:
+            _logger.debug(f"Units({state=},{county=},{year=}) "\
+                f"has not result ({result=})--returning 0")
+            return 0
         return result[0]
 
 if __name__ == '__main__':
     
+    logging.basicConfig(level=logging.INFO)
+
     from fips.counties import Counties
     counties = Counties(use_index="RO").loc["WECC"].set_index(["ST","COUNTY"]).sort_index()
     
+    data = None
     for state,county in counties.index.values:
-        print(state,county,Units(state,county),flush=True)
+        data = Units(state,county,refresh=data is None)
+        print(state,county,data,flush=True)

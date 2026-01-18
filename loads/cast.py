@@ -265,63 +265,63 @@ if __name__ == '__main__':
         from commercial import Commercial
         from industry import Industry
         from agriculture import Agriculture
+        from total import Total
         from weather import Weather
+        from calibrate import Calibrate
     except ImportError:
         from .commercial import Commercial
         from .residential import Residential
         from .industry import Industry
         from .agriculture import Agriculture
+        from total import Total
         from .weather import Weather
+        from .calibrate import Calibrate
     from fips.counties import Counties
 
     pd.options.display.max_columns = None
     pd.options.display.width = None
 
     if SHOW_PLOTS:
-        plt.rcParams["figure.figsize"] = (40,20)
+        plt.rcParams["figure.figsize"] = (20,10)
         plt.figure()
 
     for STATE,COUNTY in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index:
-        # print("Testing",COUNTY,STATE,"...",flush=True)
+        print(f"{STATE} {COUNTY} {TARGET_YEAR}",end="... ",flush=True)
 
-        buildings = Commercial(state=STATE,county=COUNTY)\
-            + Residential(state=STATE,county=COUNTY)
-        loadshape = pd.DataFrame(
+        # reference loads
+        buildings = Residential(state=STATE,county=COUNTY)
+        buildings += Commercial(state=STATE,county=COUNTY)
+        flatload = pd.DataFrame(
             data=np.ones(len(buildings.index)),
             index=buildings.index,
             )
-        ind_agr = Industry(STATE,COUNTY,loadshape) + Agriculture(STATE,COUNTY,loadshape)
-        for column in buildings.columns:
-            if column not in ind_agr.columns:
-                ind_agr[column] = 0.0
-        test = buildings + ind_agr
+        industry = Industry(STATE,COUNTY,flatload)
+        agriculture = Agriculture(STATE,COUNTY,flatload)
+
+        # reference year cast
+        reference_load = buildings + industry + agriculture
         reference_weather = Weather(STATE,COUNTY)
-        test[reference_weather.columns] = reference_weather
+        reference_load[reference_weather.columns] = reference_weather
+        reference = Cast(reference_load,2018,reference_weather)
 
-        target_weather = reference_weather.copy()
-        if calendar.isleap(TARGET_YEAR):
-            target_weather = pd.concat([target_weather,target_weather.iloc[:24]])
-        target_weather.index = pd.date_range(
-            start=f"{TARGET_YEAR}-01-01 00:00:00+00:00",
-            end=f"{TARGET_YEAR}-12-31 23:59:59+00:00",
-            freq="1h",
-            )
+        # target year cast
+        target = Total(STATE,COUNTY,TARGET_YEAR)
+        target_weather = Weather(STATE,COUNTY,TARGET_YEAR)
+        target[target_weather.columns] = target_weather
 
-        test_ref = Cast(test,2018,reference_weather)
-        test_data = Cast(test,TARGET_YEAR,target_weather)
-
-        diff_pc = (1-test_ref["elec_total_MW"].sum()/test_data["elec_total_MW"].sum())
-        print(f"{STATE} {COUNTY} {TARGET_YEAR}: MWh {diff_pc*100:+.1f}%",flush=True)
+        energy_pc = (target["elec_net_MW"].sum() / reference["elec_net_MW"].sum() -1) * 100
+        power_pc = (target["elec_net_MW"].max() / reference["elec_net_MW"].max() -1) * 100
+        print(f"energy {energy_pc:+.1f}%, peak {power_pc:+.1f}%.",flush=True)
 
         if SHOW_PLOTS:
             plt.clf()
 
             plt.suptitle(f"{COUNTY} {STATE} {TARGET_YEAR}")
             plt.subplot(2,2,1)
-            plt.plot(test_data.index[:len(test_ref)],
-                test_ref.reset_index()["elec_net_MW"],
+            plt.plot(target.index[:len(reference)],
+                reference.reset_index()["elec_net_MW"],
                 label="Reference year")
-            plt.plot(test_data["elec_net_MW"],label="Target year")
+            plt.plot(target["elec_net_MW"],label="Target year")
             plt.xlabel("Hour of year")
             plt.ylabel("Load (MW)")
             plt.title("Load projection")
@@ -329,10 +329,10 @@ if __name__ == '__main__':
             plt.legend()
 
             plt.subplot(2,2,3)
-            plt.plot(test_data.index[:len(test_ref)],
-                test_ref.reset_index()["temperature_degF"],
+            plt.plot(target.index[:len(reference)],
+                reference.reset_index()["temperature_degF"],
                 label="Reference year")
-            plt.plot(test_data["temperature_degF"],label="Target year")
+            plt.plot(target["temperature_degF"],label="Target year")
             plt.xlabel("Hour of year")
             plt.ylabel("Temperature ($^\\circ$F)")
             plt.title("Temperature projection")
@@ -340,12 +340,12 @@ if __name__ == '__main__':
             plt.legend()
 
             plt.subplot(1,2,2)
-            plt.plot(test_ref["temperature_degF"],
-                test_ref["elec_net_MW"],
+            plt.plot(reference["temperature_degF"],
+                reference["elec_net_MW"],
                 '.b',
                 label="Reference year")
-            plt.plot(test_data["temperature_degF"],
-                test_data["elec_net_MW"],
+            plt.plot(target["temperature_degF"],
+                target["elec_net_MW"],
                 '.r',
                 label="Target year")
             plt.xlabel("Temperature ($^\\circ$F)")
@@ -354,4 +354,5 @@ if __name__ == '__main__':
             plt.grid()
             plt.legend()
 
-            plt.show()
+            plt.show(block=False)
+            plt.pause(0.1)

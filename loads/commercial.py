@@ -32,13 +32,14 @@ which outputs the following
 
 import os
 import pandas as pd
-import warnings
+import logging
 
-from fips import States
-from fips import Counties
+from fips import States, Counties
 from loads.floorarea import Floorarea
 from loads.comstock import COMstock
 from cache import Cache
+
+_logger = logging.getLogger(__file__)
 
 class Commercial(pd.DataFrame):
     """Commercial building data frame class
@@ -155,12 +156,18 @@ class Commercial(pd.DataFrame):
 
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
-        cache = Cache([state,county,"C.csv.gz"],package=__package__,version=0)
+        cache = Cache(package="loads",version=0,path=[state,county,"C.csv.gz"])
         if cache.exists() and not refresh:
             try:
                 data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
-            except:
+                _logger.debug(f"{cache=} ok")
+            except Exception as err:
                 data = None
+                cache.delete()
+                _logger.error(f"{cache=} {err}")
+        else:
+            data = None
+            _logger.debug(f"{cache=} (re)generation required")
 
         if data is None:
 
@@ -192,7 +199,7 @@ class Commercial(pd.DataFrame):
                         if btype in split_areas.index:
                             data[kwname] *= floorarea[btype] / total_area * split_areas.loc[btype].FLOORAREA
                         else:
-                            warnings.warn(f"COMstock {county} {state} building type '{btype}' has zero floor area")
+                            _logger.info(f"COMstock {county} {state} building type '{btype}' has zero floor area")
 
                 # consolidate building type data
                 for ctype in collect.keys():
@@ -230,6 +237,8 @@ if __name__ == "__main__":
 
     pd.options.display.width = None
     pd.options.display.max_columns = None
+
+    logging.basicConfig(level=logging.DEBUG)
 
     for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
         print("Processing",state,county,end="...",flush=True)

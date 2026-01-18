@@ -31,13 +31,16 @@ which outputs the following
 """
 
 import os
+import logging
+
 import pandas as pd
 
-from fips import States
-from fips import Counties
+from fips import States, Counties
 from loads.units import Units
 from loads.resstock import RESstock
 from cache import Cache
+
+_logger = logging.getLogger(__file__)
 
 class Residential(pd.DataFrame):
     """Residential building data frame class
@@ -168,16 +171,24 @@ class Residential(pd.DataFrame):
 
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
-        cache = Cache([state,county,"R.csv.gz"],package=__package__,version=0)
+        cache = Cache(package="loads",version=0,path=[state,county,"R.csv.gz"])
 
-        data = None
+        # load data from cache
         if cache.exists() and not refresh:
 
             try:
                 data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
-            except:
+                _logger.debug(f"{cache=} ok")
+            except Exception as err:
                 data = None
-        
+                cache.delete()
+                _logger.error(f"{cache=} {err}")
+
+        else:
+            data = None
+            _logger.debug(f"{cache=} (re)generation required")
+
+        # no data in cache or cache needs to be refreshed
         if data is None:
         
             if collect is None:
@@ -242,7 +253,11 @@ class Residential(pd.DataFrame):
 
 if __name__ == "__main__":
 
+    refresh = True
+
     from fips.counties import Counties
+
+    logging.basicConfig(level=logging.INFO)
 
     pd.options.display.width = None
     pd.options.display.max_columns = None
@@ -250,8 +265,8 @@ if __name__ == "__main__":
     for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
         print("Processing",state,county,end="...",flush=True)
         try:
-            print(pd.DataFrame(Residential(state,county,refresh=True).mean()).T.round(3))
-            print("done")
+            data = pd.DataFrame(Residential(state,county,refresh=refresh).mean()).T.round(3)
+            print("ok")
         except Exception as err:
             print("ERROR:",err)
             raise

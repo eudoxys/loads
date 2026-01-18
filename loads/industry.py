@@ -165,6 +165,7 @@ class Industry(pd.DataFrame):
         state:str=None,
         county:str=None,
         loadshape:pd.DataFrame|dict|None=None,
+        refresh:bool=False,
         ):
         """Construct an industrial load data frame
 
@@ -176,6 +177,8 @@ class Industry(pd.DataFrame):
           - `county`: county (default all counties)
 
           - `loadshape`: load shape to roll out county load
+
+          - `refresh`: refresh cache data
 
         Description
         -----------
@@ -216,12 +219,13 @@ class Industry(pd.DataFrame):
         global CACHE
         if CACHE is None:
             cache = Cache(package="loads",version=0,path=["industry.csv.gz"])
-            if cache.exists():
+            if cache.exists() and not refresh:
                 try:
                     data = pd.read_csv(cache.pathname,low_memory=False)
                     _logger.debug(f"{cache=} ok")
                 except Exception as err:
                     data = None
+                    cache.delete()
                     _logger.debug(f"{cache=} {err}")
             else:
                 data = None
@@ -379,6 +383,7 @@ if __name__ == "__main__":
     last = None
     loads = {}
     for state,county in counties.index.values:
+        
         if state != last:
             if not last is None:
                 # plt.figure(figsize=(20,10))

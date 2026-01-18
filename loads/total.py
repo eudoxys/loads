@@ -31,6 +31,9 @@ which outputs
     [8784 rows x 15 columns]
 
 """
+
+import logging
+
 import pandas as pd
 
 from fips import Counties
@@ -42,6 +45,8 @@ from loads.agriculture import Agriculture
 from loads.cast import Cast
 from loads.calibrate import Calibrate
 
+_logger = logging.getLogger(__file__)
+
 class Total(pd.DataFrame):
     """Total load aggregation class implementation"""
 
@@ -52,7 +57,12 @@ class Total(pd.DataFrame):
         "scale": {},
     }
 
-    def __init__(self,state,county,year):
+    def __init__(self,
+        state:str,
+        county:str,
+        year:int|None=None,
+        refresh:bool=False,
+        ):
         """Total load class constructor
 
         Arguments
@@ -63,24 +73,26 @@ class Total(pd.DataFrame):
           - `county`: county for which to aggregate loads
 
           - `year`: year for which to aggregate loads
+
+          - `refresh`: refresh sector-level cache data
         """
         try:
-            scale = self.cache["cache"][year]
+            scale = self.cache["scale"][(state,year)]
         except KeyError:
             scale = Calibrate.state(state,year=year).to_dict()["scalar"]
-            self.cache["scale"][year] = scale
+            self.cache["scale"][(state,year)] = scale
         
-        data = Cast(Residential(state,county).join(Weather(state,county)),year)
+        data = Cast(Residential(state,county,refresh=refresh).join(Weather(state,county)),year)
         total = Calibrate(data,scale=scale["R"])
         
-        data = Cast(Commercial(state,county).join(Weather(state,county)),year)
+        data = Cast(Commercial(state,county,refresh=refresh).join(Weather(state,county)),year)
         total += Calibrate(data,scale=scale["C"])
         
-        data = Industry(state,county)
+        data = Industry(state,county,refresh=refresh)
         for column in [x for x in total.columns if x.endswith("_MW") and x in data.columns]:
             total[column] += data.column
         
-        data = Agriculture(state,county)
+        data = Agriculture(state,county,refresh=refresh)
         for column in [x for x in total.columns if x.endswith("_MW") and x in data.columns]:
             total[column] += data.column
         
@@ -93,13 +105,19 @@ class Total(pd.DataFrame):
             if x in cls.__init__.__annotations__}
 
 if __name__ == "__main__":
+
+    logging.basicConfig(level=logging.DEBUG)
+
     year = 2020
     total = None
+    refresh = True
+
     for state,county in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY"]].values:
         print(f"Processing {county} {state}",end="... ",flush=True)
+        result = Total(state,county,year,refresh)
         if total is None:
-            total = Total(state,county,year)
+            total = result.copy()
         else:
-            total += Total(state,county,year)
+            total += result
         print(f"WECC peak load now {total.elec_net_MW.max()/1000:.1f} GW")
 

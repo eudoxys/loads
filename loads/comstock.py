@@ -41,13 +41,15 @@ References
 import os
 import datetime as dt
 import urllib
-import warnings
+import logging
 
 import pytz
 import pandas as pd
 
 from fips import County
 from cache import Cache
+
+_logger = logging.getLogger(__file__)
 
 def _float(s,default=0.0):
     try:
@@ -153,52 +155,63 @@ class COMstock(pd.DataFrame):
         file = f"{state}_{building_type}.csv.gz" \
             if county is None \
             else f"{state}_{county}_{building_type}.csv.gz"
+
         if county is None:
+
+            # get whole state data
             url = f"{self.SOURCE}/by_state/state={state.upper()}/{state.lower()}-{btype}.csv"
-            cache = Cache([state,f"{building_type}.csv.gz"],package=__package__,version=0) # whole state data
+            cache = Cache(package="loads",version=0,path=[state,f"{building_type}.csv.gz"]) 
+
         else:
+
+            # get county-level data
             fips = County(ST=state,COUNTY=county).FIPS
             url = f"{self.SOURCE}/by_county/state={state.upper()}/g{fips[:2]}0{fips[2:]}0-{btype}.csv"
-            cache = Cache([state,county,f"{building_type}.csv.gz"],package=__package__,version=0)
+            cache = Cache(package="loads",version=0,path=[state,county,f"{building_type}.csv.gz"])
 
         # check cache
-        data = None
-        maxretry = 5
-        while data is None:
-            if not cache.exists() or refresh:
-
-                # download data to cache
-                try:
-                    data = pd.read_csv(url)
-                except urllib.error.HTTPError as err:
-
-                    # download error (most likely no data in COMstock)
-                    warnings.warn(f"COMstock {county} {state} '{btype}' ({building_type}) data not available ({err})")
-
-                    # create all zeros dataframe
-                    ndx = pd.date_range(
-                        start="2018-01-01 05:00:00+00:00",
-                        end="2019-01-01 04:00:00+00:00",
-                        freq="1h")
-                    zeros = [0.0]*len(ndx)
-                    data = pd.DataFrame(data={x:zeros for x in self.COLUMNS},index=ndx)
-                    data.index.name = "timestamp"
-                    data.reset_index(inplace=True)
-                    data["floor_area_represented"] = 0.0
-
-                data.to_csv(cache.pathname,compression="gzip" if cache.pathname.endswith(".gz") else None)
-
-            # load data from cache
+        if cache.exists() and not refresh:
             try:
                 data = pd.read_csv(cache.pathname,dtype=str,na_filter=False,low_memory=False)
-            except:
+                _logger.debug(f"{cache=} ok")
+            except Exception as err:
+                _logger.error(f"{cache=} {err}")
                 cache.delete()
-                maxretry -= 1
-                if maxretry == 0:
-                    raise RuntimeError(f"'{cache.pathname}' read error retry limit reached")
                 data = None
+        else:
+            _logger.debug(f"{cache=} (re)generation required")
+            data = None
+
+        # download if needed
+        maxretry = 5
+        retry = 0
+        while data is None and retry < maxretry:
+
+            # download data to cache
+            try:
+                data = pd.read_csv(url)
+                data.to_csv(cache.pathname,compression="gzip" if cache.pathname.endswith(".gz") else None)
+                _logger.debug(f"{url=} download ok")
+            except urllib.error.HTTPError as err:
+                data = None
+                retry += 1
+
+        if retry >= maxretry:
+            # download error (most likely no data in COMstock)
+            _logger.error(f"COMstock {county} {state} '{btype}' ({building_type}) data not available ({err}) after {retry} download attempts")            
+
         if data is None:
-            raise RuntimeError(f"{state} {county} {building_type} data load failed after 5 retries")
+
+            # create all zeros dataframe
+            ndx = pd.date_range(
+                start="2018-01-01 05:00:00+00:00",
+                end="2019-01-01 04:00:00+00:00",
+                freq="1h")
+            zeros = [0.0]*len(ndx)
+            data = pd.DataFrame(data={x:zeros for x in self.COLUMNS},index=ndx)
+            data.index.name = "timestamp"
+            data.reset_index(inplace=True)
+            data["floor_area_represented"] = 0.0
 
         # restructure index
         data.set_index(["timestamp"],inplace=True)
@@ -208,10 +221,10 @@ class COMstock(pd.DataFrame):
         # capture number floor_area
         floor_area = data["floor_area_represented"].astype(float)
         if floor_area.min() != floor_area.max():
-            warnings.warn(f"{state=} {county=} floor area changes (using max)")
+            _logger.debug(f"{state=} {county=} floor area changes (using max)")
         floor_area = floor_area.max()
         if floor_area == 0.0:
-            warnings.warn(f"{state} {county} {building_type} has no floor area")
+            _logger.info(f"{state} {county} {building_type} has no floor area")
 
         # restructure data
         data.drop([x for x in data.columns if x not in self.COLUMNS],inplace=True,axis=1)
@@ -241,6 +254,8 @@ if __name__ == "__main__":
 
     pd.options.display.width = None
     pd.options.display.max_columns = None
+
+    logging.basicConfig(level=logging.DEBUG)
 
     for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
         print("Processing",state,county,end="...",flush=True)

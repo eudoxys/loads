@@ -107,10 +107,12 @@ class Agriculture(pd.DataFrame):
                     _logger.debug(f"{cache=} ok")
                 except Exception as err:
                     data = None
+                    cache.delete()
                     _logger.error(f"{cache=} {err}")
             else:
                 data = None
                 _logger.debug(f"{cache=} (re)generation required")
+            
             if data is None:
                 try:
                     data = pd.read_csv(self.SOURCE,
