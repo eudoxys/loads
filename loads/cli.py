@@ -77,13 +77,14 @@ import matplotlib.pyplot as plt
 # pylint: disable=unused-import
 from weather import Weather
 
-from loads.resstock import RESstock
-from loads.residential import Residential
-from loads.comstock import COMstock
-from loads.commercial import Commercial
-from loads.industry import Industry
 from loads.agriculture import Agriculture
 from loads.cast import Cast
+from loads.commercial import Commercial
+from loads.comstock import COMstock
+from loads.industry import Industry
+from loads.residential import Residential
+from loads.resstock import RESstock
+from loads.total import Total
 
 E_OK = 0
 """Exit code on success"""
@@ -129,7 +130,8 @@ def main(*args:list[str],**kwargs:dict[str,str]) -> int:
         parser.add_argument("-S","--state")
         parser.add_argument("-C","--county")
         parser.add_argument("-D","--dataset",
-            choices=["residential","commercial","industrial","agricultural","weather"]
+            choices=["residential","commercial","industrial","agricultural","weather","total"],
+            default="total"
             )
         parser.add_argument("-Y","--year",
             type=int,
@@ -240,6 +242,10 @@ def _getdata(args):
             kwargs = Weather.makeargs(**vars(args))
             data = Weather(**kwargs)
 
+        case "total":
+            kwargs = Total.makeargs(**vars(args))
+            data = Total(**kwargs)
+
         case None:
             data = None
             for source in [Residential,Commercial,Industry,Agriculture]:
@@ -324,4 +330,4 @@ def _plot(args,data):
 
 if __name__ == "__main__":
 
-    main("plot","-d",state="CA",county="Alameda",year=2020,output="/tmp/test.png")
+    main("plot","-d",state="CA",county="Alameda",year=2020,dataset="total",output="/tmp/test.png")
