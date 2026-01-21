@@ -107,4 +107,5 @@ Outputs
   processing of this large amount of data can be very time-consuming.
 
 - Some COMstock and RESstock building types have no data in some counties. In
-  such cases, a warning is output and a zero dataframe is constructed.
+  such cases, zero loads are provided. If logging is set to `DEBUG` a message
+  is output.
