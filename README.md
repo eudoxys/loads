@@ -10,6 +10,28 @@ See https://www.eudoxys.com/loads
 
     pip install git+https://github.com/eudoxys/loads
 
+# Maintenance
+
+## Update docs
+
+To update the documentation run the command
+
+    make docs
+
+## Cache Build
+
+To rebuild the cache run the command
+
+    make cache
+
+To save the cache run the command
+
+    cache backup -f filename.tar.gz
+
+To restore the cache run the command
+
+    cache resetore -f filename.tar.gz
+
 # Examples
 
 ## Command line
