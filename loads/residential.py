@@ -397,4 +397,4 @@ if __name__ == "__main__":
             Residential(state,county,refresh=refresh)
             _logger.debug(f"{state} {county} ok")
         except Exception as err:
-            (_logger.exception if debug else _logger.error)f"{state} {county} {err}")
+            (_logger.exception if debug else _logger.error)(f"{state} {county} {err}")
