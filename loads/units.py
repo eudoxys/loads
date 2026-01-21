@@ -136,7 +136,10 @@ class Units(float):
         return result[0]
 
 if __name__ == '__main__':
-    
+    """Main script
+
+    The main script refreshes the cache with debugging enabled.
+    """
     logging.basicConfig(level=logging.INFO)
 
     from fips.counties import Counties

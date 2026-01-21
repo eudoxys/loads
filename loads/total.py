@@ -105,10 +105,14 @@ class Total(pd.DataFrame):
             if x in cls.__init__.__annotations__}
 
 if __name__ == "__main__":
+    """Main script
 
+    The main script refreshes the cache with debugging enabled.
+    """
     import sys
     refresh = "--refresh" in sys.argv
-    logging.basicConfig(level=logging.DEBUG if "--debug" in sys.argv else logging.INFO)
+    debug = "--debug" in sys.argv
+    logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
     
     for state,county in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY"]].values:
         for year in range(2018,2023):
@@ -116,5 +120,5 @@ if __name__ == "__main__":
                 Total(state,county,year,refresh=refresh)
                 _logger.debug(f"{state} {county} {year} ok")
             except Exception as err:
-                _logger.error(f"{state} {county} {year} {err}")
+                (_logger.exception if debug else _logger.error)(f"{state} {county} {year} {err}")
 

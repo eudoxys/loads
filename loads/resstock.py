@@ -231,7 +231,7 @@ class RESstock(pd.DataFrame):
             zeros = [0.0]*len(ndx)
             data = pd.DataFrame(data={x:zeros for x in self.COLUMNS},index=ndx)
             data.index.name = "timestamp"
-            data["floor_area_represented"] = floor_area = 0.0
+            data["units_represented"] = units = 0.0
 
         else:
             # restructure index
@@ -270,10 +270,14 @@ class RESstock(pd.DataFrame):
             if x in cls.__init__.__annotations__}
 
 if __name__ == "__main__":
+    """RESstock main script
 
+    The main script refreshes the cache with debugging enabled.
+    """
     import sys
     refresh = "--refresh" in sys.argv
-    logging.basicConfig(level=logging.DEBUG if "--debug" in sys.argv else logging.INFO)
+    debug = "--debug" in sys.argv
+    logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
 
     from fips.counties import Counties
 
@@ -285,4 +289,4 @@ if __name__ == "__main__":
                 RESstock(state,county,building_type=btype,refresh=refresh)
                 _logger.debug(f"{state} {county} {btype} ok")
             except Exception as err:
-                _logger.error(f"{state} {county} {btype}: {err}")
+                (_logger.exception if debug else _logger.error)(f"{state} {county} {btype}: {err}")

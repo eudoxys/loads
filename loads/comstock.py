@@ -254,10 +254,14 @@ class COMstock(pd.DataFrame):
             if x in cls.__init__.__annotations__}
 
 if __name__ == "__main__":
+    """Main script
 
+    The main script refreshes the cache with debugging enabled.
+    """
     import sys
     refresh = "--refresh" in sys.argv
-    logging.basicConfig(level=logging.DEBUG if "--debug" in sys.argv else logging.INFO)
+    debug = "--debug" in sys.argv
+    logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
 
     import sys
     from fips.counties import Counties
@@ -268,4 +272,4 @@ if __name__ == "__main__":
                 COMstock(state,county,building_type=btype,refresh=refresh)
                 _logger.debug(f"{state} {county} {btype} ok")
             except Exception as err:
-                _logger.error(f"{state} {county} {btype}: {err}")
+                (_logger.exception if debug else _logger.error)(f"{state} {county} {btype}: {err}")
