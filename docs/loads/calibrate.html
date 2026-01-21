@@ -96,6 +96,9 @@
                                 <a class="variable" href="#Calibrate.DATETIME_FORMAT">DATETIME_FORMAT</a>
                         </li>
                         <li>
+                                <a class="variable" href="#Calibrate.CACHE">CACHE</a>
+                        </li>
+                        <li>
                                 <a class="function" href="#Calibrate.state">state</a>
                         </li>
                 </ul>
@@ -422,62 +425,62 @@ $$</p>
 </span><span id="L-262"><a href="#L-262"><span class="linenos">262</span></a>
 </span><span id="L-263"><a href="#L-263"><span class="linenos">263</span></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">data</span><span class="o">*</span><span class="n">scale</span><span class="o">+</span><span class="n">offset</span><span class="p">)</span>
 </span><span id="L-264"><a href="#L-264"><span class="linenos">264</span></a>
-</span><span id="L-265"><a href="#L-265"><span class="linenos">265</span></a>    <span class="nd">@classmethod</span>
-</span><span id="L-266"><a href="#L-266"><span class="linenos">266</span></a>    <span class="k">def</span><span class="w"> </span><span class="nf">state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span>
-</span><span id="L-267"><a href="#L-267"><span class="linenos">267</span></a>        <span class="n">state</span><span class="p">:</span><span class="nb">str</span><span class="p">,</span>
-</span><span id="L-268"><a href="#L-268"><span class="linenos">268</span></a>        <span class="n">sectors</span><span class="p">:</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span><span class="o">|</span><span class="kc">None</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-</span><span id="L-269"><a href="#L-269"><span class="linenos">269</span></a>        <span class="n">year</span><span class="p">:</span><span class="nb">int</span><span class="o">|</span><span class="kc">None</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-</span><span id="L-270"><a href="#L-270"><span class="linenos">270</span></a>        <span class="n">refresh</span><span class="p">:</span><span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-</span><span id="L-271"><a href="#L-271"><span class="linenos">271</span></a>        <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-</span><span id="L-272"><a href="#L-272"><span class="linenos">272</span></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute state load calibration values</span>
-</span><span id="L-273"><a href="#L-273"><span class="linenos">273</span></a>
-</span><span id="L-274"><a href="#L-274"><span class="linenos">274</span></a><span class="sd">        Arguments</span>
-</span><span id="L-275"><a href="#L-275"><span class="linenos">275</span></a><span class="sd">        ---------</span>
-</span><span id="L-276"><a href="#L-276"><span class="linenos">276</span></a>
-</span><span id="L-277"><a href="#L-277"><span class="linenos">277</span></a><span class="sd">          - `state`: state for which to compute calibrations</span>
-</span><span id="L-278"><a href="#L-278"><span class="linenos">278</span></a>
-</span><span id="L-279"><a href="#L-279"><span class="linenos">279</span></a><span class="sd">          - `sectors`: list of sector for which calibrations are desired</span>
-</span><span id="L-280"><a href="#L-280"><span class="linenos">280</span></a>
-</span><span id="L-281"><a href="#L-281"><span class="linenos">281</span></a><span class="sd">          - `year`: the year for which loads are calibrated</span>
-</span><span id="L-282"><a href="#L-282"><span class="linenos">282</span></a>
-</span><span id="L-283"><a href="#L-283"><span class="linenos">283</span></a><span class="sd">          - `refresh`: force refresh of cache</span>
-</span><span id="L-284"><a href="#L-284"><span class="linenos">284</span></a>
-</span><span id="L-285"><a href="#L-285"><span class="linenos">285</span></a><span class="sd">        Returns</span>
-</span><span id="L-286"><a href="#L-286"><span class="linenos">286</span></a><span class="sd">        -------</span>
-</span><span id="L-287"><a href="#L-287"><span class="linenos">287</span></a>
-</span><span id="L-288"><a href="#L-288"><span class="linenos">288</span></a><span class="sd">          - `pd.DataFrame`: data frame contain sector calibration factor</span>
-</span><span id="L-289"><a href="#L-289"><span class="linenos">289</span></a>
-</span><span id="L-290"><a href="#L-290"><span class="linenos">290</span></a><span class="sd">        Description</span>
-</span><span id="L-291"><a href="#L-291"><span class="linenos">291</span></a><span class="sd">        -----------</span>
-</span><span id="L-292"><a href="#L-292"><span class="linenos">292</span></a>
-</span><span id="L-293"><a href="#L-293"><span class="linenos">293</span></a><span class="sd">        The residential and commercial load data is obtained from the NLR</span>
-</span><span id="L-294"><a href="#L-294"><span class="linenos">294</span></a><span class="sd">        RESstock and COMstock data repositories. These data set have not been</span>
-</span><span id="L-295"><a href="#L-295"><span class="linenos">295</span></a><span class="sd">        calibrated against the state-level EIA energy use. The</span>
-</span><span id="L-296"><a href="#L-296"><span class="linenos">296</span></a><span class="sd">        `loads.calibrate.Calibrate.state` function is used to obtain the</span>
-</span><span id="L-297"><a href="#L-297"><span class="linenos">297</span></a><span class="sd">        state-level calibrations for any given year available from EIA. See</span>
-</span><span id="L-298"><a href="#L-298"><span class="linenos">298</span></a><span class="sd">        `eia.hs860m.HS860m` for details.</span>
-</span><span id="L-299"><a href="#L-299"><span class="linenos">299</span></a>
-</span><span id="L-300"><a href="#L-300"><span class="linenos">300</span></a><span class="sd">        Caveats</span>
-</span><span id="L-301"><a href="#L-301"><span class="linenos">301</span></a><span class="sd">        -------</span>
-</span><span id="L-302"><a href="#L-302"><span class="linenos">302</span></a>
-</span><span id="L-303"><a href="#L-303"><span class="linenos">303</span></a><span class="sd">        - The methodology requires that all the loads for each county in the</span>
-</span><span id="L-304"><a href="#L-304"><span class="linenos">304</span></a><span class="sd">          state be loaded before any scalars can be computed. This can take a</span>
-</span><span id="L-305"><a href="#L-305"><span class="linenos">305</span></a><span class="sd">          long time to complete states with many counties, e.g., Texas.</span>
-</span><span id="L-306"><a href="#L-306"><span class="linenos">306</span></a>
-</span><span id="L-307"><a href="#L-307"><span class="linenos">307</span></a><span class="sd">        - Only residential (`&#39;R&#39;`) and commercial (`&#39;C&#39;`) load calibations can</span>
-</span><span id="L-308"><a href="#L-308"><span class="linenos">308</span></a><span class="sd">          be computed. Industry (`&#39;I&#39;`) and agriculture (`&#39;A&#39;`) come from EIA</span>
-</span><span id="L-309"><a href="#L-309"><span class="linenos">309</span></a><span class="sd">          sources at the state-level and cannot be independently recalibrated</span>
-</span><span id="L-310"><a href="#L-310"><span class="linenos">310</span></a><span class="sd">          at the county level. </span>
-</span><span id="L-311"><a href="#L-311"><span class="linenos">311</span></a>
-</span><span id="L-312"><a href="#L-312"><span class="linenos">312</span></a><span class="sd">        - Transportation is not included in the load model at this time, despite</span>
-</span><span id="L-313"><a href="#L-313"><span class="linenos">313</span></a><span class="sd">          the availability of state-level transportation energy consumption.</span>
-</span><span id="L-314"><a href="#L-314"><span class="linenos">314</span></a><span class="sd">        &quot;&quot;&quot;</span>
-</span><span id="L-315"><a href="#L-315"><span class="linenos">315</span></a>        <span class="n">sector_specs</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="L-316"><a href="#L-316"><span class="linenos">316</span></a>            <span class="s2">&quot;R&quot;</span><span class="p">:(</span><span class="n">Residential</span><span class="p">,</span><span class="s2">&quot;res_energy_mwh&quot;</span><span class="p">),</span>
-</span><span id="L-317"><a href="#L-317"><span class="linenos">317</span></a>            <span class="s2">&quot;C&quot;</span><span class="p">:(</span><span class="n">Commercial</span><span class="p">,</span><span class="s2">&quot;com_energy_mwh&quot;</span><span class="p">),</span>
-</span><span id="L-318"><a href="#L-318"><span class="linenos">318</span></a>        <span class="p">}</span>
-</span><span id="L-319"><a href="#L-319"><span class="linenos">319</span></a>        <span class="k">if</span> <span class="n">sectors</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="L-320"><a href="#L-320"><span class="linenos">320</span></a>            <span class="n">sectors</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">sector_specs</span><span class="p">)</span>
+</span><span id="L-265"><a href="#L-265"><span class="linenos">265</span></a>    <span class="n">CACHE</span> <span class="o">=</span> <span class="p">{}</span>
+</span><span id="L-266"><a href="#L-266"><span class="linenos">266</span></a>
+</span><span id="L-267"><a href="#L-267"><span class="linenos">267</span></a>    <span class="nd">@classmethod</span>
+</span><span id="L-268"><a href="#L-268"><span class="linenos">268</span></a>    <span class="k">def</span><span class="w"> </span><span class="nf">state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span>
+</span><span id="L-269"><a href="#L-269"><span class="linenos">269</span></a>        <span class="n">state</span><span class="p">:</span><span class="nb">str</span><span class="p">,</span>
+</span><span id="L-270"><a href="#L-270"><span class="linenos">270</span></a>        <span class="n">year</span><span class="p">:</span><span class="nb">int</span><span class="o">|</span><span class="kc">None</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+</span><span id="L-271"><a href="#L-271"><span class="linenos">271</span></a>        <span class="n">refresh</span><span class="p">:</span><span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+</span><span id="L-272"><a href="#L-272"><span class="linenos">272</span></a>        <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+</span><span id="L-273"><a href="#L-273"><span class="linenos">273</span></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute state load calibration values</span>
+</span><span id="L-274"><a href="#L-274"><span class="linenos">274</span></a>
+</span><span id="L-275"><a href="#L-275"><span class="linenos">275</span></a><span class="sd">        Arguments</span>
+</span><span id="L-276"><a href="#L-276"><span class="linenos">276</span></a><span class="sd">        ---------</span>
+</span><span id="L-277"><a href="#L-277"><span class="linenos">277</span></a>
+</span><span id="L-278"><a href="#L-278"><span class="linenos">278</span></a><span class="sd">          - `state`: state for which to compute calibrations</span>
+</span><span id="L-279"><a href="#L-279"><span class="linenos">279</span></a>
+</span><span id="L-280"><a href="#L-280"><span class="linenos">280</span></a><span class="sd">          - `year`: the year for which loads are calibrated</span>
+</span><span id="L-281"><a href="#L-281"><span class="linenos">281</span></a>
+</span><span id="L-282"><a href="#L-282"><span class="linenos">282</span></a><span class="sd">          - `refresh`: force refresh of cache</span>
+</span><span id="L-283"><a href="#L-283"><span class="linenos">283</span></a>
+</span><span id="L-284"><a href="#L-284"><span class="linenos">284</span></a><span class="sd">        Returns</span>
+</span><span id="L-285"><a href="#L-285"><span class="linenos">285</span></a><span class="sd">        -------</span>
+</span><span id="L-286"><a href="#L-286"><span class="linenos">286</span></a>
+</span><span id="L-287"><a href="#L-287"><span class="linenos">287</span></a><span class="sd">          - `pd.DataFrame`: data frame contain sector calibration factor</span>
+</span><span id="L-288"><a href="#L-288"><span class="linenos">288</span></a>
+</span><span id="L-289"><a href="#L-289"><span class="linenos">289</span></a><span class="sd">        Description</span>
+</span><span id="L-290"><a href="#L-290"><span class="linenos">290</span></a><span class="sd">        -----------</span>
+</span><span id="L-291"><a href="#L-291"><span class="linenos">291</span></a>
+</span><span id="L-292"><a href="#L-292"><span class="linenos">292</span></a><span class="sd">        The residential and commercial load data is obtained from the NLR</span>
+</span><span id="L-293"><a href="#L-293"><span class="linenos">293</span></a><span class="sd">        RESstock and COMstock data repositories. These data set have not been</span>
+</span><span id="L-294"><a href="#L-294"><span class="linenos">294</span></a><span class="sd">        calibrated against the state-level EIA energy use. The</span>
+</span><span id="L-295"><a href="#L-295"><span class="linenos">295</span></a><span class="sd">        `loads.calibrate.Calibrate.state` function is used to obtain the</span>
+</span><span id="L-296"><a href="#L-296"><span class="linenos">296</span></a><span class="sd">        state-level calibrations for any given year available from EIA. See</span>
+</span><span id="L-297"><a href="#L-297"><span class="linenos">297</span></a><span class="sd">        `eia.hs860m.HS860m` for details.</span>
+</span><span id="L-298"><a href="#L-298"><span class="linenos">298</span></a>
+</span><span id="L-299"><a href="#L-299"><span class="linenos">299</span></a><span class="sd">        Caveats</span>
+</span><span id="L-300"><a href="#L-300"><span class="linenos">300</span></a><span class="sd">        -------</span>
+</span><span id="L-301"><a href="#L-301"><span class="linenos">301</span></a>
+</span><span id="L-302"><a href="#L-302"><span class="linenos">302</span></a><span class="sd">        - The methodology requires that all the loads for each county in the</span>
+</span><span id="L-303"><a href="#L-303"><span class="linenos">303</span></a><span class="sd">          state be loaded before any scalars can be computed. This can take a</span>
+</span><span id="L-304"><a href="#L-304"><span class="linenos">304</span></a><span class="sd">          long time to complete states with many counties, e.g., Texas.</span>
+</span><span id="L-305"><a href="#L-305"><span class="linenos">305</span></a>
+</span><span id="L-306"><a href="#L-306"><span class="linenos">306</span></a><span class="sd">        - Only residential (`&#39;R&#39;`) and commercial (`&#39;C&#39;`) load calibations can</span>
+</span><span id="L-307"><a href="#L-307"><span class="linenos">307</span></a><span class="sd">          be computed. Industry (`&#39;I&#39;`) and agriculture (`&#39;A&#39;`) come from EIA</span>
+</span><span id="L-308"><a href="#L-308"><span class="linenos">308</span></a><span class="sd">          sources at the state-level and cannot be independently recalibrated</span>
+</span><span id="L-309"><a href="#L-309"><span class="linenos">309</span></a><span class="sd">          at the county level. </span>
+</span><span id="L-310"><a href="#L-310"><span class="linenos">310</span></a>
+</span><span id="L-311"><a href="#L-311"><span class="linenos">311</span></a><span class="sd">        - Transportation is not included in the load model at this time, despite</span>
+</span><span id="L-312"><a href="#L-312"><span class="linenos">312</span></a><span class="sd">          the availability of state-level transportation energy consumption.</span>
+</span><span id="L-313"><a href="#L-313"><span class="linenos">313</span></a><span class="sd">        &quot;&quot;&quot;</span>
+</span><span id="L-314"><a href="#L-314"><span class="linenos">314</span></a>        <span class="k">if</span> <span class="n">state</span> <span class="ow">in</span> <span class="bp">cls</span><span class="o">.</span><span class="n">CACHE</span><span class="p">:</span>
+</span><span id="L-315"><a href="#L-315"><span class="linenos">315</span></a>            <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">CACHE</span><span class="p">[</span><span class="n">state</span><span class="p">]</span>
+</span><span id="L-316"><a href="#L-316"><span class="linenos">316</span></a>
+</span><span id="L-317"><a href="#L-317"><span class="linenos">317</span></a>        <span class="n">sector_specs</span> <span class="o">=</span> <span class="p">{</span>
+</span><span id="L-318"><a href="#L-318"><span class="linenos">318</span></a>            <span class="s2">&quot;R&quot;</span><span class="p">:(</span><span class="n">Residential</span><span class="p">,</span><span class="s2">&quot;res_energy_mwh&quot;</span><span class="p">),</span>
+</span><span id="L-319"><a href="#L-319"><span class="linenos">319</span></a>            <span class="s2">&quot;C&quot;</span><span class="p">:(</span><span class="n">Commercial</span><span class="p">,</span><span class="s2">&quot;com_energy_mwh&quot;</span><span class="p">),</span>
+</span><span id="L-320"><a href="#L-320"><span class="linenos">320</span></a>        <span class="p">}</span>
 </span><span id="L-321"><a href="#L-321"><span class="linenos">321</span></a>
 </span><span id="L-322"><a href="#L-322"><span class="linenos">322</span></a>        <span class="c1"># set cache location</span>
 </span><span id="L-323"><a href="#L-323"><span class="linenos">323</span></a>        <span class="k">if</span> <span class="bp">cls</span><span class="o">.</span><span class="n">CACHEDIR</span> <span class="p">:</span>
@@ -509,26 +512,27 @@ $$</p>
 </span><span id="L-349"><a href="#L-349"><span class="linenos">349</span></a>                    <span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">)]))</span>
 </span><span id="L-350"><a href="#L-350"><span class="linenos">350</span></a>                <span class="n">result</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">cache</span><span class="o">.</span><span class="n">pathname</span><span class="p">,</span><span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span><span class="n">header</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span><span id="L-351"><a href="#L-351"><span class="linenos">351</span></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
-</span><span id="L-352"><a href="#L-352"><span class="linenos">352</span></a>        <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;state&quot;</span><span class="p">,</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">set_index</span><span class="p">([</span><span class="s2">&quot;sector&quot;</span><span class="p">])</span>
-</span><span id="L-353"><a href="#L-353"><span class="linenos">353</span></a>
-</span><span id="L-354"><a href="#L-354"><span class="linenos">354</span></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
-</span><span id="L-355"><a href="#L-355"><span class="linenos">355</span></a>    
-</span><span id="L-356"><a href="#L-356"><span class="linenos">356</span></a>    <span class="n">pd</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">display</span><span class="o">.</span><span class="n">max_columns</span> <span class="o">=</span> <span class="kc">None</span>
-</span><span id="L-357"><a href="#L-357"><span class="linenos">357</span></a>    <span class="n">pd</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">display</span><span class="o">.</span><span class="n">width</span> <span class="o">=</span> <span class="kc">None</span>
-</span><span id="L-358"><a href="#L-358"><span class="linenos">358</span></a>
-</span><span id="L-359"><a href="#L-359"><span class="linenos">359</span></a>    <span class="n">refresh</span> <span class="o">=</span> <span class="kc">False</span>
-</span><span id="L-360"><a href="#L-360"><span class="linenos">360</span></a>    <span class="n">states</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">Counties</span><span class="p">(</span><span class="n">use_index</span><span class="o">=</span><span class="s2">&quot;SYSTEM&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;WECC&quot;</span><span class="p">][</span><span class="s2">&quot;ST&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">())</span>
-</span><span id="L-361"><a href="#L-361"><span class="linenos">361</span></a>    <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
-</span><span id="L-362"><a href="#L-362"><span class="linenos">362</span></a>    <span class="k">for</span> <span class="n">year</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2018</span><span class="p">,</span><span class="mi">2023</span><span class="p">):</span>
-</span><span id="L-363"><a href="#L-363"><span class="linenos">363</span></a>        <span class="k">for</span> <span class="n">state</span> <span class="ow">in</span> <span class="n">states</span><span class="p">:</span>
-</span><span id="L-364"><a href="#L-364"><span class="linenos">364</span></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Processing&quot;</span><span class="p">,</span><span class="n">year</span><span class="p">,</span><span class="n">state</span><span class="p">,</span><span class="n">end</span><span class="o">=</span><span class="s2">&quot;...&quot;</span><span class="p">,</span><span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span><span id="L-365"><a href="#L-365"><span class="linenos">365</span></a>            <span class="n">data</span> <span class="o">=</span> <span class="n">Calibrate</span><span class="o">.</span><span class="n">state</span><span class="p">(</span><span class="n">state</span><span class="p">,</span><span class="n">year</span><span class="o">=</span><span class="n">year</span><span class="p">,</span><span class="n">refresh</span><span class="o">=</span><span class="n">refresh</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">()</span>
-</span><span id="L-366"><a href="#L-366"><span class="linenos">366</span></a>            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;state&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">state</span>
-</span><span id="L-367"><a href="#L-367"><span class="linenos">367</span></a>            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;year&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">year</span>
-</span><span id="L-368"><a href="#L-368"><span class="linenos">368</span></a>            <span class="n">data</span><span class="o">.</span><span class="n">set_index</span><span class="p">([</span><span class="s2">&quot;year&quot;</span><span class="p">,</span><span class="s2">&quot;state&quot;</span><span class="p">,</span><span class="s2">&quot;sector&quot;</span><span class="p">],</span><span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span><span id="L-369"><a href="#L-369"><span class="linenos">369</span></a>            <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">unstack</span><span class="p">())</span>
-</span><span id="L-370"><a href="#L-370"><span class="linenos">370</span></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;ok&quot;</span><span class="p">)</span>
-</span><span id="L-371"><a href="#L-371"><span class="linenos">371</span></a>    <span class="nb">print</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">result</span><span class="p">))</span>
+</span><span id="L-352"><a href="#L-352"><span class="linenos">352</span></a>        <span class="bp">cls</span><span class="o">.</span><span class="n">CACHE</span><span class="p">[</span><span class="n">state</span><span class="p">]</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;state&quot;</span><span class="p">,</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">set_index</span><span class="p">([</span><span class="s2">&quot;sector&quot;</span><span class="p">])</span>
+</span><span id="L-353"><a href="#L-353"><span class="linenos">353</span></a>        <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">CACHE</span><span class="p">[</span><span class="n">state</span><span class="p">]</span>
+</span><span id="L-354"><a href="#L-354"><span class="linenos">354</span></a>
+</span><span id="L-355"><a href="#L-355"><span class="linenos">355</span></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+</span><span id="L-356"><a href="#L-356"><span class="linenos">356</span></a>    
+</span><span id="L-357"><a href="#L-357"><span class="linenos">357</span></a>    <span class="n">pd</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">display</span><span class="o">.</span><span class="n">max_columns</span> <span class="o">=</span> <span class="kc">None</span>
+</span><span id="L-358"><a href="#L-358"><span class="linenos">358</span></a>    <span class="n">pd</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">display</span><span class="o">.</span><span class="n">width</span> <span class="o">=</span> <span class="kc">None</span>
+</span><span id="L-359"><a href="#L-359"><span class="linenos">359</span></a>
+</span><span id="L-360"><a href="#L-360"><span class="linenos">360</span></a>    <span class="n">refresh</span> <span class="o">=</span> <span class="kc">False</span>
+</span><span id="L-361"><a href="#L-361"><span class="linenos">361</span></a>    <span class="n">states</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">Counties</span><span class="p">(</span><span class="n">use_index</span><span class="o">=</span><span class="s2">&quot;SYSTEM&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;WECC&quot;</span><span class="p">][</span><span class="s2">&quot;ST&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">())</span>
+</span><span id="L-362"><a href="#L-362"><span class="linenos">362</span></a>    <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
+</span><span id="L-363"><a href="#L-363"><span class="linenos">363</span></a>    <span class="k">for</span> <span class="n">year</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2018</span><span class="p">,</span><span class="mi">2023</span><span class="p">):</span>
+</span><span id="L-364"><a href="#L-364"><span class="linenos">364</span></a>        <span class="k">for</span> <span class="n">state</span> <span class="ow">in</span> <span class="n">states</span><span class="p">:</span>
+</span><span id="L-365"><a href="#L-365"><span class="linenos">365</span></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Processing&quot;</span><span class="p">,</span><span class="n">year</span><span class="p">,</span><span class="n">state</span><span class="p">,</span><span class="n">end</span><span class="o">=</span><span class="s2">&quot;...&quot;</span><span class="p">,</span><span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="L-366"><a href="#L-366"><span class="linenos">366</span></a>            <span class="n">data</span> <span class="o">=</span> <span class="n">Calibrate</span><span class="o">.</span><span class="n">state</span><span class="p">(</span><span class="n">state</span><span class="p">,</span><span class="n">year</span><span class="o">=</span><span class="n">year</span><span class="p">,</span><span class="n">refresh</span><span class="o">=</span><span class="n">refresh</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">()</span>
+</span><span id="L-367"><a href="#L-367"><span class="linenos">367</span></a>            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;state&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">state</span>
+</span><span id="L-368"><a href="#L-368"><span class="linenos">368</span></a>            <span class="n">data</span><span class="p">[</span><span class="s2">&quot;year&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">year</span>
+</span><span id="L-369"><a href="#L-369"><span class="linenos">369</span></a>            <span class="n">data</span><span class="o">.</span><span class="n">set_index</span><span class="p">([</span><span class="s2">&quot;year&quot;</span><span class="p">,</span><span class="s2">&quot;state&quot;</span><span class="p">,</span><span class="s2">&quot;sector&quot;</span><span class="p">],</span><span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="L-370"><a href="#L-370"><span class="linenos">370</span></a>            <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">unstack</span><span class="p">())</span>
+</span><span id="L-371"><a href="#L-371"><span class="linenos">371</span></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;ok&quot;</span><span class="p">)</span>
+</span><span id="L-372"><a href="#L-372"><span class="linenos">372</span></a>    <span class="nb">print</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">result</span><span class="p">))</span>
 </span></pre></div>
 
 
@@ -860,62 +864,62 @@ if the energy and peak constraints are not otherwise feasible. You can use the <
 </span><span id="Calibrate-263"><a href="#Calibrate-263"><span class="linenos">263</span></a>
 </span><span id="Calibrate-264"><a href="#Calibrate-264"><span class="linenos">264</span></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">data</span><span class="o">*</span><span class="n">scale</span><span class="o">+</span><span class="n">offset</span><span class="p">)</span>
 </span><span id="Calibrate-265"><a href="#Calibrate-265"><span class="linenos">265</span></a>
-</span><span id="Calibrate-266"><a href="#Calibrate-266"><span class="linenos">266</span></a>    <span class="nd">@classmethod</span>
-</span><span id="Calibrate-267"><a href="#Calibrate-267"><span class="linenos">267</span></a>    <span class="k">def</span><span class="w"> </span><span class="nf">state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span>
-</span><span id="Calibrate-268"><a href="#Calibrate-268"><span class="linenos">268</span></a>        <span class="n">state</span><span class="p">:</span><span class="nb">str</span><span class="p">,</span>
-</span><span id="Calibrate-269"><a href="#Calibrate-269"><span class="linenos">269</span></a>        <span class="n">sectors</span><span class="p">:</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span><span class="o">|</span><span class="kc">None</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-</span><span id="Calibrate-270"><a href="#Calibrate-270"><span class="linenos">270</span></a>        <span class="n">year</span><span class="p">:</span><span class="nb">int</span><span class="o">|</span><span class="kc">None</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-</span><span id="Calibrate-271"><a href="#Calibrate-271"><span class="linenos">271</span></a>        <span class="n">refresh</span><span class="p">:</span><span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-</span><span id="Calibrate-272"><a href="#Calibrate-272"><span class="linenos">272</span></a>        <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-</span><span id="Calibrate-273"><a href="#Calibrate-273"><span class="linenos">273</span></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute state load calibration values</span>
-</span><span id="Calibrate-274"><a href="#Calibrate-274"><span class="linenos">274</span></a>
-</span><span id="Calibrate-275"><a href="#Calibrate-275"><span class="linenos">275</span></a><span class="sd">        Arguments</span>
-</span><span id="Calibrate-276"><a href="#Calibrate-276"><span class="linenos">276</span></a><span class="sd">        ---------</span>
-</span><span id="Calibrate-277"><a href="#Calibrate-277"><span class="linenos">277</span></a>
-</span><span id="Calibrate-278"><a href="#Calibrate-278"><span class="linenos">278</span></a><span class="sd">          - `state`: state for which to compute calibrations</span>
-</span><span id="Calibrate-279"><a href="#Calibrate-279"><span class="linenos">279</span></a>
-</span><span id="Calibrate-280"><a href="#Calibrate-280"><span class="linenos">280</span></a><span class="sd">          - `sectors`: list of sector for which calibrations are desired</span>
-</span><span id="Calibrate-281"><a href="#Calibrate-281"><span class="linenos">281</span></a>
-</span><span id="Calibrate-282"><a href="#Calibrate-282"><span class="linenos">282</span></a><span class="sd">          - `year`: the year for which loads are calibrated</span>
-</span><span id="Calibrate-283"><a href="#Calibrate-283"><span class="linenos">283</span></a>
-</span><span id="Calibrate-284"><a href="#Calibrate-284"><span class="linenos">284</span></a><span class="sd">          - `refresh`: force refresh of cache</span>
-</span><span id="Calibrate-285"><a href="#Calibrate-285"><span class="linenos">285</span></a>
-</span><span id="Calibrate-286"><a href="#Calibrate-286"><span class="linenos">286</span></a><span class="sd">        Returns</span>
-</span><span id="Calibrate-287"><a href="#Calibrate-287"><span class="linenos">287</span></a><span class="sd">        -------</span>
-</span><span id="Calibrate-288"><a href="#Calibrate-288"><span class="linenos">288</span></a>
-</span><span id="Calibrate-289"><a href="#Calibrate-289"><span class="linenos">289</span></a><span class="sd">          - `pd.DataFrame`: data frame contain sector calibration factor</span>
-</span><span id="Calibrate-290"><a href="#Calibrate-290"><span class="linenos">290</span></a>
-</span><span id="Calibrate-291"><a href="#Calibrate-291"><span class="linenos">291</span></a><span class="sd">        Description</span>
-</span><span id="Calibrate-292"><a href="#Calibrate-292"><span class="linenos">292</span></a><span class="sd">        -----------</span>
-</span><span id="Calibrate-293"><a href="#Calibrate-293"><span class="linenos">293</span></a>
-</span><span id="Calibrate-294"><a href="#Calibrate-294"><span class="linenos">294</span></a><span class="sd">        The residential and commercial load data is obtained from the NLR</span>
-</span><span id="Calibrate-295"><a href="#Calibrate-295"><span class="linenos">295</span></a><span class="sd">        RESstock and COMstock data repositories. These data set have not been</span>
-</span><span id="Calibrate-296"><a href="#Calibrate-296"><span class="linenos">296</span></a><span class="sd">        calibrated against the state-level EIA energy use. The</span>
-</span><span id="Calibrate-297"><a href="#Calibrate-297"><span class="linenos">297</span></a><span class="sd">        `loads.calibrate.Calibrate.state` function is used to obtain the</span>
-</span><span id="Calibrate-298"><a href="#Calibrate-298"><span class="linenos">298</span></a><span class="sd">        state-level calibrations for any given year available from EIA. See</span>
-</span><span id="Calibrate-299"><a href="#Calibrate-299"><span class="linenos">299</span></a><span class="sd">        `eia.hs860m.HS860m` for details.</span>
-</span><span id="Calibrate-300"><a href="#Calibrate-300"><span class="linenos">300</span></a>
-</span><span id="Calibrate-301"><a href="#Calibrate-301"><span class="linenos">301</span></a><span class="sd">        Caveats</span>
-</span><span id="Calibrate-302"><a href="#Calibrate-302"><span class="linenos">302</span></a><span class="sd">        -------</span>
-</span><span id="Calibrate-303"><a href="#Calibrate-303"><span class="linenos">303</span></a>
-</span><span id="Calibrate-304"><a href="#Calibrate-304"><span class="linenos">304</span></a><span class="sd">        - The methodology requires that all the loads for each county in the</span>
-</span><span id="Calibrate-305"><a href="#Calibrate-305"><span class="linenos">305</span></a><span class="sd">          state be loaded before any scalars can be computed. This can take a</span>
-</span><span id="Calibrate-306"><a href="#Calibrate-306"><span class="linenos">306</span></a><span class="sd">          long time to complete states with many counties, e.g., Texas.</span>
-</span><span id="Calibrate-307"><a href="#Calibrate-307"><span class="linenos">307</span></a>
-</span><span id="Calibrate-308"><a href="#Calibrate-308"><span class="linenos">308</span></a><span class="sd">        - Only residential (`&#39;R&#39;`) and commercial (`&#39;C&#39;`) load calibations can</span>
-</span><span id="Calibrate-309"><a href="#Calibrate-309"><span class="linenos">309</span></a><span class="sd">          be computed. Industry (`&#39;I&#39;`) and agriculture (`&#39;A&#39;`) come from EIA</span>
-</span><span id="Calibrate-310"><a href="#Calibrate-310"><span class="linenos">310</span></a><span class="sd">          sources at the state-level and cannot be independently recalibrated</span>
-</span><span id="Calibrate-311"><a href="#Calibrate-311"><span class="linenos">311</span></a><span class="sd">          at the county level. </span>
-</span><span id="Calibrate-312"><a href="#Calibrate-312"><span class="linenos">312</span></a>
-</span><span id="Calibrate-313"><a href="#Calibrate-313"><span class="linenos">313</span></a><span class="sd">        - Transportation is not included in the load model at this time, despite</span>
-</span><span id="Calibrate-314"><a href="#Calibrate-314"><span class="linenos">314</span></a><span class="sd">          the availability of state-level transportation energy consumption.</span>
-</span><span id="Calibrate-315"><a href="#Calibrate-315"><span class="linenos">315</span></a><span class="sd">        &quot;&quot;&quot;</span>
-</span><span id="Calibrate-316"><a href="#Calibrate-316"><span class="linenos">316</span></a>        <span class="n">sector_specs</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="Calibrate-317"><a href="#Calibrate-317"><span class="linenos">317</span></a>            <span class="s2">&quot;R&quot;</span><span class="p">:(</span><span class="n">Residential</span><span class="p">,</span><span class="s2">&quot;res_energy_mwh&quot;</span><span class="p">),</span>
-</span><span id="Calibrate-318"><a href="#Calibrate-318"><span class="linenos">318</span></a>            <span class="s2">&quot;C&quot;</span><span class="p">:(</span><span class="n">Commercial</span><span class="p">,</span><span class="s2">&quot;com_energy_mwh&quot;</span><span class="p">),</span>
-</span><span id="Calibrate-319"><a href="#Calibrate-319"><span class="linenos">319</span></a>        <span class="p">}</span>
-</span><span id="Calibrate-320"><a href="#Calibrate-320"><span class="linenos">320</span></a>        <span class="k">if</span> <span class="n">sectors</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="Calibrate-321"><a href="#Calibrate-321"><span class="linenos">321</span></a>            <span class="n">sectors</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">sector_specs</span><span class="p">)</span>
+</span><span id="Calibrate-266"><a href="#Calibrate-266"><span class="linenos">266</span></a>    <span class="n">CACHE</span> <span class="o">=</span> <span class="p">{}</span>
+</span><span id="Calibrate-267"><a href="#Calibrate-267"><span class="linenos">267</span></a>
+</span><span id="Calibrate-268"><a href="#Calibrate-268"><span class="linenos">268</span></a>    <span class="nd">@classmethod</span>
+</span><span id="Calibrate-269"><a href="#Calibrate-269"><span class="linenos">269</span></a>    <span class="k">def</span><span class="w"> </span><span class="nf">state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span>
+</span><span id="Calibrate-270"><a href="#Calibrate-270"><span class="linenos">270</span></a>        <span class="n">state</span><span class="p">:</span><span class="nb">str</span><span class="p">,</span>
+</span><span id="Calibrate-271"><a href="#Calibrate-271"><span class="linenos">271</span></a>        <span class="n">year</span><span class="p">:</span><span class="nb">int</span><span class="o">|</span><span class="kc">None</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+</span><span id="Calibrate-272"><a href="#Calibrate-272"><span class="linenos">272</span></a>        <span class="n">refresh</span><span class="p">:</span><span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+</span><span id="Calibrate-273"><a href="#Calibrate-273"><span class="linenos">273</span></a>        <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+</span><span id="Calibrate-274"><a href="#Calibrate-274"><span class="linenos">274</span></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute state load calibration values</span>
+</span><span id="Calibrate-275"><a href="#Calibrate-275"><span class="linenos">275</span></a>
+</span><span id="Calibrate-276"><a href="#Calibrate-276"><span class="linenos">276</span></a><span class="sd">        Arguments</span>
+</span><span id="Calibrate-277"><a href="#Calibrate-277"><span class="linenos">277</span></a><span class="sd">        ---------</span>
+</span><span id="Calibrate-278"><a href="#Calibrate-278"><span class="linenos">278</span></a>
+</span><span id="Calibrate-279"><a href="#Calibrate-279"><span class="linenos">279</span></a><span class="sd">          - `state`: state for which to compute calibrations</span>
+</span><span id="Calibrate-280"><a href="#Calibrate-280"><span class="linenos">280</span></a>
+</span><span id="Calibrate-281"><a href="#Calibrate-281"><span class="linenos">281</span></a><span class="sd">          - `year`: the year for which loads are calibrated</span>
+</span><span id="Calibrate-282"><a href="#Calibrate-282"><span class="linenos">282</span></a>
+</span><span id="Calibrate-283"><a href="#Calibrate-283"><span class="linenos">283</span></a><span class="sd">          - `refresh`: force refresh of cache</span>
+</span><span id="Calibrate-284"><a href="#Calibrate-284"><span class="linenos">284</span></a>
+</span><span id="Calibrate-285"><a href="#Calibrate-285"><span class="linenos">285</span></a><span class="sd">        Returns</span>
+</span><span id="Calibrate-286"><a href="#Calibrate-286"><span class="linenos">286</span></a><span class="sd">        -------</span>
+</span><span id="Calibrate-287"><a href="#Calibrate-287"><span class="linenos">287</span></a>
+</span><span id="Calibrate-288"><a href="#Calibrate-288"><span class="linenos">288</span></a><span class="sd">          - `pd.DataFrame`: data frame contain sector calibration factor</span>
+</span><span id="Calibrate-289"><a href="#Calibrate-289"><span class="linenos">289</span></a>
+</span><span id="Calibrate-290"><a href="#Calibrate-290"><span class="linenos">290</span></a><span class="sd">        Description</span>
+</span><span id="Calibrate-291"><a href="#Calibrate-291"><span class="linenos">291</span></a><span class="sd">        -----------</span>
+</span><span id="Calibrate-292"><a href="#Calibrate-292"><span class="linenos">292</span></a>
+</span><span id="Calibrate-293"><a href="#Calibrate-293"><span class="linenos">293</span></a><span class="sd">        The residential and commercial load data is obtained from the NLR</span>
+</span><span id="Calibrate-294"><a href="#Calibrate-294"><span class="linenos">294</span></a><span class="sd">        RESstock and COMstock data repositories. These data set have not been</span>
+</span><span id="Calibrate-295"><a href="#Calibrate-295"><span class="linenos">295</span></a><span class="sd">        calibrated against the state-level EIA energy use. The</span>
+</span><span id="Calibrate-296"><a href="#Calibrate-296"><span class="linenos">296</span></a><span class="sd">        `loads.calibrate.Calibrate.state` function is used to obtain the</span>
+</span><span id="Calibrate-297"><a href="#Calibrate-297"><span class="linenos">297</span></a><span class="sd">        state-level calibrations for any given year available from EIA. See</span>
+</span><span id="Calibrate-298"><a href="#Calibrate-298"><span class="linenos">298</span></a><span class="sd">        `eia.hs860m.HS860m` for details.</span>
+</span><span id="Calibrate-299"><a href="#Calibrate-299"><span class="linenos">299</span></a>
+</span><span id="Calibrate-300"><a href="#Calibrate-300"><span class="linenos">300</span></a><span class="sd">        Caveats</span>
+</span><span id="Calibrate-301"><a href="#Calibrate-301"><span class="linenos">301</span></a><span class="sd">        -------</span>
+</span><span id="Calibrate-302"><a href="#Calibrate-302"><span class="linenos">302</span></a>
+</span><span id="Calibrate-303"><a href="#Calibrate-303"><span class="linenos">303</span></a><span class="sd">        - The methodology requires that all the loads for each county in the</span>
+</span><span id="Calibrate-304"><a href="#Calibrate-304"><span class="linenos">304</span></a><span class="sd">          state be loaded before any scalars can be computed. This can take a</span>
+</span><span id="Calibrate-305"><a href="#Calibrate-305"><span class="linenos">305</span></a><span class="sd">          long time to complete states with many counties, e.g., Texas.</span>
+</span><span id="Calibrate-306"><a href="#Calibrate-306"><span class="linenos">306</span></a>
+</span><span id="Calibrate-307"><a href="#Calibrate-307"><span class="linenos">307</span></a><span class="sd">        - Only residential (`&#39;R&#39;`) and commercial (`&#39;C&#39;`) load calibations can</span>
+</span><span id="Calibrate-308"><a href="#Calibrate-308"><span class="linenos">308</span></a><span class="sd">          be computed. Industry (`&#39;I&#39;`) and agriculture (`&#39;A&#39;`) come from EIA</span>
+</span><span id="Calibrate-309"><a href="#Calibrate-309"><span class="linenos">309</span></a><span class="sd">          sources at the state-level and cannot be independently recalibrated</span>
+</span><span id="Calibrate-310"><a href="#Calibrate-310"><span class="linenos">310</span></a><span class="sd">          at the county level. </span>
+</span><span id="Calibrate-311"><a href="#Calibrate-311"><span class="linenos">311</span></a>
+</span><span id="Calibrate-312"><a href="#Calibrate-312"><span class="linenos">312</span></a><span class="sd">        - Transportation is not included in the load model at this time, despite</span>
+</span><span id="Calibrate-313"><a href="#Calibrate-313"><span class="linenos">313</span></a><span class="sd">          the availability of state-level transportation energy consumption.</span>
+</span><span id="Calibrate-314"><a href="#Calibrate-314"><span class="linenos">314</span></a><span class="sd">        &quot;&quot;&quot;</span>
+</span><span id="Calibrate-315"><a href="#Calibrate-315"><span class="linenos">315</span></a>        <span class="k">if</span> <span class="n">state</span> <span class="ow">in</span> <span class="bp">cls</span><span class="o">.</span><span class="n">CACHE</span><span class="p">:</span>
+</span><span id="Calibrate-316"><a href="#Calibrate-316"><span class="linenos">316</span></a>            <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">CACHE</span><span class="p">[</span><span class="n">state</span><span class="p">]</span>
+</span><span id="Calibrate-317"><a href="#Calibrate-317"><span class="linenos">317</span></a>
+</span><span id="Calibrate-318"><a href="#Calibrate-318"><span class="linenos">318</span></a>        <span class="n">sector_specs</span> <span class="o">=</span> <span class="p">{</span>
+</span><span id="Calibrate-319"><a href="#Calibrate-319"><span class="linenos">319</span></a>            <span class="s2">&quot;R&quot;</span><span class="p">:(</span><span class="n">Residential</span><span class="p">,</span><span class="s2">&quot;res_energy_mwh&quot;</span><span class="p">),</span>
+</span><span id="Calibrate-320"><a href="#Calibrate-320"><span class="linenos">320</span></a>            <span class="s2">&quot;C&quot;</span><span class="p">:(</span><span class="n">Commercial</span><span class="p">,</span><span class="s2">&quot;com_energy_mwh&quot;</span><span class="p">),</span>
+</span><span id="Calibrate-321"><a href="#Calibrate-321"><span class="linenos">321</span></a>        <span class="p">}</span>
 </span><span id="Calibrate-322"><a href="#Calibrate-322"><span class="linenos">322</span></a>
 </span><span id="Calibrate-323"><a href="#Calibrate-323"><span class="linenos">323</span></a>        <span class="c1"># set cache location</span>
 </span><span id="Calibrate-324"><a href="#Calibrate-324"><span class="linenos">324</span></a>        <span class="k">if</span> <span class="bp">cls</span><span class="o">.</span><span class="n">CACHEDIR</span> <span class="p">:</span>
@@ -947,7 +951,8 @@ if the energy and peak constraints are not otherwise feasible. You can use the <
 </span><span id="Calibrate-350"><a href="#Calibrate-350"><span class="linenos">350</span></a>                    <span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">)]))</span>
 </span><span id="Calibrate-351"><a href="#Calibrate-351"><span class="linenos">351</span></a>                <span class="n">result</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">cache</span><span class="o">.</span><span class="n">pathname</span><span class="p">,</span><span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span><span class="n">header</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span><span id="Calibrate-352"><a href="#Calibrate-352"><span class="linenos">352</span></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
-</span><span id="Calibrate-353"><a href="#Calibrate-353"><span class="linenos">353</span></a>        <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;state&quot;</span><span class="p">,</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">set_index</span><span class="p">([</span><span class="s2">&quot;sector&quot;</span><span class="p">])</span>
+</span><span id="Calibrate-353"><a href="#Calibrate-353"><span class="linenos">353</span></a>        <span class="bp">cls</span><span class="o">.</span><span class="n">CACHE</span><span class="p">[</span><span class="n">state</span><span class="p">]</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;state&quot;</span><span class="p">,</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">set_index</span><span class="p">([</span><span class="s2">&quot;sector&quot;</span><span class="p">])</span>
+</span><span id="Calibrate-354"><a href="#Calibrate-354"><span class="linenos">354</span></a>        <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">CACHE</span><span class="p">[</span><span class="n">state</span><span class="p">]</span>
 </span></pre></div>
 
 
@@ -1088,74 +1093,84 @@ if the energy and peak constraints are not otherwise feasible. You can use the <
 
 
                             </div>
+                            <div id="Calibrate.CACHE" class="classattr">
+                                <div class="attr variable">
+            <span class="name">CACHE</span>        =
+<span class="default_value">{}</span>
+
+        
+    </div>
+    <a class="headerlink" href="#Calibrate.CACHE"></a>
+    
+    
+
+                            </div>
                             <div id="Calibrate.state" class="classattr">
                                         <input id="Calibrate.state-view-source" class="view-source-toggle-state" type="checkbox" aria-hidden="true" tabindex="-1">
 <div class="attr function">
                     <div class="decorator decorator-classmethod">@classmethod</div>
 
         <span class="def">def</span>
-        <span class="name">state</span><span class="signature pdoc-code multiline">(<span class="param">	<span class="bp">cls</span>,</span><span class="param">	<span class="n">state</span><span class="p">:</span> <span class="nb">str</span>,</span><span class="param">	<span class="n">sectors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>,</span><span class="param">	<span class="n">year</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>,</span><span class="param">	<span class="n">refresh</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span></span><span class="return-annotation">) -> <span class="n">pandas</span><span class="o">.</span><span class="n">core</span><span class="o">.</span><span class="n">frame</span><span class="o">.</span><span class="n">DataFrame</span>:</span></span>
+        <span class="name">state</span><span class="signature pdoc-code multiline">(<span class="param">	<span class="bp">cls</span>,</span><span class="param">	<span class="n">state</span><span class="p">:</span> <span class="nb">str</span>,</span><span class="param">	<span class="n">year</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>,</span><span class="param">	<span class="n">refresh</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span></span><span class="return-annotation">) -> <span class="n">pandas</span><span class="o">.</span><span class="n">core</span><span class="o">.</span><span class="n">frame</span><span class="o">.</span><span class="n">DataFrame</span>:</span></span>
 
                 <label class="view-source-button" for="Calibrate.state-view-source"><span>View Source</span></label>
 
     </div>
     <a class="headerlink" href="#Calibrate.state"></a>
-            <div class="pdoc-code codehilite"><pre><span></span><span id="Calibrate.state-266"><a href="#Calibrate.state-266"><span class="linenos">266</span></a>    <span class="nd">@classmethod</span>
-</span><span id="Calibrate.state-267"><a href="#Calibrate.state-267"><span class="linenos">267</span></a>    <span class="k">def</span><span class="w"> </span><span class="nf">state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span>
-</span><span id="Calibrate.state-268"><a href="#Calibrate.state-268"><span class="linenos">268</span></a>        <span class="n">state</span><span class="p">:</span><span class="nb">str</span><span class="p">,</span>
-</span><span id="Calibrate.state-269"><a href="#Calibrate.state-269"><span class="linenos">269</span></a>        <span class="n">sectors</span><span class="p">:</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span><span class="o">|</span><span class="kc">None</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-</span><span id="Calibrate.state-270"><a href="#Calibrate.state-270"><span class="linenos">270</span></a>        <span class="n">year</span><span class="p">:</span><span class="nb">int</span><span class="o">|</span><span class="kc">None</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-</span><span id="Calibrate.state-271"><a href="#Calibrate.state-271"><span class="linenos">271</span></a>        <span class="n">refresh</span><span class="p">:</span><span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-</span><span id="Calibrate.state-272"><a href="#Calibrate.state-272"><span class="linenos">272</span></a>        <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-</span><span id="Calibrate.state-273"><a href="#Calibrate.state-273"><span class="linenos">273</span></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute state load calibration values</span>
-</span><span id="Calibrate.state-274"><a href="#Calibrate.state-274"><span class="linenos">274</span></a>
-</span><span id="Calibrate.state-275"><a href="#Calibrate.state-275"><span class="linenos">275</span></a><span class="sd">        Arguments</span>
-</span><span id="Calibrate.state-276"><a href="#Calibrate.state-276"><span class="linenos">276</span></a><span class="sd">        ---------</span>
-</span><span id="Calibrate.state-277"><a href="#Calibrate.state-277"><span class="linenos">277</span></a>
-</span><span id="Calibrate.state-278"><a href="#Calibrate.state-278"><span class="linenos">278</span></a><span class="sd">          - `state`: state for which to compute calibrations</span>
-</span><span id="Calibrate.state-279"><a href="#Calibrate.state-279"><span class="linenos">279</span></a>
-</span><span id="Calibrate.state-280"><a href="#Calibrate.state-280"><span class="linenos">280</span></a><span class="sd">          - `sectors`: list of sector for which calibrations are desired</span>
-</span><span id="Calibrate.state-281"><a href="#Calibrate.state-281"><span class="linenos">281</span></a>
-</span><span id="Calibrate.state-282"><a href="#Calibrate.state-282"><span class="linenos">282</span></a><span class="sd">          - `year`: the year for which loads are calibrated</span>
-</span><span id="Calibrate.state-283"><a href="#Calibrate.state-283"><span class="linenos">283</span></a>
-</span><span id="Calibrate.state-284"><a href="#Calibrate.state-284"><span class="linenos">284</span></a><span class="sd">          - `refresh`: force refresh of cache</span>
-</span><span id="Calibrate.state-285"><a href="#Calibrate.state-285"><span class="linenos">285</span></a>
-</span><span id="Calibrate.state-286"><a href="#Calibrate.state-286"><span class="linenos">286</span></a><span class="sd">        Returns</span>
-</span><span id="Calibrate.state-287"><a href="#Calibrate.state-287"><span class="linenos">287</span></a><span class="sd">        -------</span>
-</span><span id="Calibrate.state-288"><a href="#Calibrate.state-288"><span class="linenos">288</span></a>
-</span><span id="Calibrate.state-289"><a href="#Calibrate.state-289"><span class="linenos">289</span></a><span class="sd">          - `pd.DataFrame`: data frame contain sector calibration factor</span>
-</span><span id="Calibrate.state-290"><a href="#Calibrate.state-290"><span class="linenos">290</span></a>
-</span><span id="Calibrate.state-291"><a href="#Calibrate.state-291"><span class="linenos">291</span></a><span class="sd">        Description</span>
-</span><span id="Calibrate.state-292"><a href="#Calibrate.state-292"><span class="linenos">292</span></a><span class="sd">        -----------</span>
-</span><span id="Calibrate.state-293"><a href="#Calibrate.state-293"><span class="linenos">293</span></a>
-</span><span id="Calibrate.state-294"><a href="#Calibrate.state-294"><span class="linenos">294</span></a><span class="sd">        The residential and commercial load data is obtained from the NLR</span>
-</span><span id="Calibrate.state-295"><a href="#Calibrate.state-295"><span class="linenos">295</span></a><span class="sd">        RESstock and COMstock data repositories. These data set have not been</span>
-</span><span id="Calibrate.state-296"><a href="#Calibrate.state-296"><span class="linenos">296</span></a><span class="sd">        calibrated against the state-level EIA energy use. The</span>
-</span><span id="Calibrate.state-297"><a href="#Calibrate.state-297"><span class="linenos">297</span></a><span class="sd">        `loads.calibrate.Calibrate.state` function is used to obtain the</span>
-</span><span id="Calibrate.state-298"><a href="#Calibrate.state-298"><span class="linenos">298</span></a><span class="sd">        state-level calibrations for any given year available from EIA. See</span>
-</span><span id="Calibrate.state-299"><a href="#Calibrate.state-299"><span class="linenos">299</span></a><span class="sd">        `eia.hs860m.HS860m` for details.</span>
-</span><span id="Calibrate.state-300"><a href="#Calibrate.state-300"><span class="linenos">300</span></a>
-</span><span id="Calibrate.state-301"><a href="#Calibrate.state-301"><span class="linenos">301</span></a><span class="sd">        Caveats</span>
-</span><span id="Calibrate.state-302"><a href="#Calibrate.state-302"><span class="linenos">302</span></a><span class="sd">        -------</span>
-</span><span id="Calibrate.state-303"><a href="#Calibrate.state-303"><span class="linenos">303</span></a>
-</span><span id="Calibrate.state-304"><a href="#Calibrate.state-304"><span class="linenos">304</span></a><span class="sd">        - The methodology requires that all the loads for each county in the</span>
-</span><span id="Calibrate.state-305"><a href="#Calibrate.state-305"><span class="linenos">305</span></a><span class="sd">          state be loaded before any scalars can be computed. This can take a</span>
-</span><span id="Calibrate.state-306"><a href="#Calibrate.state-306"><span class="linenos">306</span></a><span class="sd">          long time to complete states with many counties, e.g., Texas.</span>
-</span><span id="Calibrate.state-307"><a href="#Calibrate.state-307"><span class="linenos">307</span></a>
-</span><span id="Calibrate.state-308"><a href="#Calibrate.state-308"><span class="linenos">308</span></a><span class="sd">        - Only residential (`&#39;R&#39;`) and commercial (`&#39;C&#39;`) load calibations can</span>
-</span><span id="Calibrate.state-309"><a href="#Calibrate.state-309"><span class="linenos">309</span></a><span class="sd">          be computed. Industry (`&#39;I&#39;`) and agriculture (`&#39;A&#39;`) come from EIA</span>
-</span><span id="Calibrate.state-310"><a href="#Calibrate.state-310"><span class="linenos">310</span></a><span class="sd">          sources at the state-level and cannot be independently recalibrated</span>
-</span><span id="Calibrate.state-311"><a href="#Calibrate.state-311"><span class="linenos">311</span></a><span class="sd">          at the county level. </span>
-</span><span id="Calibrate.state-312"><a href="#Calibrate.state-312"><span class="linenos">312</span></a>
-</span><span id="Calibrate.state-313"><a href="#Calibrate.state-313"><span class="linenos">313</span></a><span class="sd">        - Transportation is not included in the load model at this time, despite</span>
-</span><span id="Calibrate.state-314"><a href="#Calibrate.state-314"><span class="linenos">314</span></a><span class="sd">          the availability of state-level transportation energy consumption.</span>
-</span><span id="Calibrate.state-315"><a href="#Calibrate.state-315"><span class="linenos">315</span></a><span class="sd">        &quot;&quot;&quot;</span>
-</span><span id="Calibrate.state-316"><a href="#Calibrate.state-316"><span class="linenos">316</span></a>        <span class="n">sector_specs</span> <span class="o">=</span> <span class="p">{</span>
-</span><span id="Calibrate.state-317"><a href="#Calibrate.state-317"><span class="linenos">317</span></a>            <span class="s2">&quot;R&quot;</span><span class="p">:(</span><span class="n">Residential</span><span class="p">,</span><span class="s2">&quot;res_energy_mwh&quot;</span><span class="p">),</span>
-</span><span id="Calibrate.state-318"><a href="#Calibrate.state-318"><span class="linenos">318</span></a>            <span class="s2">&quot;C&quot;</span><span class="p">:(</span><span class="n">Commercial</span><span class="p">,</span><span class="s2">&quot;com_energy_mwh&quot;</span><span class="p">),</span>
-</span><span id="Calibrate.state-319"><a href="#Calibrate.state-319"><span class="linenos">319</span></a>        <span class="p">}</span>
-</span><span id="Calibrate.state-320"><a href="#Calibrate.state-320"><span class="linenos">320</span></a>        <span class="k">if</span> <span class="n">sectors</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="Calibrate.state-321"><a href="#Calibrate.state-321"><span class="linenos">321</span></a>            <span class="n">sectors</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">sector_specs</span><span class="p">)</span>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="Calibrate.state-268"><a href="#Calibrate.state-268"><span class="linenos">268</span></a>    <span class="nd">@classmethod</span>
+</span><span id="Calibrate.state-269"><a href="#Calibrate.state-269"><span class="linenos">269</span></a>    <span class="k">def</span><span class="w"> </span><span class="nf">state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span>
+</span><span id="Calibrate.state-270"><a href="#Calibrate.state-270"><span class="linenos">270</span></a>        <span class="n">state</span><span class="p">:</span><span class="nb">str</span><span class="p">,</span>
+</span><span id="Calibrate.state-271"><a href="#Calibrate.state-271"><span class="linenos">271</span></a>        <span class="n">year</span><span class="p">:</span><span class="nb">int</span><span class="o">|</span><span class="kc">None</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+</span><span id="Calibrate.state-272"><a href="#Calibrate.state-272"><span class="linenos">272</span></a>        <span class="n">refresh</span><span class="p">:</span><span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+</span><span id="Calibrate.state-273"><a href="#Calibrate.state-273"><span class="linenos">273</span></a>        <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+</span><span id="Calibrate.state-274"><a href="#Calibrate.state-274"><span class="linenos">274</span></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute state load calibration values</span>
+</span><span id="Calibrate.state-275"><a href="#Calibrate.state-275"><span class="linenos">275</span></a>
+</span><span id="Calibrate.state-276"><a href="#Calibrate.state-276"><span class="linenos">276</span></a><span class="sd">        Arguments</span>
+</span><span id="Calibrate.state-277"><a href="#Calibrate.state-277"><span class="linenos">277</span></a><span class="sd">        ---------</span>
+</span><span id="Calibrate.state-278"><a href="#Calibrate.state-278"><span class="linenos">278</span></a>
+</span><span id="Calibrate.state-279"><a href="#Calibrate.state-279"><span class="linenos">279</span></a><span class="sd">          - `state`: state for which to compute calibrations</span>
+</span><span id="Calibrate.state-280"><a href="#Calibrate.state-280"><span class="linenos">280</span></a>
+</span><span id="Calibrate.state-281"><a href="#Calibrate.state-281"><span class="linenos">281</span></a><span class="sd">          - `year`: the year for which loads are calibrated</span>
+</span><span id="Calibrate.state-282"><a href="#Calibrate.state-282"><span class="linenos">282</span></a>
+</span><span id="Calibrate.state-283"><a href="#Calibrate.state-283"><span class="linenos">283</span></a><span class="sd">          - `refresh`: force refresh of cache</span>
+</span><span id="Calibrate.state-284"><a href="#Calibrate.state-284"><span class="linenos">284</span></a>
+</span><span id="Calibrate.state-285"><a href="#Calibrate.state-285"><span class="linenos">285</span></a><span class="sd">        Returns</span>
+</span><span id="Calibrate.state-286"><a href="#Calibrate.state-286"><span class="linenos">286</span></a><span class="sd">        -------</span>
+</span><span id="Calibrate.state-287"><a href="#Calibrate.state-287"><span class="linenos">287</span></a>
+</span><span id="Calibrate.state-288"><a href="#Calibrate.state-288"><span class="linenos">288</span></a><span class="sd">          - `pd.DataFrame`: data frame contain sector calibration factor</span>
+</span><span id="Calibrate.state-289"><a href="#Calibrate.state-289"><span class="linenos">289</span></a>
+</span><span id="Calibrate.state-290"><a href="#Calibrate.state-290"><span class="linenos">290</span></a><span class="sd">        Description</span>
+</span><span id="Calibrate.state-291"><a href="#Calibrate.state-291"><span class="linenos">291</span></a><span class="sd">        -----------</span>
+</span><span id="Calibrate.state-292"><a href="#Calibrate.state-292"><span class="linenos">292</span></a>
+</span><span id="Calibrate.state-293"><a href="#Calibrate.state-293"><span class="linenos">293</span></a><span class="sd">        The residential and commercial load data is obtained from the NLR</span>
+</span><span id="Calibrate.state-294"><a href="#Calibrate.state-294"><span class="linenos">294</span></a><span class="sd">        RESstock and COMstock data repositories. These data set have not been</span>
+</span><span id="Calibrate.state-295"><a href="#Calibrate.state-295"><span class="linenos">295</span></a><span class="sd">        calibrated against the state-level EIA energy use. The</span>
+</span><span id="Calibrate.state-296"><a href="#Calibrate.state-296"><span class="linenos">296</span></a><span class="sd">        `loads.calibrate.Calibrate.state` function is used to obtain the</span>
+</span><span id="Calibrate.state-297"><a href="#Calibrate.state-297"><span class="linenos">297</span></a><span class="sd">        state-level calibrations for any given year available from EIA. See</span>
+</span><span id="Calibrate.state-298"><a href="#Calibrate.state-298"><span class="linenos">298</span></a><span class="sd">        `eia.hs860m.HS860m` for details.</span>
+</span><span id="Calibrate.state-299"><a href="#Calibrate.state-299"><span class="linenos">299</span></a>
+</span><span id="Calibrate.state-300"><a href="#Calibrate.state-300"><span class="linenos">300</span></a><span class="sd">        Caveats</span>
+</span><span id="Calibrate.state-301"><a href="#Calibrate.state-301"><span class="linenos">301</span></a><span class="sd">        -------</span>
+</span><span id="Calibrate.state-302"><a href="#Calibrate.state-302"><span class="linenos">302</span></a>
+</span><span id="Calibrate.state-303"><a href="#Calibrate.state-303"><span class="linenos">303</span></a><span class="sd">        - The methodology requires that all the loads for each county in the</span>
+</span><span id="Calibrate.state-304"><a href="#Calibrate.state-304"><span class="linenos">304</span></a><span class="sd">          state be loaded before any scalars can be computed. This can take a</span>
+</span><span id="Calibrate.state-305"><a href="#Calibrate.state-305"><span class="linenos">305</span></a><span class="sd">          long time to complete states with many counties, e.g., Texas.</span>
+</span><span id="Calibrate.state-306"><a href="#Calibrate.state-306"><span class="linenos">306</span></a>
+</span><span id="Calibrate.state-307"><a href="#Calibrate.state-307"><span class="linenos">307</span></a><span class="sd">        - Only residential (`&#39;R&#39;`) and commercial (`&#39;C&#39;`) load calibations can</span>
+</span><span id="Calibrate.state-308"><a href="#Calibrate.state-308"><span class="linenos">308</span></a><span class="sd">          be computed. Industry (`&#39;I&#39;`) and agriculture (`&#39;A&#39;`) come from EIA</span>
+</span><span id="Calibrate.state-309"><a href="#Calibrate.state-309"><span class="linenos">309</span></a><span class="sd">          sources at the state-level and cannot be independently recalibrated</span>
+</span><span id="Calibrate.state-310"><a href="#Calibrate.state-310"><span class="linenos">310</span></a><span class="sd">          at the county level. </span>
+</span><span id="Calibrate.state-311"><a href="#Calibrate.state-311"><span class="linenos">311</span></a>
+</span><span id="Calibrate.state-312"><a href="#Calibrate.state-312"><span class="linenos">312</span></a><span class="sd">        - Transportation is not included in the load model at this time, despite</span>
+</span><span id="Calibrate.state-313"><a href="#Calibrate.state-313"><span class="linenos">313</span></a><span class="sd">          the availability of state-level transportation energy consumption.</span>
+</span><span id="Calibrate.state-314"><a href="#Calibrate.state-314"><span class="linenos">314</span></a><span class="sd">        &quot;&quot;&quot;</span>
+</span><span id="Calibrate.state-315"><a href="#Calibrate.state-315"><span class="linenos">315</span></a>        <span class="k">if</span> <span class="n">state</span> <span class="ow">in</span> <span class="bp">cls</span><span class="o">.</span><span class="n">CACHE</span><span class="p">:</span>
+</span><span id="Calibrate.state-316"><a href="#Calibrate.state-316"><span class="linenos">316</span></a>            <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">CACHE</span><span class="p">[</span><span class="n">state</span><span class="p">]</span>
+</span><span id="Calibrate.state-317"><a href="#Calibrate.state-317"><span class="linenos">317</span></a>
+</span><span id="Calibrate.state-318"><a href="#Calibrate.state-318"><span class="linenos">318</span></a>        <span class="n">sector_specs</span> <span class="o">=</span> <span class="p">{</span>
+</span><span id="Calibrate.state-319"><a href="#Calibrate.state-319"><span class="linenos">319</span></a>            <span class="s2">&quot;R&quot;</span><span class="p">:(</span><span class="n">Residential</span><span class="p">,</span><span class="s2">&quot;res_energy_mwh&quot;</span><span class="p">),</span>
+</span><span id="Calibrate.state-320"><a href="#Calibrate.state-320"><span class="linenos">320</span></a>            <span class="s2">&quot;C&quot;</span><span class="p">:(</span><span class="n">Commercial</span><span class="p">,</span><span class="s2">&quot;com_energy_mwh&quot;</span><span class="p">),</span>
+</span><span id="Calibrate.state-321"><a href="#Calibrate.state-321"><span class="linenos">321</span></a>        <span class="p">}</span>
 </span><span id="Calibrate.state-322"><a href="#Calibrate.state-322"><span class="linenos">322</span></a>
 </span><span id="Calibrate.state-323"><a href="#Calibrate.state-323"><span class="linenos">323</span></a>        <span class="c1"># set cache location</span>
 </span><span id="Calibrate.state-324"><a href="#Calibrate.state-324"><span class="linenos">324</span></a>        <span class="k">if</span> <span class="bp">cls</span><span class="o">.</span><span class="n">CACHEDIR</span> <span class="p">:</span>
@@ -1187,7 +1202,8 @@ if the energy and peak constraints are not otherwise feasible. You can use the <
 </span><span id="Calibrate.state-350"><a href="#Calibrate.state-350"><span class="linenos">350</span></a>                    <span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">)]))</span>
 </span><span id="Calibrate.state-351"><a href="#Calibrate.state-351"><span class="linenos">351</span></a>                <span class="n">result</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">cache</span><span class="o">.</span><span class="n">pathname</span><span class="p">,</span><span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span><span class="n">header</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span><span id="Calibrate.state-352"><a href="#Calibrate.state-352"><span class="linenos">352</span></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
-</span><span id="Calibrate.state-353"><a href="#Calibrate.state-353"><span class="linenos">353</span></a>        <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;state&quot;</span><span class="p">,</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">set_index</span><span class="p">([</span><span class="s2">&quot;sector&quot;</span><span class="p">])</span>
+</span><span id="Calibrate.state-353"><a href="#Calibrate.state-353"><span class="linenos">353</span></a>        <span class="bp">cls</span><span class="o">.</span><span class="n">CACHE</span><span class="p">[</span><span class="n">state</span><span class="p">]</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;state&quot;</span><span class="p">,</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">set_index</span><span class="p">([</span><span class="s2">&quot;sector&quot;</span><span class="p">])</span>
+</span><span id="Calibrate.state-354"><a href="#Calibrate.state-354"><span class="linenos">354</span></a>        <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">CACHE</span><span class="p">[</span><span class="n">state</span><span class="p">]</span>
 </span></pre></div>
 
 
@@ -1197,7 +1213,6 @@ if the energy and peak constraints are not otherwise feasible. You can use the <
 
 <ul>
 <li><p><code><a href="#Calibrate.state">state</a></code>: state for which to compute calibrations</p></li>
-<li><p><code>sectors</code>: list of sector for which calibrations are desired</p></li>
 <li><p><code>year</code>: the year for which loads are calibrated</p></li>
 <li><p><code>refresh</code>: force refresh of cache</p></li>
 </ul>

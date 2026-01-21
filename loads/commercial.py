@@ -100,6 +100,9 @@ class Commercial(pd.DataFrame):
     CACHEDIR = None
     """Cache folder"""
 
+    CALIBRATION = {}
+    """Load calibration data"""
+
     def __init__(self,
         # pylint: disable=too-many-arguments,too-many-positional-arguments
         state:str,
@@ -107,6 +110,7 @@ class Commercial(pd.DataFrame):
         collect=None,
         year:int=None,
         refresh:bool=False,
+        calibrate:float|str|None="auto",
         ):
         """Construct building types data frame
 
@@ -124,9 +128,22 @@ class Commercial(pd.DataFrame):
 
           - `refresh`: force cache refresh from source data
 
+          - `calibrate`: set load calibration, automatically set calibration
+            to state-level total energy using
+            `loads.commercial.Commercial.CALIBRATION` table, or disable
+            calibration
+
+        Description
+        -----------
+
         This class compiles the building type data for a county by collecting
         COMstock columns, scaling by the floor area in that year, and finally
         computing total electric and non-electric loads in MW.
+
+        If calibrate is set to `'auto'`, then the loadshape will scaled based
+        on the contents of the `loads.commercial.Commercial.CALIBRATE` data
+        if the `state` is among its keys. Alternatively, a float value can be
+        provided to scale accordingly. 
         """
         # pylint: disable=too-many-locals
         assert state in States()["ST"].values, f"{state=} is not valid"
@@ -178,7 +195,6 @@ class Commercial(pd.DataFrame):
                     state=state,
                     county=county,
                     building_type=btype,
-                    refresh=refresh,
                     )
                 for aggr,columns in collect.items():
                     data[f"{btype}_{aggr}_MW"] = bdata[columns].sum(axis=1) / 1e6
@@ -194,12 +210,15 @@ class Commercial(pd.DataFrame):
             for btype in COMstock.BUILDING_TYPES:
 
                 # collect building type data
-                for ctype in {x.split("_",1)[0] for x in collect.keys()}:
-                    for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
-                        if btype in split_areas.index:
+                if btype in split_areas.index:
+                    for ctype in {x.split("_",1)[0] for x in collect.keys()}:
+                        for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
                             data[kwname] *= floorarea[btype] / total_area * split_areas.loc[btype].FLOORAREA
-                        else:
-                            _logger.info(f"COMstock {county} {state} building type '{btype}' has zero floor area")
+                else:
+                    _logger.debug(f"COMstock {county} {state} building type '{btype}' has zero floor area for {kwname}")
+                    for ctype in {x.split("_",1)[0] for x in collect.keys()}:
+                        for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
+                            data[kwname] = 0.0
 
                 # consolidate building type data
                 for ctype in collect.keys():
@@ -223,6 +242,22 @@ class Commercial(pd.DataFrame):
                 compression="gzip" if cache.pathname.endswith(".gz") else None,
                 )
 
+        # calibrate load is requested
+        if self.CALIBRATION and calibrate == "auto":
+            if isinstance(self.CALIBRATION,dict):
+                if state in self.CALIBRATION:
+                    data *= self.CALIBRATION[state]
+                else:
+                    _logger.warning(f"{state=} not in calibration data")
+            elif isinstance(self.CALIBRATION,float):
+                data *= self.CALIBRATION
+            elif callable(self.CALIBRATION):
+                data *= self.CALIBRATION(state)
+            else:
+                _logger.error(f"CALIBRATION={repr(CALIBRATION)} in invalid")
+        elif isinstance(calibrate,float):
+            data *= calibrate
+            
         super().__init__(data[sorted(data.columns)])
 
     @classmethod
@@ -233,17 +268,15 @@ class Commercial(pd.DataFrame):
 
 if __name__ == "__main__":
 
+    import sys
+    refresh = "--refresh" in sys.argv
+    logging.basicConfig(level=logging.DEBUG if "--debug" in sys.argv else logging.INFO)
+
     from fips.counties import Counties
 
-    pd.options.display.width = None
-    pd.options.display.max_columns = None
-
-    logging.basicConfig(level=logging.DEBUG)
-
     for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
-        print("Processing",state,county,end="...",flush=True)
         try:
-            print("ok")
-            print(pd.DataFrame(Commercial(state,county,refresh=True).sum()).T.round(3))
+            Commercial(state,county,refresh=True)
+            _logger.debug(f"{state} {county} ok")
         except Exception as err:
-            raise
+            _logger.error(f"{state} {county} {err}")

@@ -198,21 +198,28 @@ class RESstock(pd.DataFrame):
             _logger.debug(f"{cache=} (re)generation required")
             data = None
 
+        # download if needed
         maxretry = 5
         retry = 0
+        error = None
         while data is None and retry < maxretry:
 
-                # download data to cache
-                try:
-                    data = pd.read_csv(url)
-                    data.to_csv(cache.pathname,compression="gzip" if cache.name.endswith(".gz") else None)
-                    _logger.debug(f"{url=} download ok")
-                except urllib.error.HTTPError as err:
-                    data = None
-                    retry += 1
-        if retry >= maxretry:
+            # download data to cache
+            try:
+                data = pd.read_csv(url)
+                data.to_csv(cache.pathname,compression="gzip" if cache.pathname.endswith(".gz") else None)
+                _logger.debug(f"{url=} download ok")
+            except urllib.error.HTTPError as err:
+                data = None
+                if str(err) == "HTTP Error 404: Not Found":
+                    break
+                error = err
+                retry += 1
+
+        if retry >= maxretry or error:
             # download error (most likely no data in COMstock)
-            _logger.error(f"RESstock {county} {state} '{btype}' ({building_type}) data not available ({err}) after {retry} download attempts")            
+            _logger.error(f"RESstock {county} {state} '{btype}' ({building_type}) data not available ({error}) after {retry} download attempts")            
+
 
         if data is None:
 
@@ -224,21 +231,21 @@ class RESstock(pd.DataFrame):
             zeros = [0.0]*len(ndx)
             data = pd.DataFrame(data={x:zeros for x in self.COLUMNS},index=ndx)
             data.index.name = "timestamp"
-            data.reset_index(inplace=True)
-            data["units_represented"] = 0.0
+            data["floor_area_represented"] = floor_area = 0.0
 
-        # restructure index
-        data.set_index(["timestamp"],inplace=True)
-        data.index = (pd.DatetimeIndex(data.index,tz=pytz.timezone("EST")) \
-            - dt.timedelta(minutes=15)).tz_convert(pytz.UTC)
+        else:
+            # restructure index
+            data.set_index("timestamp",inplace=True)
+            data.index = (pd.DatetimeIndex(data.index,tz=pytz.timezone("EST")) \
+                - dt.timedelta(minutes=15)).tz_convert(pytz.UTC)
 
-        # capture number of housing units
-        units = data["units_represented"].astype(float)
-        if units.min() != units.max():
-            warnings.warn(f"{state=} {county=} number of units changes (using max)")
-        units = units.max()
-        if units == 0.0:
-            warnings.warn(f"{state} {county} {building_type} has no units")
+            # capture number of housing units
+            units = data["units_represented"].astype(float)
+            if units.min() != units.max():
+                _logger.debug(f"{state=} {county=} number of units changes (using max)")
+            units = units.max()
+            if units == 0.0:
+                _logger.debug(f"{state} {county} {building_type} has no units")
 
         # restructure data
         data.drop([x for x in data.columns if x not in self.COLUMNS],inplace=True,axis=1)
@@ -264,22 +271,18 @@ class RESstock(pd.DataFrame):
 
 if __name__ == "__main__":
 
+    import sys
+    refresh = "--refresh" in sys.argv
+    logging.basicConfig(level=logging.DEBUG if "--debug" in sys.argv else logging.INFO)
+
     from fips.counties import Counties
 
-    pd.options.display.width = None
-    pd.options.display.max_columns = None
-
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
 
     for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
-        print("Processing",state,county,end="...",flush=True)
-        total = []
         for btype in RESstock.BUILDING_TYPES:
             try:
-                result = pd.DataFrame(RESstock(state,county,building_type=btype).sum()).T
-                result.index = [btype]
-                total.append(result)
+                RESstock(state,county,building_type=btype,refresh=refresh)
+                _logger.debug(f"{state} {county} {btype} ok")
             except Exception as err:
-                print(f"ERROR [{btype}]:",err)
-        print("ok")
-        print(pd.concat(total).round(1),flush=True)
+                _logger.error(f"{state} {county} {btype}: {err}")

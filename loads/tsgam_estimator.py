@@ -2046,101 +2046,115 @@ class TsgamEstimator(BaseEstimator, RegressorMixin):
 
 
 if __name__ == "__main__":
-    """
-    Baseline configuration replicating the notebook baseline model.
 
-    Configuration:
-    - Multi-harmonic: [6, 4, 3] harmonics for periods [365.2425*24, 7*24, 24]
-    - Temperature spline: 10 knots, lags [-3, -2, -1, 0, 1, 2, 3]
-    - Regularization: 1e-4 for Fourier and exog, 1.0 for exog diff
-    - Solver: CLARABEL with verbose=True
-    - No AR model (baseline only)
-    """
-    import pandas as pd
-    from pathlib import Path
+    refresh=False
 
-    # Load data from same place as notebook
-    def load_notebook_data(sheet='RI', years=[2020, 2021]):
-        df_list = []
-        for year in years:
-            fp = Path('.') / 'ISO_Data' / f'{year}_smd_hourly.xlsx'
-            df = pd.read_excel(fp, sheet_name=sheet)
-            df['year'] = year
-            df.index = pd.to_datetime(df['Date'].astype(str) + ' ' + df['Hr_End'].map(lambda x: f"{x-1}:00:00")) + pd.Timedelta(hours=1)
-            df_list.append(df)
-        return pd.concat(df_list, axis=0)
+    import os
+    import matplotlib.pyplot as plt
 
-    # Load data
-    print("Loading data...")
-    df = load_notebook_data(sheet='RI', years=[2020, 2021])
+    from loads.total import Residential, Commercial, Industry, Agriculture, Total
+    from loads.cast import Cast
+    from weather import Weather
+    from fips import Counties
 
-    # Prepare y (log-transformed RT_Demand) and X (temperature only)
-    df_subset = df.loc["2020":"2021"]
-    y = np.log(df_subset["RT_Demand"]).values
-    X = pd.DataFrame({'temp': df_subset["Dry_Bulb"].values}, index=df_subset.index)
+    counties = Counties(use_index="RO").loc["WECC"].set_index(["ST","COUNTY"]).sort_index()
 
-    # Multi-harmonic configuration for time features
-    multi_harmonic_config = TsgamMultiHarmonicConfig(
-        num_harmonics=[6, 4, 3],
-        periods=[365.2425 * 24, 7 * 24, 24]
-    )
+    for state,county in counties.index.values:
+        for year in range(2018,2023):
+            for sector_name,sector_data in [
+                ("Residential", Residential),
+                # ("Commercial", Commercial),
+                # ("Industry",Industry)
+                # ("Agriculture",Agriculture)
+                # ("Total",Total)
+            ]:
+                png = os.path.join("tests",state,county,str(year),f"{sector_name}.png")
+                os.makedirs(os.path.dirname(png),exist_ok=True)
+                if os.path.exists(png):
+                    continue
 
-    # Spline configuration for temperature (exogenous variable)
-    exog_config: list[TsgamSplineConfig | TsgamLinearConfig] = [
-        TsgamSplineConfig(
-            knots=[],  # Empty list means knots will be auto-generated from data
-            n_knots=10,  # Number of knots to generate
-            lags=[-3, -2, -1, 0, 1, 2, 3],
-            reg_weight=1e-4,  # Regularization weight for coefficients
-            diff_reg_weight=1.0  # Regularization weight for differences between lags
-        )
-    ]
+                print(f"Processing {county} {state} {year} {sector_name}",end="...",flush=True)
 
-    # No AR model in baseline (AR is added later in the notebook)
-    ar_config = None
+                data = sector_data(state,county).join(Weather(state,county))
+                tsgam = Weather(state,county,year).temperature_degF.to_frame()
+                alm = Cast(Residential(state,county).join(Weather(state,county)),
+                    year,
+                    Weather(state,county,year),
+                    )
 
-    # Solver configuration
-    solver_config = TsgamSolverConfig(
-        solver='CLARABEL',
-        verbose=True
-    )
+                # Prepare y (log-transformed RT_Demand) and X (temperature only)
+                y = np.log(data.elec_total_MW).values
+                X = data.temperature_degF.to_frame()
 
-    # Create main config
-    config = TsgamEstimatorConfig(
-        multi_harmonic_config=multi_harmonic_config,
-        exog_config=exog_config,
-        ar_config=ar_config,
-        solver_config=solver_config,
-        random_state=None,
-        debug=False
-    )
+                # Multi-harmonic configuration for time features
+                multi_harmonic_config = TsgamMultiHarmonicConfig(
+                    num_harmonics=[6, 4, 3],
+                    periods=[365.2425 * 24, 7 * 24, 24]
+                )
 
-    # Create estimator
-    print("\nCreating estimator...")
-    estimator = TsgamEstimator(config=config)
+                # Spline configuration for temperature (exogenous variable)
+                exog_config: list[TsgamSplineConfig | TsgamLinearConfig] = [
+                    TsgamSplineConfig(
+                        knots=[],  # Empty list means knots will be auto-generated from data
+                        n_knots=10,  # Number of knots to generate
+                        lags=[-3, -2, -1, 0, 1, 2, 3],
+                        reg_weight=1e-4,  # Regularization weight for coefficients
+                        diff_reg_weight=1.0  # Regularization weight for differences between lags
+                    )
+                ]
 
-    print("\nConfiguration:")
-    if config.multi_harmonic_config:
-        print(f"  Multi-harmonic: {config.multi_harmonic_config.num_harmonics} harmonics")
-        print(f"  Periods: {config.multi_harmonic_config.periods}")
-    if config.exog_config:
-        print(f"  Exog config: {len(config.exog_config)} exogenous variable(s)")
-        for ix, exog_cfg in enumerate(config.exog_config):
-            if isinstance(exog_cfg, TsgamSplineConfig):
-                print(f"    [{ix}] Type: Spline")
-                print(f"        n_knots: {exog_cfg.n_knots}")
-            else:
-                print(f"    [{ix}] Type: Linear")
-            print(f"        lags: {exog_cfg.lags}")
-            print(f"        reg_weight: {exog_cfg.reg_weight}")
-            print(f"        diff_reg_weight: {exog_cfg.diff_reg_weight}")
-    print(f"  Solver: {config.solver_config.solver} (verbose={config.solver_config.verbose})")
+                # No AR model in baseline (AR is added later in the notebook)
+                ar_config = None
 
-    # Fit the model
-    print("\nFitting model...")
-    estimator.fit(X, y)
+                # Solver configuration
+                solver_config = TsgamSolverConfig(
+                    solver='CLARABEL',
+                    verbose=False
+                )
 
-    print("\nFitting complete!")
-    print(f"Problem status: {estimator.problem_.status}")
-    if estimator.problem_.status in ["optimal", "optimal_inaccurate"]:
-        print(f"Optimal value: {estimator.problem_.value:.6e}")
+                # Create main config
+                config = TsgamEstimatorConfig(
+                    multi_harmonic_config=multi_harmonic_config,
+                    exog_config=exog_config,
+                    ar_config=ar_config,
+                    solver_config=solver_config,
+                    random_state=None,
+                    debug=False
+                )
+
+                # Create estimator
+                estimator = TsgamEstimator(config=config)
+
+                # Fit the model
+                try:
+                    estimator.fit(X, y)
+
+                    if not estimator.problem_.status in ["optimal", "optimal_inaccurate"]:
+                        raise RuntimeError(f"unable to fit: {estimate.problem_.status}")
+
+                    tsgam["elec_total_MW"] = np.exp(estimator.predict(tsgam))
+
+                    plt.figure(figsize=(20,10))
+                    for label,frame,marker in [
+                        ("Training data",data,".k"),
+                        ("ALM",alm,".r"),
+                        ("TSGAM",tsgam,".b"),
+                        ]:
+                        plt.plot(frame.temperature_degF,frame.elec_total_MW,marker,label=label)
+                    plt.grid()
+                    plt.legend()
+                    plt.title(f"{county} {state} {year} {sector_name}")
+                    plt.xlabel("Temperature ($^\\circ$F)")
+                    plt.ylabel(f"Electric load (MW)")
+
+                    plt.savefig(png)
+                    print("ok")
+                except Exception as err:
+                    try:
+                        os.remove(png)
+                    except FileNotFoundError:
+                        pass
+                    print(err)
+                finally:
+                    plt.close()
+

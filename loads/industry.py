@@ -373,28 +373,15 @@ class Industry(pd.DataFrame):
 
 if __name__ == "__main__":
 
-    refresh = True
-
-    # import matplotlib.pyplot as plt
-    
-    logging.basicConfig(level=logging.DEBUG)
+    import sys
+    refresh = "--refresh" in sys.argv
+    logging.basicConfig(level=logging.DEBUG if "--debug" in sys.argv else logging.INFO)
 
     counties = Counties(use_index="RO").loc["WECC"].set_index(["ST","COUNTY"]).sort_index()
-    last = None
-    loads = {}
     for state,county in counties.index.values:
-        
-        if state != last:
-            if not last is None:
-                # plt.figure(figsize=(20,10))
-                # plt.bar(loads.keys(),height=loads.values())
-                # plt.xticks(rotation=90)
-                # plt.grid()
-                # plt.ylabel("Electric load annual average (MW)")
-                # plt.xlabel("County")
-                # plt.title(f"{last} Industry")
-                # plt.savefig(f"/tmp/{last}_I.png")
-                loads = {}
-            last = state
-        loads[county] = Industry(state,county).T.elec_net_MW.values[0].round(1)
-        _logger.info(f"{county} {state} industry load is {loads[county]} MW")
+        try:
+            Industry(state,county,refresh=refresh)
+            refresh = False # no need to download again
+            _logger.debug(f"{county} {state} ok")
+        except Exception as err:
+            _logger.error(f"{county} {state}: {err}")

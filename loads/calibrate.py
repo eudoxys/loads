@@ -262,10 +262,11 @@ class Calibrate(pd.DataFrame):
 
         super().__init__(data*scale+offset)
 
+    CACHE = {}
+
     @classmethod
     def state(cls,
         state:str,
-        sectors:list[str]|None=None,
         year:int|None=None,
         refresh:bool=False,
         ) -> pd.DataFrame:
@@ -275,8 +276,6 @@ class Calibrate(pd.DataFrame):
         ---------
 
           - `state`: state for which to compute calibrations
-
-          - `sectors`: list of sector for which calibrations are desired
 
           - `year`: the year for which loads are calibrated
 
@@ -312,12 +311,13 @@ class Calibrate(pd.DataFrame):
         - Transportation is not included in the load model at this time, despite
           the availability of state-level transportation energy consumption.
         """
+        if state in cls.CACHE:
+            return cls.CACHE[state]
+
         sector_specs = {
             "R":(Residential,"res_energy_mwh"),
             "C":(Commercial,"com_energy_mwh"),
         }
-        if sectors is None:
-            sectors = list(sector_specs)
 
         # set cache location
         if cls.CACHEDIR :
@@ -349,7 +349,8 @@ class Calibrate(pd.DataFrame):
                     index=[len(result)]))
                 result[-1].to_csv(cache.pathname,index=False,header=True)
         result = pd.concat(result)
-        return result.drop("state",axis=1).set_index(["sector"])
+        cls.CACHE[state] = result.drop("state",axis=1).set_index(["sector"])
+        return cls.CACHE[state]
 
 if __name__ == '__main__':
     

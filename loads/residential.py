@@ -3,6 +3,105 @@
 The residential load data frame collects and consolidates `RESstock` data. Housing units are
 obtained from `Units` data to scale loads for the specified year.
 
+Data Flow
+---------
+
+The data flow from RESstock to the `Residential` data frame is shown in Figure 1.
+
+```mermaid
+flowchart LR
+
+    subgraph Residential
+        subgraph relec[elec]
+            e_baseload[baseload]
+            e_cooling[cooling]
+            e_heating[heating]
+            e_dg[dg]
+            e_total[total]
+            e_net[net]
+        end
+        subgraph rnonelec[nonelec]
+            ne_baseload[baseload] --> ne_total[total]
+            ne_heating[heating] --> ne_total
+        end
+    end
+    subgraph RESstock
+        subgraph elec
+            others --> e_baseload
+            
+            elec_cooling[cooling] --> e_cooling
+            elec_coolingfan[coolingfan] --> e_cooling
+            elec_cooling_pump[coolingpump] --> e_cooling
+
+            elec_heating[heating] --> e_heating
+            elec_heatingfan[heatingfan] --> e_heating
+            elec_heatingsupplement[heatingsupplement] --> e_heating
+            elec_heatingpump[heatingpump] --> e_heating
+
+            pv --> e_dg
+
+            e_baseload --> e_total
+            e_cooling --> e_total
+            e_heating --> e_total
+            e_dg --> e_net
+            e_total --> e_net
+
+        end
+        subgraph nonelec
+            n_others[others] --> ne_baseload
+            
+            oilheating --> ne_heating
+            gasheating --> ne_heating
+            gasfireplace --> ne_heating
+            lngheating --> ne_heating
+            woodheating --> ne_heating
+        end
+    end
+```
+Figure 1: RESstock to Residential data frame data flow
+
+In addition, the number of housing units, casting, and calibration are handled
+as shown in Figure 2.
+
+```mermaid
+flowchart LR
+
+    subgraph Unscaled
+        subgraph u_nonelec[nonelec]
+            un_baseload[baseload]
+            un_heating[heating]
+            un_total[total]
+        end
+        subgraph u_elec[elec]
+            ue_baseload[baseload]
+            ue_cooling[cooling]
+            ue_heating[heating]
+            ue_dg[dg]
+            ue_total[total]
+            ue_net[net]
+        end
+    end
+
+    Unscaled --> Units --> Cast --> Calibrate --> Scaled
+
+    subgraph Scaled
+        subgraph s_nonelec[nonelec]
+            sn_baseload[baseload]
+            sn_heating[heating]
+            sn_total[total]
+        end
+        subgraph s_elec[elec]
+            se_baseload[baseload]
+            se_cooling[cooling]
+            se_heating[heating]
+            se_dg[dg]
+            se_total[total]
+            se_net[net]
+        end
+    end
+```
+Figure 2: Residential load scaling
+
 Examples
 --------
 
@@ -95,33 +194,33 @@ class Residential(pd.DataFrame):
                 "elec_total",
                 ],
             "nonelec_baseload": [
-                "oil_watersystems",
-                "gas_dryer",
                 "gas_cooking",
+                "gas_dryer",
                 "gas_grill",
                 "gas_hottubheater",
                 "gas_lighting",
                 "gas_poolheater",
+                "gas_watersystems",
                 "lng_dryer",
                 "lng_range",
                 "lng_watersystems",
+                "oil_watersystems",
                 ],
             "nonelec_cooling": [
                 ],
             "nonelec_heating": [
-                "oil_heating",
                 "gas_fireplace",
                 "gas_heating",
-                "gas_watersystems",
                 "lng_heating",
+                "oil_heating",
                 "wood_heating",
                 ],
             "nonelec_dg": [
                 ],
             "nonelec_total": [
-                "oil_total",
                 "gas_total",
                 "lng_total",
+                "oil_total",
                 "wood_total",
                 ],
             }
@@ -131,6 +230,9 @@ class Residential(pd.DataFrame):
     CACHEDIR = None
     """Cache folder"""
 
+    CALIBRATION = {}
+    """Load calibration data"""
+
     def __init__(self,
         # pylint: disable=too-many-arguments,too-many-positional-arguments
         state:str,
@@ -138,6 +240,7 @@ class Residential(pd.DataFrame):
         collect=None,
         year:int=None,
         refresh:bool=False,
+        calibrate:float|str|None="auto",
         ):
         """Construct building types data frame
 
@@ -155,6 +258,11 @@ class Residential(pd.DataFrame):
 
           - `refresh`: force download of data from source
 
+          - `calibrate`: set load calibration, automatically set calibration
+            to state-level total energy using
+            `loads.commercial.Commercial.CALIBRATION` table, or disable
+            calibration
+
         Description
         -----------
 
@@ -162,6 +270,11 @@ class Residential(pd.DataFrame):
         RESstock columns, scaling by the number of housing units in that year,
         and finally computing total MW and the fraction of total of electric
         or non-electric load.
+
+        If calibrate is set to `'auto'`, then the loadshape will scaled based
+        on the contents of the `loads.commercial.Commercial.CALIBRATE` data
+        if the `state` is among its keys. Alternatively, a float value can be
+        provided to scale accordingly.
         """
         
         # pylint: disable=too-many-locals
@@ -242,7 +355,23 @@ class Residential(pd.DataFrame):
             data.sort_index(inplace=True)
             data = data.round(4)
             data.to_csv(cache.pathname,index=True,header=True)
-            
+
+        # calibrate load is requested
+        if self.CALIBRATION and calibrate == "auto":
+            if isinstance(self.CALIBRATION,dict):
+                if state in self.CALIBRATION:
+                    data *= self.CALIBRATION[state]
+                else:
+                    _logger.warning(f"{state=} not in calibration data")
+            elif isinstance(self.CALIBRATION,float):
+                data *= self.CALIBRATION
+            elif callable(self.CALIBRATION):
+                data *= self.CALIBRATION(state)
+            else:
+                _logger.error(f"CALIBRATION={repr(CALIBRATION)} in invalid")
+        elif isinstance(calibrate,float):
+            data *= calibrate
+                        
         super().__init__(data[sorted(data.columns)])
 
     @classmethod
@@ -253,20 +382,15 @@ class Residential(pd.DataFrame):
 
 if __name__ == "__main__":
 
-    refresh = True
+    import sys
+    refresh = "--refresh" in sys.argv
+    logging.basicConfig(level=logging.DEBUG if "--debug" in sys.argv else logging.INFO)
 
     from fips.counties import Counties
 
-    logging.basicConfig(level=logging.INFO)
-
-    pd.options.display.width = None
-    pd.options.display.max_columns = None
-
     for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
-        print("Processing",state,county,end="...",flush=True)
         try:
-            data = pd.DataFrame(Residential(state,county,refresh=refresh).mean()).T.round(3)
-            print("ok")
+            Residential(state,county,refresh=refresh)
+            _logger.debug(f"{state} {county} ok")
         except Exception as err:
-            print("ERROR:",err)
-            raise
+            _logger.error(f"{state} {county} {err}")

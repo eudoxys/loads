@@ -185,6 +185,7 @@ class COMstock(pd.DataFrame):
         # download if needed
         maxretry = 5
         retry = 0
+        error = None
         while data is None and retry < maxretry:
 
             # download data to cache
@@ -194,11 +195,14 @@ class COMstock(pd.DataFrame):
                 _logger.debug(f"{url=} download ok")
             except urllib.error.HTTPError as err:
                 data = None
+                if str(err) == "HTTP Error 404: Not Found":
+                    break
+                error = err
                 retry += 1
 
-        if retry >= maxretry:
+        if retry >= maxretry or error:
             # download error (most likely no data in COMstock)
-            _logger.error(f"COMstock {county} {state} '{btype}' ({building_type}) data not available ({err}) after {retry} download attempts")            
+            _logger.error(f"COMstock {county} {state} '{btype}' ({building_type}) data not available ({error}) after {retry} download attempts")            
 
         if data is None:
 
@@ -208,29 +212,30 @@ class COMstock(pd.DataFrame):
                 end="2019-01-01 04:00:00+00:00",
                 freq="1h")
             zeros = [0.0]*len(ndx)
-            data = pd.DataFrame(data={x:zeros for x in self.COLUMNS},index=ndx)
+            data = pd.DataFrame(data={x:zeros for x in self.COLUMNS})
+            data.index = ndx
             data.index.name = "timestamp"
-            data.reset_index(inplace=True)
-            data["floor_area_represented"] = 0.0
+            data["floor_area_represented"] = floor_area = 0.0
 
-        # restructure index
-        data.set_index(["timestamp"],inplace=True)
-        data.index = (pd.DatetimeIndex(data.index,tz=pytz.timezone("EST")) \
-            - dt.timedelta(minutes=15)).tz_convert(pytz.UTC)
+        else:
+            # restructure index
+            data.set_index("timestamp",inplace=True)
+            data.index = (pd.DatetimeIndex(data.index,tz=pytz.timezone("EST")) \
+                - dt.timedelta(minutes=15)).tz_convert(pytz.UTC)
 
-        # capture number floor_area
-        floor_area = data["floor_area_represented"].astype(float)
-        if floor_area.min() != floor_area.max():
-            _logger.debug(f"{state=} {county=} floor area changes (using max)")
-        floor_area = floor_area.max()
-        if floor_area == 0.0:
-            _logger.info(f"{state} {county} {building_type} has no floor area")
+            # capture number floor_area
+            floor_area = data["floor_area_represented"].astype(float)
+            if floor_area.min() != floor_area.max():
+                _logger.debug(f"{state=} {county=} floor area changes (using max)")
+            floor_area = floor_area.max()
+            if floor_area == 0.0:
+                _logger.debug(f"{state} {county} {building_type} has no floor area")
 
         # restructure data
         data.drop([x for x in data.columns if x not in self.COLUMNS],inplace=True,axis=1)
         data.rename(self.COLUMNS,inplace=True,axis=1)
-        for value in self.COLUMNS.values():
-            data[value] = [_float(x)/floor_area*1000 for x in data[value]] if floor_area > 0 else 0.0
+        for column in self.COLUMNS.values():
+            data[column] = [_float(x)/floor_area*1000 for x in data[column]] if floor_area > 0 else 0.0
 
         # recover floor area represented
         data["floor_area"] = floor_area
@@ -250,22 +255,17 @@ class COMstock(pd.DataFrame):
 
 if __name__ == "__main__":
 
+    import sys
+    refresh = "--refresh" in sys.argv
+    logging.basicConfig(level=logging.DEBUG if "--debug" in sys.argv else logging.INFO)
+
+    import sys
     from fips.counties import Counties
 
-    pd.options.display.width = None
-    pd.options.display.max_columns = None
-
-    logging.basicConfig(level=logging.DEBUG)
-
     for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
-        print("Processing",state,county,end="...",flush=True)
-        total = []
         for btype in COMstock.BUILDING_TYPES:
             try:
-                result = pd.DataFrame(COMstock(state,county,building_type=btype).sum()).T
-                result.index = [btype]
-                total.append(result)
+                COMstock(state,county,building_type=btype,refresh=refresh)
+                _logger.debug(f"{state} {county} {btype} ok")
             except Exception as err:
-                print(f"ERROR [{btype}]:",err)
-        print("ok")
-        print(pd.concat(total).round(1),flush=True)
+                _logger.error(f"{state} {county} {btype}: {err}")

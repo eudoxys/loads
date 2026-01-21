@@ -106,18 +106,15 @@ class Total(pd.DataFrame):
 
 if __name__ == "__main__":
 
-    logging.basicConfig(level=logging.DEBUG)
-
-    year = 2020
-    total = None
-    refresh = True
-
+    import sys
+    refresh = "--refresh" in sys.argv
+    logging.basicConfig(level=logging.DEBUG if "--debug" in sys.argv else logging.INFO)
+    
     for state,county in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY"]].values:
-        print(f"Processing {county} {state}",end="... ",flush=True)
-        result = Total(state,county,year,refresh)
-        if total is None:
-            total = result.copy()
-        else:
-            total += result
-        print(f"WECC peak load now {total.elec_net_MW.max()/1000:.1f} GW")
+        for year in range(2018,2023):
+            try:
+                Total(state,county,year,refresh=refresh)
+                _logger.debug(f"{state} {county} {year} ok")
+            except Exception as err:
+                _logger.error(f"{state} {county} {year} {err}")
 

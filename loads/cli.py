@@ -263,13 +263,6 @@ def _getdata(args):
         case "_":
             raise ValueError(f"{args.sector=} is invalid")
 
-    # cast data to year
-    if not args.year is None:
-        kwargs = Weather.makeargs(**vars(args))
-        weather = Weather(**kwargs)
-        data = Cast(pd.concat([data,weather],axis=1),args.year)
-    data.index.name = "timestamp"
-
     return data.round(args.precision)
 
 def _print(args,data):
@@ -330,4 +323,4 @@ def _plot(args,data):
 
 if __name__ == "__main__":
 
-    main("plot","-d",state="CA",county="Alameda",year=2020,dataset="total",output="/tmp/test.png")
+    main("plot","-d",state="CA",county="Alameda",year=2020,dataset="total")

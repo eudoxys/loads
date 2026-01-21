@@ -1,6 +1,8 @@
+cvxpy
 h5pyd
 marimo
 matplotlib
+numpy
 openpyxl
 pandas
 plotly
@@ -10,7 +12,7 @@ requests
 scikit-learn
 spcqe
 
-tsgam_estimator @ git+https://github.com/nimish/estimator
+# tsgam_estimator @ git+https://github.com/nimish/estimator
 
 cache @ git+https://github.com/eudoxys/cache
 eia @ git+https://github.com/eudoxys/eia
