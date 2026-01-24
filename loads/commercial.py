@@ -215,10 +215,10 @@ class Commercial(pd.DataFrame):
                         for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
                             data[kwname] *= floorarea[btype] / total_area * split_areas.loc[btype].FLOORAREA
                 else:
-                    _logger.debug(f"COMstock {county} {state} building type '{btype}' has zero floor area for {kwname}")
                     for ctype in {x.split("_",1)[0] for x in collect.keys()}:
                         for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
                             data[kwname] = 0.0
+                    _logger.debug(f"COMstock {county} {state} building type '{btype}' has zero floor area for {kwname}")
 
                 # consolidate building type data
                 for ctype in collect.keys():

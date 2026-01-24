@@ -2043,143 +2043,106 @@ class TsgamEstimator(BaseEstimator, RegressorMixin):
             samples[i] = baseline_pred + ar_noise
         return samples
 
-
-
 if __name__ == "__main__":
 
-    refresh = False
+    # test configuration
+    state = "CA"
+    county = "Los Angeles"
+    channel = "elec_cooling_MW"
+    training = 8000 # size of training window (must be less than 8760)
+    percentile = None # percentile to draw from samples
+    samples = 100 # number of samples to draw when percentile is not None
 
     import os
     import matplotlib.pyplot as plt
 
-    from loads.total import Residential, Commercial, Industry, Agriculture, Total
-    from loads.cast import Cast
-    from weather import Weather
-    from fips import Counties
+    # load data file
+    file = f"tsgam_test_{channel}.csv"
+    if os.path.exists(file):
+        data = pd.read_csv(file,index_col=["timestamp"],parse_dates=["timestamp"])
+    else:
+        from loads import Residential
+        from weather import Weather
 
-    counties = Counties(use_index="RO").loc["WECC"].set_index(["ST","COUNTY"]).sort_index()
+        data = Residential(state,county).join(Weather(state,county))[[channel,"temperature_degF"]]
+        for year in range(2019,2023):
+            data = pd.concat([data,Weather(state,county,year)["temperature_degF"]])
+        data.columns = ["training","temperature"]
+        data.to_csv(file,index=True,header=True)
 
-    for state,county in counties.index.values:
-        for sector_name,sector_data in [
-            ("Residential", Residential),
-            ("Commercial", Commercial),
-            # ("Industry",Industry)
-            # ("Agriculture",Agriculture)
-            # ("Total",Total)
-            ]:
-            sector_result = []
-            tpng = os.path.join("tests",state,county,f"{sector_name}.png")
-            if os.path.exists(tpng) and not refresh:
-                continue
-            for year in range(2018,2023):
-                png = os.path.join("tests",state,county,str(year),f"{sector_name}.png")
-                os.makedirs(os.path.dirname(png),exist_ok=True)
+    # prepare y (log-transformed load) and X (temperature only)
+    assert training<len(data.dropna()), f"training window is larger than data size"
+    y = np.log(data.iloc[:training].dropna().training.values)
+    X = data.iloc[:training].dropna().temperature.to_frame()
 
-                print(f"Processing {county} {state} {year} {sector_name}",end="...",flush=True)
+    # multi-harmonic configuration for time features
+    multi_harmonic_config = TsgamMultiHarmonicConfig(
+        num_harmonics=[6, 4, 3],
+        periods=[365.2425 * 24, 7 * 24, 24]
+    )
 
-                data = sector_data(state,county).join(Weather(state,county))
-                if (data["elec_total_MW"] == 0.0).all():
-                    print("no data")
-                    continue
-                tsgam = Weather(state,county,year).temperature_degF.to_frame()
-                alm = Cast(sector_data(state,county).join(Weather(state,county)),
-                    year,
-                    Weather(state,county,year),
-                    )
+    # spline configuration for temperature (exogenous variable)
+    exog_config: list[TsgamSplineConfig | TsgamLinearConfig] = [
+        TsgamSplineConfig(
+            knots=[],  # Empty list means knots will be auto-generated from data
+            n_knots=10,  # Number of knots to generate
+            lags=[-3, -2, -1, 0, 1, 2, 3],
+            reg_weight=1e-4,  # Regularization weight for coefficients
+            diff_reg_weight=1.0  # Regularization weight for differences between lags
+        )
+    ]
 
-                # Prepare y (log-transformed RT_Demand) and X (temperature only)
-                y = np.log(data.elec_total_MW).values
-                X = data.temperature_degF.to_frame()
+    # 36-hour AR model in baseline
+    ar_config = TsgamArConfig(
+        lags = list(range(1,36))
+        )
 
-                # Multi-harmonic configuration for time features
-                multi_harmonic_config = TsgamMultiHarmonicConfig(
-                    num_harmonics=[6, 4, 3],
-                    periods=[365.2425 * 24, 7 * 24, 24]
-                )
+    # solver configuration
+    solver_config = TsgamSolverConfig(
+        solver='CLARABEL',
+        verbose=False
+    )
 
-                # Spline configuration for temperature (exogenous variable)
-                exog_config: list[TsgamSplineConfig | TsgamLinearConfig] = [
-                    TsgamSplineConfig(
-                        knots=[],  # Empty list means knots will be auto-generated from data
-                        n_knots=10,  # Number of knots to generate
-                        lags=[-3, -2, -1, 0, 1, 2, 3],
-                        reg_weight=1e-4,  # Regularization weight for coefficients
-                        diff_reg_weight=1.0  # Regularization weight for differences between lags
-                    )
-                ]
+    # create main config
+    config = TsgamEstimatorConfig(
+        multi_harmonic_config=multi_harmonic_config,
+        exog_config=exog_config,
+        ar_config=ar_config,
+        solver_config=solver_config,
+        random_state=None,
+        debug=False
+    )
 
-                # No AR model in baseline (AR is added later in the notebook)
-                ar_config = TsgamArConfig(
-                    lags = list(range(1,36))
-                    )
+    # create estimator
+    estimator = TsgamEstimator(config=config)
 
-                # Solver configuration
-                solver_config = TsgamSolverConfig(
-                    solver='CLARABEL',
-                    verbose=False
-                )
+    # perform fit
+    estimator.fit(X, y)
+    if not estimator.problem_.status in ["optimal", "optimal_inaccurate"]:
+        raise RuntimeError(f"unable to fit: {estimate.problem_.status}")
 
-                # Create main config
-                config = TsgamEstimatorConfig(
-                    multi_harmonic_config=multi_harmonic_config,
-                    exog_config=exog_config,
-                    ar_config=ar_config,
-                    solver_config=solver_config,
-                    random_state=None,
-                    debug=False
-                )
+    # predict and sample
+    data["predict"] = np.exp(estimator.predict(data["temperature"].to_frame()))
+    if percentile is None:
+        data["sample"] = np.exp(estimator.sample(data["temperature"].to_frame()))[0]
+    else:
+        data["sample"] = np.percentile(np.exp(estimator.sample(data["temperature"].to_frame(),samples)),percentile,axis=0)
 
-                # Create estimator
-                estimator = TsgamEstimator(config=config)
+    # test holdout
+    test = data.iloc[training:8760]
+    predict_rmse = np.sqrt(np.sum((test["predict"]-test["training"])**2)/training)
+    sample_rmse = np.sqrt(np.sum((test["sample"]-test["training"])**2)/training)
+    print(f"Predict RMSE... {predict_rmse:.1f} MW ({predict_rmse/test["training"].mean()*100:.1f}%)",flush=True)
+    print(f"Sample RMSE.... {sample_rmse:.1f} MW ({sample_rmse/test["training"].mean()*100:.1f}%)",flush=True)
 
-                # Fit the model
-                try:
-                    estimator.fit(X, y)
+    # (test["predict"]-test["training"]).plot()
+    # plt.show()
 
-                    if not estimator.problem_.status in ["optimal", "optimal_inaccurate"]:
-                        raise RuntimeError(f"unable to fit: {estimate.problem_.status}")
-
-                    tsgam["elec_total_MW"] = np.exp(estimator.sample(tsgam)[0])
-                    sector_result.append(tsgam)
-
-                    plt.figure(figsize=(20,10))
-                    for label,frame,marker in [
-                        ("Training data",data,".k"),
-                        ("ALM",alm,".r"),
-                        ("TSGAM",tsgam,".b"),
-                        ]:
-                        plt.plot(frame.temperature_degF,frame.elec_total_MW,marker,label=label)
-                    plt.grid()
-                    plt.legend()
-                    plt.title(f"{county} {state} {year} {sector_name}")
-                    plt.xlabel("Temperature ($^\\circ$F)")
-                    plt.ylabel(f"Electric load (MW)")
-
-                    plt.savefig(png)
-                    print("ok")
-                except Exception as err:
-                    try:
-                        os.remove(png)
-                    except FileNotFoundError:
-                        pass
-                    print(err)
-                finally:
-                    plt.close()
-
-            if sector_result:
-                plt.figure(figsize=(20,10))
-                sector_result = pd.concat(sector_result)
-                sector_result["elec_total_MW"].plot(
-                    grid=True,
-                    xlabel="Date/Time",
-                    ylabel="Power (MW)",
-                    title=f"{county} {state} Residential Electric Total Load")
-                try:
-                    plt.savefig(tpng)
-                except:
-                    try:
-                        os.remove(tpng)
-                    except:
-                        pass
-                plt.close()
-
+    # plot
+    data[["training","predict","sample"]].plot(
+        figsize=(20,10),
+        title=f"{county} {state}",
+        xlabel="Date/Time",
+        ylabel="Power",
+        )
+    plt.show()

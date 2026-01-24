@@ -32,18 +32,28 @@ which outputs
 
 """
 
+import datetime as dt
 import logging
 
 import pandas as pd
+import numpy as np
 
 from fips import Counties
 from weather import Weather
+from cache import Cache
 from loads.residential import Residential
 from loads.commercial import Commercial
 from loads.industry import Industry
 from loads.agriculture import Agriculture
-from loads.cast import Cast
 from loads.calibrate import Calibrate
+from tsgam_estimator import (
+    TsgamEstimatorConfig, 
+    TsgamMultiHarmonicConfig,
+    TsgamSplineConfig,
+    TsgamArConfig,
+    TsgamSolverConfig,
+    TsgamEstimator,
+    )
 
 _logger = logging.getLogger(__file__)
 
@@ -53,14 +63,49 @@ class Total(pd.DataFrame):
     CACHEDIR = None
     """Cache folder"""
 
+    DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S%z"
+    """Date/time format to use"""
+
     cache = {
         "scale": {},
+        "estimator": {}
     }
+
+    PRECISION = 3
+    """Precision of predicted/sampled loads"""
+
+    TSGAM_CONFIG = TsgamEstimatorConfig(
+        multi_harmonic_config=TsgamMultiHarmonicConfig(
+            num_harmonics=[6, 4, 3],
+            periods=[365.2425 * 24, 7 * 24, 24]
+        ),
+        exog_config=[TsgamSplineConfig(
+                    knots=[],  # Empty list means knots will be auto-generated from data
+                    n_knots=10,  # Number of knots to generate
+                    lags=[-3, -2, -1, 0, 1, 2, 3],
+                    reg_weight=1e-4,  # Regularization weight for coefficients
+                    diff_reg_weight=1.0  # Regularization weight for differences between lags
+                )],
+        ar_config=TsgamArConfig(
+            lags = list(range(1,36))
+            ),
+        solver_config=TsgamSolverConfig(
+            solver='CLARABEL',
+            verbose=False
+        ),
+        random_state=None,
+        debug=False
+    )
+    """Time-series General Additive Model estimator configuration"""
 
     def __init__(self,
         state:str,
         county:str,
-        year:int|None=None,
+        year:int|str,
+        freq:str="1h",
+        samples:int=1,
+        percentile:float=95,
+        nonelec:bool=False,
         refresh:bool=False,
         ):
         """Total load class constructor
@@ -72,31 +117,88 @@ class Total(pd.DataFrame):
 
           - `county`: county for which to aggregate loads
 
-          - `year`: year for which to aggregate loads
+          - `year`: target year
 
-          - `refresh`: refresh sector-level cache data
+          - `samples`: number of AR samples to generation (0=predict onlyl)
+
+          - `nonelec`: use non-electric total load
+
+          - `refresh`: refresh cache data
         """
-        try:
-            scale = self.cache["scale"][(state,year)]
-        except KeyError:
-            scale = Calibrate.state(state,year=year).to_dict()["scalar"]
-            self.cache["scale"][(state,year)] = scale
-        
-        data = Cast(Residential(state,county,refresh=refresh).join(Weather(state,county)),year)
-        total = Calibrate(data,scale=scale["R"])
-        
-        data = Cast(Commercial(state,county,refresh=refresh).join(Weather(state,county)),year)
-        total += Calibrate(data,scale=scale["C"])
-        
-        data = Industry(state,county,refresh=refresh)
-        for column in [x for x in total.columns if x.endswith("_MW") and x in data.columns]:
-            total[column] += data.column
-        
-        data = Agriculture(state,county,refresh=refresh)
-        for column in [x for x in total.columns if x.endswith("_MW") and x in data.columns]:
-            total[column] += data.column
-        
-        super().__init__(total.fillna(0.0))
+
+        if isinstance(year,str):
+            year = int(year)
+        column = "nonelec_total_MW" if nonelec else "elec_total_MW"
+
+        if self.CACHEDIR:
+            Cache.CACHEDIR = self.CACHEDIR
+        cache = Cache(package="loads",version=0,path=[state,county,f"R_{column}_{freq}_{samples}_{percentile}.csv.gz"])
+
+        # load data from cache
+        if cache.exists() and not refresh:
+
+            try:
+                data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
+                _logger.debug(f"{cache=} ok")
+            except Exception as err:
+                data = None
+                cache.delete()
+                _logger.error(f"{cache=} {err}")
+
+        else:
+            data = None
+            _logger.debug(f"{cache=} (re)generation required")
+
+        if data is None:
+
+            # get residential and commercial loads
+            # TODO: change to log(MW), need to address zeros
+            train = Weather(state,county)["temperature_degF"].to_frame()
+            data = Weather(state,county,year)["temperature_degF"].to_frame()
+            for sector,dataset in {
+                    "residential_MW":Residential,
+                    "commercial_MW":Commercial,
+                    }.items():
+                if (state,county,sector) in self.cache["estimator"]:
+                    estimator = self.cache["estimator"][(state,county,sector)]
+                else:
+                    estimator = TsgamEstimator(config=self.TSGAM_CONFIG)
+                    train[sector] = dataset(state,county)[column]
+                    estimator.fit(train.temperature_degF.to_frame(),train[sector].values)
+                    if not estimator.problem_.status in ["optimal", "optimal_inaccurate"]:
+                        raise RuntimeError(f"unable to fit: {estimate.problem_.status}")
+                    self.cache["estimator"][(state,county,sector)] = estimator
+                if not samples:
+                    data[sector] = estimator.predict(data)
+                elif samples == 1:
+                    data[sector] = estimator.sample(data,1)[0]
+                else:
+                    data[sector] = np.percentile(estimator.sample(data,samples),percentile)
+
+            # TODO: calibrate industrial loadshape to match peak
+            loadshape = pd.DataFrame(
+                data=np.ones(len(data)),
+                index=data.index,
+                )
+            data["industrial_MW"] = Industry(state,county,loadshape)[column]
+
+            # get agricultural loads and set transportation to zero            
+            data["agricultural_MW"] = Agriculture(state,county,loadshape)[column]
+            data["transportation_MW"] = 0.0
+            
+            # TODO: train DG based on solar data
+            data["dg_MW"] = -0.0 # TODO
+            
+            data["total_MW"] = data[[x for x in data.columns if x.endswith("_MW")]].sum(axis=1)
+            data["net_MW"] = data["total_MW"] + data["dg_MW"]
+            
+            data.to_csv(cache.pathname,
+                index=True,
+                header=True,
+                compression="gzip" if cache.pathname.endswith(".gz") else None,
+                )
+
+        super().__init__(data.round(self.PRECISION))
 
     @classmethod
     def makeargs(cls,**kwargs):
@@ -109,16 +211,22 @@ if __name__ == "__main__":
 
     The main script refreshes the cache with debugging enabled.
     """
+
     import sys
+    
+    pd.options.display.max_columns = None
+    pd.options.display.width = None
+
     refresh = "--refresh" in sys.argv
     debug = "--debug" in sys.argv
+
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
     
     for state,county in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY"]].values:
         for year in range(2018,2023):
             try:
-                Total(state,county,year,refresh=refresh)
-                _logger.debug(f"{state} {county} {year} ok")
+                result = Total(state,county,year,refresh=refresh)
+                _logger.debug(f"{state} {county} ok")
             except Exception as err:
                 (_logger.exception if debug else _logger.error)(f"{state} {county} {year} {err}")
-
+                raise

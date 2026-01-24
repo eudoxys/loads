@@ -2,7 +2,7 @@
 
 PACKAGE=loads
 
-CACHE_OPTIONS=--debug --refresh
+CACHE_OPTIONS=--debug
 
 LOGO="https://github.com/eudoxys/.github/blob/main/eudoxys_banner.png?raw=true"
 LINK="https://www.eudoxys.com/"
@@ -13,15 +13,15 @@ docs: $(PACKAGE)/__init__.py
 
 $(PACKAGE)/__init__.py: $(filter-out $(PACKAGE)/__init__.py,$(wildcard $(PACKAGE)/*.py))
 
-cache: total
+cache: total residential commercial industry agriculture resstock comstock
 
-total: residential commercial industry agriculture
+total: 
 	cd loads ; python3 total.py $(CACHE_OPTIONS)
 
-residential: resstock
+residential: 
 	cd loads ; python3 residential.py $(CACHE_OPTIONS)
 
-commercial: comstock
+commercial: 
 	cd loads ; python3 commercial.py $(CACHE_OPTIONS)
 
 industry:

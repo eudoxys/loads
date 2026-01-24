@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.19.1"
+__generated_with = "0.19.4"
 app = marimo.App(width="full")
 
 
@@ -113,7 +113,7 @@ def _(
 ):
     mo.stop(
         COUNTY is None,
-        mo.md("**<font color=blue>HINT**: you need to select a county</font)"),
+        mo.md("**<font color=blue>HINT**: you need to select a county</font>"),
     )
 
     pd.options.display.max_columns = None
@@ -173,7 +173,7 @@ def _(
 @app.cell
 def _(Calibrate, STATE, calibrate_ui, year_ui):
     if calibrate_ui.value:
-        calibration = Calibrate.state(STATE, ["R", "C"], year_ui.value).to_dict()["scalar"]
+        calibration = Calibrate.state(STATE, year_ui.value).to_dict()["scalar"]
     else:
         calibration = {"R":1.0,"C":1.0}
     return (calibration,)
