@@ -168,6 +168,10 @@ def main(*args:list[str],**kwargs:dict[str,str]) -> int:
                 file=sys.stderr,
                 )
 
+        # enable debug output
+        if args.debug:
+            logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
+
         match args.command:
 
             case "print":
@@ -308,14 +312,35 @@ def _print(args,data):
 
 def _plot(args,data):
     """@private Plot sector data"""
-    data[["elec_baseload_MW","elec_cooling_MW","elec_heating_MW","elec_dg_MW",
-        "nonelec_baseload_MW","nonelec_cooling_MW","nonelec_heating_MW"]].plot(
-            figsize=(20,10),
-            kind="area",
-            grid=True,
-            xlabel="Date & time (UTC)",
-            ylabel="Load (MW)",
-            )
+    match args.dataset:
+        case "weather":
+            data[["temperature_degF"]].plot(
+                    figsize=(20,10),
+                    grid=True,
+                    xlabel="Date & time (UTC)",
+                    ylabel="Temperature (degF)",
+                    )
+        case "total":
+            pd.options.display.max_columns = None
+            pd.options.display.width = None
+            print(data)
+            data[["elec_residential_MW","elec_commercial_MW","elec_industrial_MW",
+                "elec_agricultural_MW","elec_transportation_MW","elec_dg_MW"]].plot(
+                    figsize=(20,10),
+                    kind="area",
+                    grid=True,
+                    xlabel="Date & time (UTC)",
+                    ylabel="Load (MW)",
+                    )
+        case "_":
+            data[["elec_baseload_MW","elec_cooling_MW","elec_heating_MW","elec_dg_MW",
+                "nonelec_baseload_MW","nonelec_cooling_MW","nonelec_heating_MW"]].plot(
+                    figsize=(20,10),
+                    kind="area",
+                    grid=True,
+                    xlabel="Date & time (UTC)",
+                    ylabel="Load (MW)",
+                    )
     if args.output is None:
         plt.show()
     else:

@@ -116,7 +116,12 @@ class Units(float):
             year = data.columns[-1]
         else:
             year = type(data.columns[-1])(year)
-        assert year in data.columns, f"{year=} is not valid, must be one of {data.columns}"
+        if year < min(data.columns):
+            _logger.warning(f"{year=} is prior to {min(data.columns)}, using year={min(data.columns)} instead")
+            year = min(data.columns)
+        elif year > max(data.columns):
+            _logger.warning(f"{year=} is after to {max(data.columns)}, using year={max(data.columns)} instead")
+            year = max(data.columns)
 
         if county is None:
             row = data.index

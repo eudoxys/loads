@@ -1,8 +1,13 @@
 """Total load aggregation module
 
-The total load aggregate module computes the sum of the residential,
-commercial, industrial and agricultural loads at the county level in each
-state.
+The total load module computes the expected sum of the residential,
+commercial, industrial and agricultural loads at the county level for the
+specified year.
+
+Note that calibration requires that the total load for each county in a state
+is computed first before the load for a specified county can be calculated.
+This can take some time if it has not been done before and is not in the loads
+cache.
 
 Example
 -------
@@ -14,19 +19,19 @@ To compute the total load in 2020 for Alameda County CA use the following
 
 which outputs
 
-                               elec_baseload_MW  elec_cooling_MW  elec_dg_MW  elec_heating_MW  ...  humidity_pc  global_Wpms  direct_Wpms  diffuse_Wpms
-    timestamp                                                                                  ...                                                     
-    2020-01-01 00:00:00+00:00        875.936758        12.275047   -1.308691       119.031976  ...  7441.843208  1613.893708     0.000000   1613.893708
-    2020-01-01 01:00:00+00:00        966.255125        11.165026    0.000000       125.994575  ...  7190.793076    89.660762   224.151904     89.660762
-    2020-01-01 02:00:00+00:00        985.739523        10.193724    0.000000       140.598172  ...  7136.996619     0.000000     0.000000      0.000000
-    2020-01-01 03:00:00+00:00        972.520338         9.490080    0.000000       148.451541  ...  6195.558622     0.000000     0.000000      0.000000
-    2020-01-01 04:00:00+00:00        931.999704         9.656636    0.000000       142.825713  ...  5962.440642     0.000000     0.000000      0.000000
-    ...                                     ...              ...         ...              ...  ...          ...          ...          ...           ...
-    2020-12-31 19:00:00+00:00        947.877004        12.888278   -2.859527       178.552351  ...  7450.809284  3227.787415     0.000000   3227.787415
-    2020-12-31 20:00:00+00:00        962.784910        12.836871   -4.207248       183.036471  ...  8338.450823  4617.529219     0.000000   4617.529219
-    2020-12-31 21:00:00+00:00        934.669867        12.684631   -3.040338       177.558581  ...  8338.450823  3407.108939     0.000000   3407.108939
-    2020-12-31 22:00:00+00:00        901.014894        12.377845   -3.209998       174.477905  ...  8338.450823  3586.430462     0.000000   3586.430462
-    2020-12-31 23:00:00+00:00        851.636725        11.707962   -2.954313       184.026453  ...  8966.076154  3317.448177     0.000000   3317.448177
+                               temperature_degF  global_Wpms  direct_Wpms  diffuse_Wpms  elec_residential_MW  elec_commercial_MW  elec_industrial_MW  elec_agricultural_MW  elec_transportation_MW  elec_total_MW  elec_net_MW  elec_dg_MW
+    timestamp                                                                                                                                                                                                                             
+    2020-01-01 00:00:00+00:00              50.9         37.0         40.0          34.0             1000.677             988.157             223.618                 6.901                     0.0       2219.353     2219.353        -0.0
+    2020-01-01 01:00:00+00:00              49.5          0.0          0.0           0.0              857.849             850.925             223.618                 6.901                     0.0       1939.294     1939.294        -0.0
+    2020-01-01 02:00:00+00:00              48.9          0.0          0.0           0.0              675.618             715.667             223.618                 6.901                     0.0       1621.805     1621.805        -0.0
+    2020-01-01 03:00:00+00:00              48.7          0.0          0.0           0.0              523.432             589.093             223.618                 6.901                     0.0       1343.044     1343.044        -0.0
+    2020-01-01 04:00:00+00:00              48.0          0.0          0.0           0.0              492.401             597.660             223.618                 6.901                     0.0       1320.580     1320.580        -0.0
+    ...                                     ...          ...          ...           ...                  ...                 ...                 ...                   ...                     ...            ...          ...         ...
+    2020-12-31 19:00:00+00:00              54.9        497.0        891.0          70.0              425.438             659.111             223.618                 6.901                     0.0       1315.069     1315.069        -0.0
+    2020-12-31 20:00:00+00:00              56.7        506.0        890.0          72.0              397.054             640.492             223.618                 6.901                     0.0       1268.065     1268.065        -0.0
+    2020-12-31 21:00:00+00:00              57.4        456.0        859.0          71.0              473.943             712.390             223.618                 6.901                     0.0       1416.852     1416.852        -0.0
+    2020-12-31 22:00:00+00:00              57.2        351.0        797.0          63.0              584.162             764.285             223.618                 6.901                     0.0       1578.966     1578.966        -0.0
+    2020-12-31 23:00:00+00:00              53.6        207.0        668.0          51.0              738.641             861.597             223.618                 6.901                     0.0       1830.758     1830.758        -0.0
 
     [8784 rows x 15 columns]
 
@@ -46,7 +51,7 @@ from loads.commercial import Commercial
 from loads.industry import Industry
 from loads.agriculture import Agriculture
 from loads.calibrate import Calibrate
-from tsgam_estimator import (
+from loads.tsgam_estimator import (
     TsgamEstimatorConfig, 
     TsgamMultiHarmonicConfig,
     TsgamSplineConfig,
@@ -128,11 +133,14 @@ class Total(pd.DataFrame):
 
         if isinstance(year,str):
             year = int(year)
-        column = "nonelec_total_MW" if nonelec else "elec_total_MW"
+        source = "nonelec" if nonelec else "elec"
 
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
-        cache = Cache(package="loads",version=0,path=[state,county,f"R_{column}_{freq}_{samples}_{percentile}.csv.gz"])
+        if samples and samples > 1:
+            cache = Cache(package="loads",version=0,path=[state,county,f"T_{source}_{freq}_{samples}_{percentile}.csv.gz"])
+        else:
+            cache = Cache(package="loads",version=0,path=[state,county,f"T_{source}_{freq}.csv.gz"])
 
         # load data from cache
         if cache.exists() and not refresh:
@@ -153,44 +161,73 @@ class Total(pd.DataFrame):
 
             # get residential and commercial loads
             # TODO: change to log(MW), need to address zeros
-            train = Weather(state,county)["temperature_degF"].to_frame()
-            data = Weather(state,county,year)["temperature_degF"].to_frame()
+            train = Weather(state,county)
+            if nonelec:
+                data = Weather(state,county,year)[["temperature_degF"]]
+            else:
+                data = Weather(state,county,year)[["temperature_degF","global_Wpms","direct_Wpms","diffuse_Wpms"]]
             for sector,dataset in {
-                    "residential_MW":Residential,
-                    "commercial_MW":Commercial,
+                    "residential":Residential,
+                    "commercial":Commercial,
                     }.items():
+
+                # get previously constructor estimator 
                 if (state,county,sector) in self.cache["estimator"]:
                     estimator = self.cache["estimator"][(state,county,sector)]
                 else:
+
+                    # create a new estimator
                     estimator = TsgamEstimator(config=self.TSGAM_CONFIG)
-                    train[sector] = dataset(state,county)[column]
-                    estimator.fit(train.temperature_degF.to_frame(),train[sector].values)
+
+                    # create a new calibrator
+                    calibrate = Calibrate.state(state,year)
+
+                    # gather the training data for this state, county, and sector
+                    train[sector] = dataset(
+                        state,
+                        county,
+                        calibrate=calibrate.loc[sector[0].upper()].values[0],
+                        )[f"{source}_total_MW"]
+
+                    # fit the estimator (with nans as zeros)
+                    estimator.fit(train[["temperature_degF"]],train[sector].fillna(0).values)
                     if not estimator.problem_.status in ["optimal", "optimal_inaccurate"]:
                         raise RuntimeError(f"unable to fit: {estimate.problem_.status}")
+
+                    # save the estimator for future use, e.g., different years
                     self.cache["estimator"][(state,county,sector)] = estimator
+
+                # not sampling requested
                 if not samples:
-                    data[sector] = estimator.predict(data)
+                    data[f"{source}_{sector}_MW"] = estimator.predict(data)
+
+                # one sample requested
                 elif samples == 1:
-                    data[sector] = estimator.sample(data,1)[0]
+                    data[f"{source}_{sector}_MW"] = estimator.sample(data,1)[0]
+
+                # percentile of multiple samples requested (this can be slow)
                 else:
-                    data[sector] = np.percentile(estimator.sample(data,samples),percentile)
+                    data[f"{source}_{sector}_MW"] = np.percentile(estimator.sample(data,samples),percentile)
 
             # TODO: calibrate industrial loadshape to match peak
             loadshape = pd.DataFrame(
                 data=np.ones(len(data)),
                 index=data.index,
                 )
-            data["industrial_MW"] = Industry(state,county,loadshape)[column]
+            data[f"{source}_industrial_MW"] = Industry(state,county,loadshape)[f"{source}_{'total' if nonelec else 'net'}_MW"]
 
             # get agricultural loads and set transportation to zero            
-            data["agricultural_MW"] = Agriculture(state,county,loadshape)[column]
-            data["transportation_MW"] = 0.0
+            data[f"{source}_agricultural_MW"] = Agriculture(state,county,loadshape)[f"{source}_{'total' if nonelec else 'net'}_MW"]
+            data[f"{source}_transportation_MW"] = 0.0
             
+            
+            data[f"{source}_total_MW"] = data[[x for x in data.columns if x.endswith("_MW")]].sum(axis=1)
+            data[f"{source}_net_MW"] = data[f"{source}_total_MW"]
+
             # TODO: train DG based on solar data
-            data["dg_MW"] = -0.0 # TODO
-            
-            data["total_MW"] = data[[x for x in data.columns if x.endswith("_MW")]].sum(axis=1)
-            data["net_MW"] = data["total_MW"] + data["dg_MW"]
+            if not nonelec:
+                data["elec_dg_MW"] = -0.0 # TODO
+                data[f"{source}_net_MW"] += data["elec_dg_MW"]
             
             data.to_csv(cache.pathname,
                 index=True,
@@ -225,8 +262,7 @@ if __name__ == "__main__":
     for state,county in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY"]].values:
         for year in range(2018,2023):
             try:
-                result = Total(state,county,year,refresh=refresh)
-                _logger.debug(f"{state} {county} ok")
+                Total(state,county,year,nonelec=False,refresh=refresh)
+                _logger.info(f"{state} {county} {year} ok")
             except Exception as err:
                 (_logger.exception if debug else _logger.error)(f"{state} {county} {year} {err}")
-                raise

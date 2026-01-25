@@ -357,16 +357,13 @@ if __name__ == '__main__':
     pd.options.display.max_columns = None
     pd.options.display.width = None
 
-    refresh = False
+    import sys
+    refresh = "--refresh" in sys.argv
+    debug = "--debug" in sys.argv
+    logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
+
     states = sorted(Counties(use_index="SYSTEM").loc["WECC"]["ST"].unique())
-    result = []
-    for year in range(2018,2023):
+    for year in range(2020,2023):
         for state in states:
-            print("Processing",year,state,end="...",flush=True)
-            data = Calibrate.state(state,year=year,refresh=refresh).reset_index()
-            data["state"] = state
-            data["year"] = year
-            data.set_index(["year","state","sector"],inplace=True)
-            result.append(data.unstack())
-            print("ok")
-    print(pd.concat(result))
+            Calibrate.state(state,year=year,refresh=refresh).reset_index()
+            _logger.info(f"{state} {year} ok")

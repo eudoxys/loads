@@ -2,6 +2,7 @@
 
 PACKAGE=loads
 
+# valid options are --debug and --refresh
 CACHE_OPTIONS=--debug
 
 LOGO="https://github.com/eudoxys/.github/blob/main/eudoxys_banner.png?raw=true"
@@ -12,8 +13,6 @@ docs: $(PACKAGE)/__init__.py
 	pdoc $< -o $@ --logo $(LOGO) --mermaid --math --logo-link $(LINK)
 
 $(PACKAGE)/__init__.py: $(filter-out $(PACKAGE)/__init__.py,$(wildcard $(PACKAGE)/*.py))
-
-cache: total residential commercial industry agriculture resstock comstock
 
 total: 
 	cd loads ; python3 total.py $(CACHE_OPTIONS)
@@ -35,3 +34,9 @@ resstock:
 
 comstock:
 	cd loads ; python3 comstock.py $(CACHE_OPTIONS)
+
+calibrate:
+	cd loads ; python3 calibrate.py $(CACHE_OPTIONS)
+
+cache: total residential commercial industry agriculture resstock comstock calibrate
+

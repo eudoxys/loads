@@ -107,8 +107,9 @@ class Commercial(pd.DataFrame):
         # pylint: disable=too-many-arguments,too-many-positional-arguments
         state:str,
         county:str,
-        collect=None,
         year:int=None,
+        *,
+        collect=None,
         refresh:bool=False,
         calibrate:float|str|None="auto",
         ):
@@ -246,7 +247,7 @@ class Commercial(pd.DataFrame):
         if self.CALIBRATION and calibrate == "auto":
             if isinstance(self.CALIBRATION,dict):
                 if state in self.CALIBRATION:
-                    data *= self.CALIBRATION[state]
+                    data *= self.CALIBRATION[state][year]
                 else:
                     _logger.warning(f"{state=} not in calibration data")
             elif isinstance(self.CALIBRATION,float):

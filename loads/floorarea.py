@@ -116,6 +116,9 @@ class Floorarea(pd.DataFrame):
         # set default year
         if year is None:
             year = self.YEAR
+        elif year != self.YEAR:
+            _logger.warning(f"no floorarea data for {year}--using {self.YEAR} instead")
+            year = self.YEAR
 
         global _cache
         if year not in _cache or refresh:
