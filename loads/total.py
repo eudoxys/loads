@@ -9,6 +9,61 @@ is computed first before the load for a specified county can be calculated.
 This can take some time if it has not been done before and is not in the loads
 cache.
 
+Data Flow
+---------
+
+The county-level total loads are calculated as follows:
+
+```mermaid
+flowchart TD
+
+    NREL ---> Industrial
+    NREL ---> Agricultural
+    NREL ---> Transportation
+    NREL ---> DG
+    NREL ---> Weather
+
+    DG --> Solar
+    Weather --> Solar
+    Weather --> Calibration
+
+    Calibration --> TSGAM
+
+    EIA --> Energy
+    EIA --> Peak
+
+    Energy --> Calibration
+    Peak --> Calibration
+
+    Residential --> Calibration
+    Commercial --> Calibration
+
+    NREL --> RESstock
+    NREL --> COMstock
+
+    RESstock --> Residential
+    COMstock --> Commercial
+
+    TSGAM --> Fit(Fit)
+
+    Fit --> Estimator
+
+    Weather --> Predict
+    Weather --> Sample
+
+    Estimator --> Predict
+    Estimator --> Sample
+
+    Predict --> Total
+    Sample --> Total
+    Industrial --> Total
+    Agricultural --> Total
+    Transportation --> Total
+
+    Total --> Net
+    Solar --> Net
+```
+
 Example
 -------
 

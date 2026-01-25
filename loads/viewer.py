@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.19.4"
+__generated_with = "0.19.6"
 app = marimo.App(width="full")
 
 
@@ -30,18 +30,8 @@ def _(counties, mo, state_ui):
 
 @app.cell
 def _(mo):
-    residential_ui = mo.ui.checkbox(label="Residential",value=True)
-    commercial_ui = mo.ui.checkbox(label="Commercial",value=True)
-    industrial_ui = mo.ui.checkbox(label="Industrial",value=True)
-    agricultural_ui = mo.ui.checkbox(label="Agricultural",value=True)
     year_ui = mo.ui.radio(label="Year:",options=[str(x) for x in range(2018,2023)],value="2020",inline=True)
-    return (
-        agricultural_ui,
-        commercial_ui,
-        industrial_ui,
-        residential_ui,
-        year_ui,
-    )
+    return (year_ui,)
 
 
 @app.cell
@@ -68,106 +58,33 @@ def _(mo):
 
 
 @app.cell
-def _(calibrate_ui, county_ui, mo, month_ui, state_ui, year_ui):
+def _(county_ui, mo, month_ui, state_ui, year_ui):
     mo.hstack([
         state_ui, 
         county_ui,
         year_ui,
         month_ui,
-        calibrate_ui,
     ], justify="start")
     return
 
 
 @app.cell
-def _(agricultural_ui, commercial_ui, industrial_ui, mo, residential_ui):
-    mo.hstack([mo.md("Loads:"),residential_ui,commercial_ui,industrial_ui,agricultural_ui],justify='start')
-    return
-
-
-@app.cell
-def _(county_ui, state_ui):
+def _(county_ui, state_ui, year_ui):
     STATE = state_ui.value
     COUNTY = county_ui.value
-    return COUNTY, STATE
+    YEAR = year_ui.value
+    return COUNTY, STATE, YEAR
 
 
 @app.cell
-def _(
-    Agriculture,
-    COUNTY,
-    Cast,
-    Commercial,
-    Industry,
-    Residential,
-    STATE,
-    Weather,
-    agricultural_ui,
-    calibration,
-    commercial_ui,
-    industrial_ui,
-    mo,
-    pd,
-    residential_ui,
-    year_ui,
-):
+def _(COUNTY, STATE, Total, YEAR, mo):
     mo.stop(
         COUNTY is None,
         mo.md("**<font color=blue>HINT**: you need to select a county</font>"),
     )
 
-    pd.options.display.max_columns = None
-    pd.options.display.width = None
-
-    data = Weather(STATE, COUNTY)
-    for field in ["baseload", "heating", "cooling", "dg", "total", "net"]:
-        data[f"elec_{field}_MW"] = data[f"nonelec_{field}_MW"] = 0.0
-    loadshape = pd.DataFrame(
-        data=[1.0] * 8760,
-        index=pd.date_range(
-            start="2018-01-01 00:00:00+00:00",
-            end="2018-12-31 23:59:59+00:00",
-            freq="1h",
-        ),
-    )
-    datasets = {
-        "Residential": Residential(STATE, COUNTY)*calibration["R"],
-        "Commercial": Commercial(STATE, COUNTY)*calibration["C"],
-        "Industry": Industry(STATE, COUNTY, loadshape),
-        "Agriculture": Agriculture(STATE, COUNTY, loadshape),
-    }
-    for column in datasets["Residential"].columns:
-        for dataset in ["Industry", "Agriculture"]:
-            if column not in datasets[dataset]:
-                datasets[dataset][column] = 0.0
-    for ui, dataset in [
-        (residential_ui, "Residential"),
-        (commercial_ui, "Commercial"),
-        (industrial_ui, "Industry"),
-        (agricultural_ui, "Agriculture"),
-    ]:
-        if ui.value:
-            _data = datasets[dataset]
-            for field in _data.columns:
-                data[field] += _data[field]
-    source = data.copy()
-    year = int(year_ui.value)
-    timestamps = pd.date_range(
-        start=f"{year}-01-01 00:00:00+00:00",
-        end=f"{year}-12-31 23:59:59+00:00",
-        freq="1h",
-    )
-    weather = Weather(STATE, COUNTY,year)
-    weather.index = timestamps[: len(weather)]
-    if len(timestamps) > len(weather):
-        weather = pd.concat(
-            [weather, weather.iloc[: len(timestamps) - len(weather)]], axis=0
-        )
-        weather.index = timestamps
-    data = Cast(data, year, weather)
-
-    data.index.name = "timestamp"
-    return data, datasets, year
+    data = Total(STATE, COUNTY, YEAR)
+    return (data,)
 
 
 @app.cell
@@ -176,13 +93,13 @@ def _(Calibrate, STATE, calibrate_ui, year_ui):
         calibration = Calibrate.state(STATE, year_ui.value).to_dict()["scalar"]
     else:
         calibration = {"R":1.0,"C":1.0}
-    return (calibration,)
+    return
 
 
 @app.cell
 def _(mo):
     get_xaxis, set_xaxis = mo.state("timestamp")
-    get_yaxis, set_yaxis = mo.state("elec_net_MW")
+    get_yaxis, set_yaxis = mo.state("Net")
     get_zaxis, set_zaxis = mo.state("temperature_degF")
     get_plotter, set_plotter = mo.state("line")
     return (
@@ -220,7 +137,8 @@ def _(
     )
     yaxis_ui = mo.ui.radio(
         label="Y axis:",
-        options=[x for x in data.columns if x.startswith("elec_")],
+        options={
+            x.split("_")[1].title():x for x in data.columns if x.startswith("elec_")},
         inline=True,
         value=get_yaxis(),
         on_change=set_yaxis,
@@ -248,16 +166,17 @@ def _(
 
 
 @app.cell
-def _(COUNTY, STATE, datasets, plt, yaxis_ui):
+def _(COUNTY, STATE, data, plt):
     try:
-        _piedata = {x:datasets[x][yaxis_ui.value].sum() for x in datasets}
+        _piedata = {x:data[f"elec_{x}_MW"].sum() for x in ["residential","commercial","industrial","agricultural","transportation"]}
         _pie = plt.pie(
             x=[y for x,y in _piedata.items() if y > 0],
             labels=[f"{x} ({y/1000:.1f} GWh)" for x,y in _piedata.items() if y > 0],
         )
-        plt.title(f"{COUNTY} {STATE} {yaxis_ui.value.replace('_',' ').title()}")
+        plt.title(f"{COUNTY} {STATE} Total Electric Load")
         pieplot = plt.gca()
-    except:
+    except Exception as err:
+        print(err)
         pieplot = None
     return (pieplot,)
 
@@ -266,10 +185,10 @@ def _(COUNTY, STATE, datasets, plt, yaxis_ui):
 def _(
     COUNTY,
     STATE,
+    YEAR,
     data,
     get_plotter,
     get_xaxis,
-    get_yaxis,
     get_zaxis,
     mo,
     month_ui,
@@ -279,7 +198,6 @@ def _(
     plotter_ui,
     xaxis_ui,
     yaxis_ui,
-    year,
     zaxis_ui,
 ):
     if month_ui.value is None:
@@ -287,8 +205,8 @@ def _(
     else:
         _data = data.loc[
             pd.date_range(
-                start=f"{year}-{month_ui.value}-01 00:00:00+00:00",
-                end=f"{year}-{month_ui.value+1}-01 00:00:00+00:00",
+                start=f"{YEAR}-{month_ui.value}-01 00:00:00+00:00",
+                end=f"{YEAR}-{month_ui.value+1}-01 00:00:00+00:00",
                 freq="1h",
             )
         ].round(1)
@@ -303,7 +221,7 @@ def _(
                         plotter_options[get_plotter()](
                             _data.reset_index(),
                             x=get_xaxis(),
-                            y=get_yaxis(),
+                            y=yaxis_ui.value,
                             title=f"{COUNTY} {STATE}",
                         )
                     ),
@@ -318,7 +236,7 @@ def _(
                 )
             )]),
             "Data": mo.ui.table(
-                data=_data.round(4),
+                data=_data[[x for x in data.columns if x.endswith("_MW")] + [x for x in data.columns if not x.endswith("_MW")]].round(4),
                 selection=None,
                 text_justify_columns={x: "right" for x in data.columns},
                 page_size=24,
@@ -342,23 +260,9 @@ def _():
         import plotly.graph_objects as go
         from scipy.optimize import curve_fit
         from fips import Counties
-        from loads import Residential, Commercial, Industry, Agriculture, Cast, Calibrate
+        from loads import Residential, Commercial, Industry, Agriculture, Cast, Calibrate, Total
         from weather import Weather
-    return (
-        Agriculture,
-        Calibrate,
-        Cast,
-        Commercial,
-        Counties,
-        Industry,
-        Residential,
-        Weather,
-        dt,
-        mo,
-        pd,
-        plt,
-        px,
-    )
+    return Calibrate, Counties, Total, dt, mo, pd, plt, px
 
 
 if __name__ == "__main__":
