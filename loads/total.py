@@ -25,20 +25,20 @@ flowchart TD
 
     Weather --> DG
     Weather --> Sample[Sample/Predict]
-    Weather ---> Calibration
+    Weather ----> TSGAM
 
-    Energy --> Calibration
-    Peak --> Calibration
+    Energy --> eCalibration[Energy Calibration]
+    Peak --> pCalibration[Peak Calibration]
 
     NREL --> Solar
     NREL --> Weather
 
     Solar --> DG
 
-    Calibration --> TSGAM
+    eCalibration --> TSGAM
 
-    Residential --> Calibration
-    Commercial --> Calibration
+    Residential --> eCalibration
+    Commercial --> eCalibration
 
     NREL --> RESstock
     NREL --> COMstock
@@ -58,7 +58,8 @@ flowchart TD
     %% Predict --> Total
     Sample --> Total
 
-    Industrial -------> Total
+    Industrial --> pCalibration
+    pCalibration --> Total
     Agricultural -------> Total
     Transportation -------> Total
 
