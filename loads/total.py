@@ -17,23 +17,25 @@ The county-level total loads are calculated as follows:
 ```mermaid
 flowchart TD
 
-    NREL ---> Industrial
-    NREL ---> Agricultural
-    NREL ---> Transportation
-    NREL ---> DG
-    NREL ---> Weather
-
-    DG --> Solar
-    Weather --> Solar
-    Weather --> Calibration
-
-    Calibration --> TSGAM
-
+    OpenEI --> Industrial
+    OpenEI --> Agricultural
+    OpenEI --> Transportation
     EIA --> Energy
     EIA --> Peak
 
+    Weather --> DG
+    Weather --> Sample[Sample/Predict]
+    Weather ---> Calibration
+
     Energy --> Calibration
     Peak --> Calibration
+
+    NREL --> Solar
+    NREL --> Weather
+
+    Solar --> DG
+
+    Calibration --> TSGAM
 
     Residential --> Calibration
     Commercial --> Calibration
@@ -48,20 +50,20 @@ flowchart TD
 
     Fit --> Estimator
 
-    Weather --> Predict
-    Weather --> Sample
+    %% Weather --> Predict
 
-    Estimator --> Predict
+    %% Estimator --> Predict
     Estimator --> Sample
 
-    Predict --> Total
+    %% Predict --> Total
     Sample --> Total
-    Industrial --> Total
-    Agricultural --> Total
-    Transportation --> Total
+
+    Industrial -------> Total
+    Agricultural -------> Total
+    Transportation -------> Total
 
     Total --> Net
-    Solar --> Net
+    DG --> Net
 ```
 
 Example
