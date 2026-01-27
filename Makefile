@@ -4,6 +4,7 @@ PACKAGE=loads
 
 # valid options are --debug and --refresh
 CACHE_OPTIONS=--debug
+AGGREGATE=elec_net_MW 2020
 
 LOGO="https://github.com/eudoxys/.github/blob/main/eudoxys_banner.png?raw=true"
 LINK="https://www.eudoxys.com/"
@@ -13,6 +14,9 @@ docs: $(PACKAGE)/__init__.py
 	pdoc $< -o $@ --logo $(LOGO) --mermaid --math --logo-link $(LINK)
 
 $(PACKAGE)/__init__.py: $(filter-out $(PACKAGE)/__init__.py,$(wildcard $(PACKAGE)/*.py))
+
+aggregate: 
+	cd loads ; python3 aggregate.py $(AGGREGATE)
 
 total: 
 	cd loads ; python3 total.py $(CACHE_OPTIONS)
@@ -38,5 +42,4 @@ comstock:
 calibrate:
 	cd loads ; python3 calibrate.py $(CACHE_OPTIONS)
 
-cache: total residential commercial industry agriculture resstock comstock calibrate
-
+cache: total residential commercial industry agriculture resstock comstock calibrate aggregate

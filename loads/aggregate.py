@@ -17,7 +17,7 @@ To aggregate the county net loads in 2018 to the WECC 240 nodes, do the followin
     from aggregate import Aggregator
     elec_net_MW = Aggregator(locations.unique(),"2018-08-01 00:00:00+00:00","2018-08-31 23:59:59+00:00")
 
-    # add the sources into the target
+    # add the sources into the targets
     from fips.counties import Counties
     from geohash import nearest2
     from loads import Total
@@ -45,6 +45,13 @@ which outputs the following
     2018-08-31 23:00:00+00:00  1642.285736  435.021499  2090.116596  231.605925  164.110512  ...  4091.273032  143.445191  13.862095  551.231402  17.259998
 
     [744 rows x 126 columns]
+
+Caveat
+------
+
+  - The cache assumes that the target list has not changed. If the target list
+    has changed, you must use the `refresh=True` option to force
+    recalculation of mappings.
 """
 
 import datetime as dt
@@ -100,130 +107,133 @@ class Aggregator(pd.DataFrame):
 
           - `data`: data values to add
         """
-        self[target] += data
+        self[target] += data[target]
 
 def aggregate(
     targets:dict[str,list[float,float]],
     year:int,
+    column:str,
     refresh:bool=False,
-    ) -> dict[str,pd.DataFrame]:
-    """Aggregate DG and total loads
+    ) -> [pd.DataFrame, dict[str,str]]:
+    """Aggregate net loads
 
     Arguments
     ---------
 
-      - `targets`: list of target 
+      - `targets`: list of targets locations
+
+      - `year`: year for which aggregrates are collected
+
+      - `refresh`: force refresh of cached data
+
+    Returns
+    -------
+
+      - `pandas.DataFrame`: aggregates of net loads
+
+      - `dict`: result of mapping to targets
     """
-    total_cache = Cache(package="loads",version=0,path=["aggregated",year,"elec_total_MW.csv"])
-    dg_cache = Cache(package="loads",version=0,path=["aggregated",year,"elec_dg_MW.csv"])
-    mapping_cache = Cache(package="loads",version=0,path=["aggregated",year,"mapping.csv"])
-    if total_cache.exists() and dg_cache.exists() and mapping_cache.exists() and not refresh:
 
-        try:
-            elec_total_MW = pd.read_csv(total_cache.pathname,index_col="timestamp",parse_dates=["timestamp"])
-            _logger.debug(f"{total_cache=} ok")
-        except Exception as err:
-            _logger.error(f"{total_cache=} {err}")
-            elec_total_MW = None
+    assert column.endswith("_MW"), f"{column=} is not a column to aggregate (only MW columns can be aggregated)"
 
-        try:
-            elec_dg_MW = pd.read_csv(dg_cache.pathname,index_col="timestamp",parse_dates=["timestamp"])
-            _logger.debug(f"{dg_cache=} ok")
-        except Exception as err:
-            _logger.error(f"{dg_cache=} {err}")
-            elec_dg_MW = None
+    # read cache if possible/desired
+    mapping_cache = Cache(package="loads",version=0,path=["aggregated",year,f"mapping.csv"])
+    data_cache = Cache(package="loads",version=0,path=["aggregated",year,f"{column}.csv"])
+    if data_cache.exists() and mapping_cache.exists() and not refresh:
 
+        # read mapping
         try:
             mapping = pd.read_csv(mapping_cache.pathname,index_col=0)
             _logger.debug(f"{mapping_cache=} ok")
         except Exception as err:
-            _logger.error(f"{dg_cache=} {err}")
+            _logger.error(f"{mapping_cache=} {err}")
             mapping = None
+
+        # read net load
+        try:
+            data = pd.read_csv(data_cache.pathname,index_col="timestamp",parse_dates=["timestamp"])
+            _logger.debug(f"{data_cache=} ok")
+        except Exception as err:
+            _logger.error(f"{data_cache=} {err}")
+            data = None
+
     else:
-        _logger.debug(f"cache generation required")
-        elec_total_MW = None
-        elec_dg_MW = None
+
+        _logger.debug(f"cache (re)generation required")
+        data = None
         mapping = None
 
-    if elec_total_MW is None or elec_dg_MW is None or mapping is None:
+    # if elec_total_MW is None or elec_dg_MW is None or mapping is None:
+    if data is None or mapping is None:
 
+        # build mapping table
         mapping = {}
         start = f"{year}-01-01 00:00:00+00:00"
         end = f"{year}-12-31 23:59:59+00:00"
-        elec_total_MW = Aggregator(sorted(targets.keys()),start,end)
-        elec_dg_MW = Aggregator(sorted(targets.keys()),start,end)
+
+        # get net load aggregator
+        data = Aggregator(targets.keys(),start,end)
+
+        # map counties to targets
         for state,county,lat,lon,geohash in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY","LAT","LON","GEOHASH"]].values:
-            nearest,_,dist = nearest2([lat,lon],targets.values())
-            target = locations[nearest]
-            _logger.debug(f"mapping {county} {state} ({geohash}) to {target} ({dist=:.1f} km)")
+
+            # find nearest target
+            ndx,latlon,dist = nearest2([lat,lon],targets.values())
+            target = list(targets.keys())[ndx]
+            _logger.info(f"mapping {county} {state} ({geohash}) to {target} ({dist=:.1f} km)")
+
+            # save mapping
             mapping[geohash] = target
-            total = Total(state,county,year) 
-            elec_total_MW.add(target,total.elec_total_MW)
-            elec_dg_MW.add(target,total.elec_dg_MW)
 
-        elec_total_MW.round(3).to_csv(total_cache.pathname,index=True,header=True)
-        elec_dg_MW.round(3).to_csv(dg_cache.pathname,index=True,header=True)
+            # read county totals
+            total = Total(state,county,year)
+            assert column in total.columns, f"{column=} is not found in totals for {state=} {counyt=} {year=}"
 
+            # add county net load to aggregated load
+            data.add(target,pd.DataFrame(
+                data={target:total[column]},
+                index=total.index,
+                ))
+            assert not data.isna().any().any(), f"{state} {county} {year} {geohash} --> {target} has NA values {data[data.isna()]}"
+
+        # save net load results
+        data.round(3).to_csv(data_cache.pathname,index=True,header=True)
+
+        # save mapping result
         mapping = pd.DataFrame(data={"target":mapping.values()},index=mapping.keys())
         mapping.index.name = "source"
         mapping.sort_index(inplace=True)
         mapping.to_csv(mapping_cache.pathname,index=True,header=True)
 
-    return {
-        "elec_total_MW": elec_total_MW[sorted(elec_total_MW.columns)],
-        "elec_dg_MW": elec_dg_MW[sorted(elec_dg_MW.columns)],
-        "mapping": mapping,
-        }
+    return data[sorted(data.columns)],mapping
 
 if __name__ == "__main__":
+    """Create aggregate loads for WECC 240 network
 
-    refresh = False
+    Syntax: python3 aggregate.py [--debug] [--refresh] COLUMN YEAR ...
+    """
+    import sys
 
-    import matplotlib.pyplot as plt
+    pd.options.display.max_columns = None
+    pd.options.display.width = None
 
-    logging.basicConfig(level=logging.DEBUG)
+    refresh = "--refresh" in sys.argv
+    debug = "--debug" in sys.argv
 
-    mapping = None
-    result = []
-    for year in range(2018,2023):
-        _logger.info(f"processing {year}")
+    logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
 
-        pd.options.display.width = None
-        pd.options.display.max_columns = None
+    wecc240_gis = pd.read_csv("wecc_gis.csv")
 
-        wecc240_gis = pd.read_csv("wecc_gis.csv")
+    locations,latlon = list(wecc240_gis.GEOHASH),list(zip(wecc240_gis.LAT,wecc240_gis.LON))
+    targets = {x:latlon[locations.index(x)] for x in set(locations)}
 
-        locations,latlon = list(wecc240_gis.GEOHASH),list(zip(wecc240_gis.LAT,wecc240_gis.LON))
-        targets = {x:latlon[locations.index(x)] for x in set(locations)}
+    try:
+        column = [x for x in sys.argv[1:] if not x.startswith("-")][0]
+        year = int([x for x in sys.argv[1:] if not x.startswith("-")][1])
+    except:
+        print("Syntax: python3 aggregate.py [--debug] [--refresh] COLUMN YEAR",file=sys.stderr)
+        sys.exit(1)
 
-        aggregation = aggregate(targets,year,refresh=refresh)
-        
-        if mapping is None:
-            mapping = aggregation["mapping"].to_dict()
-        else:
-            assert mapping == aggregation["mapping"].to_dict(), f"mapping changed in {year}"
-
-        result.append(aggregation["elec_total_MW"]+aggregation["elec_dg_MW"])
-        # for result in [x for x in aggregation if x.endswith("_MW")]:
-        #     labels = {
-        #         "elec_total_MW": "Total load (GW)",
-        #         "elec_dg_MW": "Total DG (GW)",
-        #     }
-        #     (aggregation[result].sum(axis=1)/1000).abs().plot(
-        #         grid=True,
-        #         xlabel="Date/Time",
-        #         ylabel=labels[result],
-        #         title=f"WECC {year} nodal loads",
-        #         )
-        #     plt.show()
-
-    result = pd.concat(result)
-    for column in result.columns:
-        if result[column].sum():
-            result[column].plot(
-                title=column,
-                xlabel="Date/Time",
-                ylabel="Net power (MW)",
-                grid=True,
-                )
-            plt.show()
+    print(f"WECC {year} {column}:")
+    print(f"Peak load...... {aggregate(targets,year,column,refresh=refresh)[0].sum(axis=1).max()/1000:.1f} GW")
+    print(f"Total energy... {aggregate(targets,year,column,refresh=refresh)[0].sum(axis=1).sum()/1e6:.1f} TWh")

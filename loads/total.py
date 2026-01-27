@@ -12,7 +12,7 @@ cache.
 Data Flow
 ---------
 
-The county-level total loads are calculated as follows:
+The county-level total and net loads are calculated as follows:
 
 ```mermaid
 flowchart TD
@@ -195,9 +195,9 @@ class Total(pd.DataFrame):
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
         if samples and samples > 1:
-            cache = Cache(package="loads",version=0,path=[state,county,f"T_{source}_{freq}_{samples}_{percentile}.csv.gz"])
+            cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}_{samples}_{percentile}.csv.gz"])
         else:
-            cache = Cache(package="loads",version=0,path=[state,county,f"T_{source}_{freq}.csv.gz"])
+            cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}.csv.gz"])
 
         # load data from cache
         if cache.exists() and not refresh:
@@ -284,7 +284,7 @@ class Total(pd.DataFrame):
             # TODO: train DG based on solar data
             if not nonelec:
                 data["elec_dg_MW"] = -0.0 # TODO
-                data[f"{source}_net_MW"] += data["elec_dg_MW"]
+                data[f"elec_net_MW"] += data["elec_dg_MW"]
             
             data.to_csv(cache.pathname,
                 index=True,
