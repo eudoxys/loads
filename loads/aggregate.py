@@ -212,28 +212,48 @@ if __name__ == "__main__":
 
     Syntax: python3 aggregate.py [--debug] [--refresh] COLUMN YEAR ...
     """
+    import os
     import sys
+    import pytz
 
     pd.options.display.max_columns = None
     pd.options.display.width = None
+    pd.options.display.max_rows = None
 
     refresh = "--refresh" in sys.argv
     debug = "--debug" in sys.argv
 
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
 
-    wecc240_gis = pd.read_csv("wecc_gis.csv")
+    wecc240_gis = pd.read_csv("https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/gis/wecc240.csv")
+    canada = set(wecc240_gis[wecc240_gis.LAT>49].GEOHASH.values)
+    mexico = set(wecc240_gis.set_index("GEOHASH").loc[["9mtzm4"]].index.values)
+    omitted = canada|mexico
 
     locations,latlon = list(wecc240_gis.GEOHASH),list(zip(wecc240_gis.LAT,wecc240_gis.LON))
-    targets = {x:latlon[locations.index(x)] for x in set(locations)}
+    targets = {x:latlon[locations.index(x)] for x in set(locations) if x not in omitted}
 
     try:
         column = [x for x in sys.argv[1:] if not x.startswith("-")][0]
         year = int([x for x in sys.argv[1:] if not x.startswith("-")][1])
     except:
         print("Syntax: python3 aggregate.py [--debug] [--refresh] COLUMN YEAR",file=sys.stderr)
-        sys.exit(1)
+        column = "elec_net_MW"
+        year = 2020
+
+    result = aggregate(targets,year,column,refresh=refresh)[0]
+
+    for node in omitted:
+        file = f"{node}/loads.csv"
+        if os.path.exists(file):
+            data = pd.read_csv(file,index_col=["timestamp"])
+            start = pd.to_datetime(data.index.min())
+            end = pd.to_datetime(data.index.max()) + dt.timedelta(hours=1)
+            data.index = pd.date_range(start,end,freq="1h",tz=pytz.timezone("US/Pacific"))
+            result[column] = data.loc[result.index,column]
+        else:
+            _logger.warning(f"{file} does not exist")
 
     print(f"WECC {year} {column}:")
-    print(f"Peak load...... {aggregate(targets,year,column,refresh=refresh)[0].sum(axis=1).max()/1000:.1f} GW")
+    print(f"Peak load...... {result.sum(axis=1).max()/1000:.1f} GW")
     print(f"Total energy... {aggregate(targets,year,column,refresh=refresh)[0].sum(axis=1).sum()/1e6:.1f} TWh")
