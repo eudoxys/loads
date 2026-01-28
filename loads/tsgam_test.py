@@ -2048,7 +2048,7 @@ if __name__ == "__main__":
     # test configuration
     state = "CA"
     county = "Los Angeles"
-    channel = "elec_cooling_MW"
+    channel = "elec_total_MW"
     training = 8000 # size of training window (must be less than 8760)
     percentile = None # percentile to draw from samples
     samples = 100 # number of samples to draw when percentile is not None
