@@ -1,3 +1,4 @@
 *_errors.csv
+*_test_*.csv
 .cache*
 tests/
