@@ -218,7 +218,7 @@ if __name__ == "__main__":
 
     pd.options.display.max_columns = None
     pd.options.display.width = None
-    pd.options.display.max_rows = None
+    # pd.options.display.max_rows = None
 
     refresh = "--refresh" in sys.argv
     debug = "--debug" in sys.argv
@@ -241,19 +241,32 @@ if __name__ == "__main__":
         column = "elec_net_MW"
         year = 2020
 
+    # read US nodes
     result = aggregate(targets,year,column,refresh=refresh)[0]
 
+    # read non-US nodes
+    sources = {
+        "c2c10y": "https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/Canada/c2c10y.csv",
+        "c2u6xt": "https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/Canada/c2u6xt.csv",
+        "9mtzm4": "https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/Mexico/9mtzm4.csv",
+
+    }
     for node in omitted:
-        file = f"{node}/loads.csv"
-        if os.path.exists(file):
-            data = pd.read_csv(file,index_col=["timestamp"])
-            start = pd.to_datetime(data.index.min())
-            end = pd.to_datetime(data.index.max()) + dt.timedelta(hours=1)
-            data.index = pd.date_range(start,end,freq="1h",tz=pytz.timezone("US/Pacific"))
-            result[column] = data.loc[result.index,column]
-        else:
-            _logger.warning(f"{file} does not exist")
+        # result[node] = float('NaN')
+        file = sources[node]
+        try:
+            data = pd.read_csv(file,
+                index_col=["timestamp"],
+                usecols=["timestamp","load_MW"],
+                parse_dates=["timestamp"],
+                )
+            data.columns=[node]
+        except Exception as err:
+            _logger.exception(f"{file} read failed ({err})")
+        result = pd.merge(result,data,left_index=True,right_index=True)
 
     print(f"WECC {year} {column}:")
     print(f"Peak load...... {result.sum(axis=1).max()/1000:.1f} GW")
     print(f"Total energy... {aggregate(targets,year,column,refresh=refresh)[0].sum(axis=1).sum()/1e6:.1f} TWh")
+
+    result[sorted(result.columns)].to_csv("tests/wecc240_loads_2020.csv",index=True)
