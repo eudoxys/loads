@@ -132,7 +132,7 @@ def fit_load(x, *,
     Description
     -----------
 
-    The load data `x` the rescaled and offset to such that the sum of the `x`
+    The load data `x` is rescaled and offset such that the sum of the `x`
     is equal to the energy and the peak of `x` is equal to the peak. Note
     that the peak is defined as the value which occurs at the maximum `x`
     prior to rescaling, meaning that after rescaling the peak may shift and
@@ -151,7 +151,10 @@ def fit_load(x, *,
     -------
 
       - It is possible for the fit to have negative values or inverted peaks
-        if the energy and peak constraints are not otherwise feasible. You can use the `constraints` to raise an exception or return None when this occurs, making these fits infeasible.
+        if the energy and peak constraints are not otherwise feasible. You
+        can use the `constraints` and `exception` arguments to raise an
+        exception or return None when this occurs, making such fits
+        infeasible.
     """
     if constraints is None:
         constraints = []
@@ -290,7 +293,7 @@ class Calibrate(pd.DataFrame):
         -----------
 
         The residential and commercial load data is obtained from the NLR
-        RESstock and COMstock data repositories. These data set have not been
+        RESstock and COMstock data repositories. These data sets have not been
         calibrated against the state-level EIA energy use. The
         `loads.calibrate.Calibrate.state` function is used to obtain the
         state-level calibrations for any given year available from EIA. See
@@ -303,7 +306,7 @@ class Calibrate(pd.DataFrame):
           state be loaded before any scalars can be computed. This can take a
           long time to complete states with many counties, e.g., Texas.
 
-        - Only residential (`'R'`) and commercial (`'C'`) load calibations can
+        - Only residential (`'R'`) and commercial (`'C'`) load calibrations can
           be computed. Industry (`'I'`) and agriculture (`'A'`) come from EIA
           sources at the state-level and cannot be independently recalibrated
           at the county level. 

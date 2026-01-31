@@ -116,6 +116,7 @@ from loads.tsgam_estimator import (
     TsgamSolverConfig,
     TsgamEstimator,
     )
+from loads.solar_estimator import SolarEstimator
 
 _logger = logging.getLogger(__file__)
 
@@ -130,7 +131,8 @@ class Total(pd.DataFrame):
 
     cache = {
         "scale": {},
-        "estimator": {}
+        "load": {},
+        "solar": {},
     }
 
     PRECISION = 3
@@ -218,49 +220,72 @@ class Total(pd.DataFrame):
 
             # get residential and commercial loads
             # TODO: change to log(MW), need to address zeros
-            train = Weather(state,county)
+            weather = Weather(state,county)
             if nonelec:
                 data = Weather(state,county,year)[["temperature_degF"]]
             else:
                 data = Weather(state,county,year)[["temperature_degF","global_Wpms","direct_Wpms","diffuse_Wpms"]]
+
+            if not nonelec:
+                data["elec_dg_MW"] = 0.0
             for sector,dataset in {
                     "residential":Residential,
                     "commercial":Commercial,
                     }.items():
 
-                # get previously constructor estimator 
-                if (state,county,sector) in self.cache["estimator"]:
-                    estimator = self.cache["estimator"][(state,county,sector)]
+                # get previously constructor estimators 
+                if (state,county,sector) in self.cache["load"] and (state,county,sector) in self.cache["solar"]:
+                    estimator = self.cache["load"][(state,county,sector)]
+                    if not nonelec:
+                        solar = self.cache["solar"][(state,county,sector)]
                 else:
 
                     # create a new estimator
                     estimator = TsgamEstimator(config=self.TSGAM_CONFIG)
+                    if not nonelec:
+                        solar = SolarEstimator()
 
                     # create a new calibrator
                     calibrate = Calibrate.state(state,year)
 
                     # gather the training data for this state, county, and sector
-                    train[sector] = dataset(
+                    loaddata = dataset(
                         state,
                         county,
                         calibrate=calibrate.loc[sector[0].upper()].values[0],
-                        )[f"{source}_total_MW"]
+                        )
+                    training = pd.concat([loaddata,weather],axis=1)
 
-                    # fit the estimator (with nans as zeros)
-                    estimator.fit(train[["temperature_degF"]],train[sector].fillna(0).values)
+                    # fit the estimators (with nans as zeros)
+                    estimator.fit(
+                        training[["temperature_degF"]],
+                        training[f"{source}_total_MW"].fillna(0).values,
+                        )
                     if not estimator.problem_.status in ["optimal", "optimal_inaccurate"]:
                         raise RuntimeError(f"unable to fit: {estimate.problem_.status}")
+                    
+                    if not nonelec:
+                        solar.fit(
+                            training[["diffuse_Wpms","direct_Wpms"]],
+                            training["elec_dg_MW"].fillna(0).abs().values,
+                            )
 
                     # save the estimator for future use, e.g., different years
-                    self.cache["estimator"][(state,county,sector)] = estimator
+                    self.cache["load"][(state,county,sector)] = estimator
+                    if not nonelec:
+                        self.cache["solar"][(state,county,sector)] = solar
 
-                # not sampling requested
+                # no sampling requested
                 if not samples:
                     data[f"{source}_{sector}_MW"] = estimator.predict(data)
+                    if not nonelec:
+                        data["elec_dg_MW"] -= solar.predict(data[["diffuse_Wpms","direct_Wpms"]].fillna(0).values)
 
                 # one sample requested
                 elif samples == 1:
                     data[f"{source}_{sector}_MW"] = estimator.sample(data,1)[0]
+                    if not nonelec:
+                        data["elec_dg_MW"] -= solar.sample(data,1)[0]
 
                 # percentile of multiple samples requested (this can be slow)
                 else:
@@ -283,7 +308,6 @@ class Total(pd.DataFrame):
 
             # TODO: train DG based on solar data
             if not nonelec:
-                data["elec_dg_MW"] = -0.0 # TODO
                 data[f"elec_net_MW"] += data["elec_dg_MW"]
             
             data.to_csv(cache.pathname,
@@ -322,7 +346,7 @@ if __name__ == "__main__":
     for state,county in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY"]].values:
         for year in range(2018,2023):
             try:
-                Total(state,county,year,nonelec=False,refresh=refresh)
+                Total(state,county,year,nonelec=False,refresh=refresh,samples=None)
                 _logger.info(f"{state} {county} {year} ok")
             except Exception as err:
                 (_logger.exception if debug else _logger.error)(f"{state} {county} {year} {err}")
