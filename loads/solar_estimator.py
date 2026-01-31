@@ -104,7 +104,7 @@ class SolarEstimator:
 if __name__ == '__main__':
     
     """Process predictions and samples for all WECC states and counties"""
-    plots = False
+    plots = True
 
     import pandas as pd
     import matplotlib.pyplot as plt
@@ -142,36 +142,32 @@ if __name__ == '__main__':
 
             predict = estimator.predict(X.loc[holdout].values)
 
-            # sample = estimator.sample(X.loc[holdout].values)
-
             peak = predict.max()
             rmse = np.sqrt(np.linalg.norm(y.loc[holdout].values-predict,2)/len(holdout))
             mpe = rmse/np.mean(y.loc[holdout].values)*100
 
             print(f"{county+' '+state:20s}: {peak=:5.1f} MW, {rmse=:4.1f} MW ({mpe:.1f}%)",flush=True)
 
+            if plots:
+
+                plt.figure(figsize=(16,8))
+
+                Y = y.loc[holdout]
+                pmax = max(Y.elec_dg_MW.max(),predict.max())
+                
+                plt.subplot(1,2,1)
+                plt.plot(Y,"k",label="Holdout")
+                plt.plot(Y.index,predict,".b",label="Prediction")
+                plt.grid()
+                plt.legend()
+                plt.subplot(1,2,2)
+
+                plt.plot(Y.elec_dg_MW,predict,".")
+                plt.plot([0,pmax],[0,pmax],':k')
+                
+                plt.show()
+
         else:
 
             print(f"{county+' '+state:20s}: -",flush=True)
-
-        if plots:
-            plt.figure(figsize=(12,8))
-
-            plt.plot(X.global_Wpms,y,".y",label="Global")
-            plt.plot(X.direct_Wpms,y,".r",label="Direct")
-            plt.plot(X.diffuse_Wpms,y,".b",label="Diffuse")
-            plt.xlabel("Irradiance (W/m$^2$)")
-            plt.ylabel("Power (MW)")
-            plt.grid()
-            plt.legend()
-            plt.show()
-
-            plt.clf()
-            Y = y.loc[holdout]
-            plt.plot(Y,"k",label="Holdout")
-            plt.plot(Y.index,predict,".b",label="Prediction")
-            plt.plot(Y.index,sample,".y",label="Samples")
-            plt.grid()
-            plt.legend()
-            plt.show()
 
