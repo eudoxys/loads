@@ -104,8 +104,10 @@ class SolarEstimator:
 if __name__ == '__main__':
     
     """Process predictions and samples for all WECC states and counties"""
+    plots = False
+
     import pandas as pd
-    # import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt
 
     pd.options.display.width = None
     pd.options.display.max_columns = None
@@ -142,34 +144,34 @@ if __name__ == '__main__':
 
             # sample = estimator.sample(X.loc[holdout].values)
 
+            peak = predict.max()
             rmse = np.sqrt(np.linalg.norm(y.loc[holdout].values-predict,2)/len(holdout))
-            rmpe = rmse/np.mean(y.loc[holdout].values)
+            mpe = rmse/np.mean(y.loc[holdout].values)*100
 
-            print(f"{county} {state}: mpe = {rmpe*100:.1f}%",flush=True)
+            print(f"{county+' '+state:20s}: {peak=:5.1f} MW, {rmse=:4.1f} MW ({mpe:.1f}%)",flush=True)
 
-            # rmse = np.sqrt(np.linalg.norm(y.loc[holdout].values-sample,2)/len(holdout))
-            # rmpe = rmse/np.mean(y.loc[holdout].values)
-            # print(f"sample error = {rmpe*100:.1f}%",flush=True)
         else:
-            print(f"{county} {state}: no solar data")
 
-        # plt.figure(figsize=(12,8))
+            print(f"{county+' '+state:20s}: -",flush=True)
 
-        # plt.plot(X.global_Wpms,y,".y",label="Global")
-        # plt.plot(X.direct_Wpms,y,".r",label="Direct")
-        # plt.plot(X.diffuse_Wpms,y,".b",label="Diffuse")
-        # plt.xlabel("Irradiance (W/m$^2$)")
-        # plt.ylabel("Power (MW)")
-        # plt.grid()
-        # plt.legend()
-        # plt.show()
+        if plots:
+            plt.figure(figsize=(12,8))
 
-        # plt.clf()
-        # Y = y.loc[holdout]
-        # plt.plot(Y,"k",label="Holdout")
-        # plt.plot(Y.index,predict,".b",label="Prediction")
-        # plt.plot(Y.index,sample,".y",label="Samples")
-        # plt.grid()
-        # plt.legend()
-        # plt.show()
+            plt.plot(X.global_Wpms,y,".y",label="Global")
+            plt.plot(X.direct_Wpms,y,".r",label="Direct")
+            plt.plot(X.diffuse_Wpms,y,".b",label="Diffuse")
+            plt.xlabel("Irradiance (W/m$^2$)")
+            plt.ylabel("Power (MW)")
+            plt.grid()
+            plt.legend()
+            plt.show()
+
+            plt.clf()
+            Y = y.loc[holdout]
+            plt.plot(Y,"k",label="Holdout")
+            plt.plot(Y.index,predict,".b",label="Prediction")
+            plt.plot(Y.index,sample,".y",label="Samples")
+            plt.grid()
+            plt.legend()
+            plt.show()
 
