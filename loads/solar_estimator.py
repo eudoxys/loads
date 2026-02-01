@@ -103,7 +103,18 @@ class SolarEstimator:
 
 if __name__ == '__main__':
     
-    """Process predictions and samples for all WECC states and counties"""
+    """Process predictions and samples for all WECC states and counties
+
+    Usage
+    -----
+
+        python3 solar_estimator.py [--plots]
+
+    Options
+    -------
+
+      - `plots`: plots counties with peak DG above 10 MW
+    """
     
     import sys
     import pandas as pd
@@ -121,12 +132,7 @@ if __name__ == '__main__':
 
     for state,county in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY"]].values:
 
-        X = Weather(state,county)[[
-            "temperature_degF",
-            "global_Wpms",
-            "direct_Wpms",
-            "diffuse_Wpms",
-            ]]
+        X = Weather(state,county)
 
         data = []
         for sector,dataset in [
