@@ -1,6 +1,6 @@
 r"""Load calibration module
 
-The `loads.calibrate` module is used to rescale loads to match know energy
+The `loads.calibrate` module is used to rescale loads to match known energy
 consumptions over a specified time period.  The rescaling is performed such
 that for each column of the data table with a name ending in `'_MW'`
 
@@ -42,9 +42,10 @@ import pandas as pd
 import logging
 
 from fips import States, Counties
-from eia import HS861m
+from eia import HS861m, Form861m
 from loads.residential import Residential
 from loads.commercial import Commercial
+from loads.industry import Industry
 from cache import Cache
 
 _logger = logging.getLogger(__file__)
@@ -265,15 +266,15 @@ class Calibrate(pd.DataFrame):
 
         super().__init__(data*scale+offset)
 
-    CACHE = {}
+    CACHE = {"load":{},"solar":{}}
 
     @classmethod
-    def state(cls,
+    def load(cls,
         state:str,
         year:int|None=None,
         refresh:bool=False,
         ) -> pd.DataFrame:
-        """Compute state load calibration values
+        """Compute state-level load calibration values
 
         Arguments
         ---------
@@ -287,17 +288,16 @@ class Calibrate(pd.DataFrame):
         Returns
         -------
 
-          - `pd.DataFrame`: data frame contain sector calibration factor
+          - `pd.DataFrame`: data frame containing sector calibration factor
 
         Description
         -----------
 
         The residential and commercial load data is obtained from the NLR
-        RESstock and COMstock data repositories. These data sets have not been
-        calibrated against the state-level EIA energy use. The
-        `loads.calibrate.Calibrate.state` function is used to obtain the
-        state-level calibrations for any given year available from EIA. See
-        `eia.hs860m.HS860m` for details.
+        RESstock and COMstock data repositories. These data sets have not
+        been calibrated against the state-level EIA energy use. This function
+        is used to obtain the state-level calibrations for any given year
+        available from EIA. See `eia.hs860m.HS860m` for details.
 
         Caveats
         -------
@@ -314,8 +314,8 @@ class Calibrate(pd.DataFrame):
         - Transportation is not included in the load model at this time, despite
           the availability of state-level transportation energy consumption.
         """
-        if state in cls.CACHE:
-            return cls.CACHE[state]
+        if (state,year) in cls.CACHE:
+            return cls.CACHE["load"][(state,year)]
 
         sector_specs = {
             "R":(Residential,"res_energy_mwh"),
@@ -332,9 +332,9 @@ class Calibrate(pd.DataFrame):
                 version=0,
                 path=[
                     state,
-                    f"calibrate_{sector}.csv" 
+                    f"calibrate_{sector}_load.csv" 
                         if year is None 
-                        else f"calibrate_{sector}_{year}.csv" ],
+                        else f"calibrate_{sector}_load_{year}.csv" ],
                 )
             if cache.exists() and not refresh:
                 result.append(pd.read_csv(cache.pathname))
@@ -352,8 +352,100 @@ class Calibrate(pd.DataFrame):
                     index=[len(result)]))
                 result[-1].to_csv(cache.pathname,index=False,header=True)
         result = pd.concat(result)
-        cls.CACHE[state] = result.drop("state",axis=1).set_index(["sector"])
-        return cls.CACHE[state]
+        cls.CACHE["load"][(state,year)] = result.drop("state",axis=1).set_index(["sector"])
+        return cls.CACHE["load"][(state,year)]
+
+    @classmethod
+    def solar(cls,
+        state:str,
+        year:int|None,
+        refresh:bool=True
+        ) -> pd.DataFrame:
+        """Compute state solar calibration values
+
+        Arguments
+        ---------
+
+          - `state`: state for which to compute calibrations
+
+          - `year`: the year for which loads are calibrated
+
+          - `refresh`: force refresh of cache
+
+        Returns
+        -------
+
+          - `pd.DataFrame`: data frame containing sector calibration factor
+
+        Description
+        -----------
+
+        The residential and commercial distributed generation data is obtained
+        from the NLR RESstock and COMstock data repositories. These data sets
+        have not been calibrated against the state-level EIA Form 861m energy
+        use. This function is used to obtain
+        the state-level calibrations for any given year available from EIA.
+        See `eia.form861m.Form861m` for details.
+
+        Caveats
+        -------
+
+        - The methodology requires that all the loads for each county in the
+          state be loaded before any scalars can be computed. This can take a
+          long time to complete states with many counties, e.g., Texas.
+
+        - Only residential (`'R'`) and commercial (`'C'`) distributed
+          generation calibrations can be computed. Industry (`'I'`) and loads
+          have no DG included and EIA does not report agriculture(`'A'`) DG.
+
+        - Transportation is not included in the load model at this time, despite
+          the availability of state-level transportation energy consumption.
+        """
+        if (state,year) in cls.CACHE["solar"]:
+            return cls.CACHE["solar"][(state,year)]
+
+        sector_specs = {
+            "R":(Residential,"res_mwh"),
+            "C":(Commercial,"com_mwh"),
+            # "I":(Industry,"ind_mwh"),
+        }
+
+        # set cache location
+        if cls.CACHEDIR :
+            Cache.CACHEDIR = cls.CACHEDIR
+        result = []
+        for sector,specs in sector_specs.items():
+            cache = Cache(
+                package="loads",
+                version=0,
+                path=[
+                    state,
+                    f"calibrate_{sector}_solar.csv" 
+                        if year is None 
+                        else f"calibrate_{sector}_solar_{year}.csv" ],
+                )
+            if cache.exists() and not refresh:
+                result.append(pd.read_csv(cache.pathname))
+            else:
+                old_energy = 0.0
+                for county in Counties(use_index=["ST"]).loc[state]["COUNTY"]:
+                    old_energy -= specs[0](state,county,year)["elec_dg_MW"].sum()
+                new_energy = 0.0
+                for month in range(1,13):
+                    energy = Form861m(year if year else 2018,month).set_index(["date","state"])
+                    new_energy += energy.loc[(pd.to_datetime(f"{year}-{month:02d}-01 00:00:00+0000"),state),specs[1]]
+
+                if old_energy > 0:
+                    scalar = new_energy / old_energy
+                else:
+                    scalar = 0.0
+                result.append(pd.DataFrame(
+                    data={"scalar":[scalar],"state":[state],"sector":[sector]},
+                    index=[len(result)]))
+                result[-1].to_csv(cache.pathname,index=False,header=True)
+        result = pd.concat(result)
+        cls.CACHE["solar"][(state,year)] = result.drop("state",axis=1).set_index(["sector"])
+        return cls.CACHE["solar"][(state,year)]
 
 if __name__ == '__main__':
     
@@ -368,5 +460,6 @@ if __name__ == '__main__':
     states = sorted(Counties(use_index="SYSTEM").loc["WECC"]["ST"].unique())
     for year in range(2020,2023):
         for state in states:
-            Calibrate.state(state,year=year,refresh=refresh).reset_index()
+            Calibrate.load(state,year=year,refresh=refresh)
+            Calibrate.solar(state,year=year,refresh=refresh)
             _logger.info(f"{state} {year} ok")

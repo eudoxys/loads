@@ -100,9 +100,6 @@ class Commercial(pd.DataFrame):
     CACHEDIR = None
     """Cache folder"""
 
-    CALIBRATION = {}
-    """Load calibration data"""
-
     def __init__(self,
         # pylint: disable=too-many-arguments,too-many-positional-arguments
         state:str,
@@ -111,7 +108,7 @@ class Commercial(pd.DataFrame):
         *,
         collect=None,
         refresh:bool=False,
-        calibrate:float|str|None="auto",
+        calibrate:float|dict[str,float]|None="auto",
         ):
         """Construct building types data frame
 
@@ -129,10 +126,7 @@ class Commercial(pd.DataFrame):
 
           - `refresh`: force cache refresh from source data
 
-          - `calibrate`: set load calibration, automatically set calibration
-            to state-level total energy using
-            `loads.commercial.Commercial.CALIBRATION` table, or disable
-            calibration
+          - `calibrate`: set load calibration
 
         Description
         -----------
@@ -169,7 +163,7 @@ class Commercial(pd.DataFrame):
                 split_areas["BUILDING_TYPE"].append(bt if bt else "OTH")
                 split_areas["FLOORAREA"].append(area.FLOORAREA / len(bts.split("+")))
                 split_areas["SPLITS"].append(bts)
-                split_areas["FRACTION"].append(area.FLOORAREA/actual_areas_sum)
+                split_areas["FRACTION"].append(area.FLOORAREA/actual_areas_sum if actual_areas_sum > 0 else 0.0)
         split_areas = pd.DataFrame(split_areas).set_index("BUILDING_TYPE")
 
         if self.CACHEDIR:
@@ -244,20 +238,14 @@ class Commercial(pd.DataFrame):
                 )
 
         # calibrate load is requested
-        if self.CALIBRATION and calibrate == "auto":
-            if isinstance(self.CALIBRATION,dict):
-                if state in self.CALIBRATION:
-                    data *= self.CALIBRATION[state][year]
-                else:
-                    _logger.warning(f"{state=} not in calibration data")
-            elif isinstance(self.CALIBRATION,float):
-                data *= self.CALIBRATION
-            elif callable(self.CALIBRATION):
-                data *= self.CALIBRATION(state)
-            else:
-                _logger.error(f"CALIBRATION={repr(CALIBRATION)} in invalid")
-        elif isinstance(calibrate,float):
+        if isinstance(calibrate,float):
             data *= calibrate
+        elif isinstance(calibrate,dict):
+            if "load" in calibrate:
+                columns = list(set(data.columns) - set("elec_dg_MW"))
+                data[columns] *= calibrate["load"]
+            if "solar" in calibrate:
+                data["elec_dg_MW"] *= calibrate["solar"]
             
         super().__init__(data[sorted(data.columns)])
 

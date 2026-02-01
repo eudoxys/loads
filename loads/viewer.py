@@ -90,7 +90,7 @@ def _(COUNTY, STATE, Total, YEAR, mo):
 @app.cell
 def _(Calibrate, STATE, calibrate_ui, year_ui):
     if calibrate_ui.value:
-        calibration = Calibrate.state(STATE, year_ui.value).to_dict()["scalar"]
+        calibration = Calibrate.load(STATE, year_ui.value).to_dict()["scalar"]
     else:
         calibration = {"R":1.0,"C":1.0}
     return

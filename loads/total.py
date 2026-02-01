@@ -4,10 +4,10 @@ The total load module computes the expected sum of the residential,
 commercial, industrial and agricultural loads at the county level for the
 specified year.
 
-Note that calibration requires that the total load for each county in a state
-is computed first before the load for a specified county can be calculated.
-This can take some time if it has not been done before and is not in the loads
-cache.
+Note that calibration requires that the total load and DG for each county in a
+state is computed first before the load for a specified county can be
+calculated. This can take some time if it has not been done before and is not
+in the loads cache.
 
 Data Flow
 ---------
@@ -17,28 +17,20 @@ The county-level total and net loads are calculated as follows:
 ```mermaid
 flowchart TD
 
-    OpenEI --> Industrial
-    OpenEI --> Agricultural
-    OpenEI --> Transportation
+    OpenEI ---> Industrial
+    OpenEI ---> Agricultural
+    OpenEI ---> Transportation
+
+    Energy --------> Calibration
+
     EIA --> Energy
-    EIA --> Peak
-
-    Weather --> DG
-    Weather --> Sample[Sample/Predict]
-    Weather ----> TSGAM
-
-    Energy --> eCalibration[Energy Calibration]
-    Peak --> pCalibration[Peak Calibration]
-
-    NREL --> Solar
     NREL --> Weather
 
-    Solar --> DG
+    Calibration --> Load
+    Calibration --> DG
 
-    eCalibration --> TSGAM
-
-    Residential --> eCalibration
-    Commercial --> eCalibration
+    Residential --> TSGAM
+    Commercial --> TSGAM
 
     NREL --> RESstock
     NREL --> COMstock
@@ -46,24 +38,23 @@ flowchart TD
     RESstock --> Residential
     COMstock --> Commercial
 
+    Weather --> Sample[Sample/Predict]
+    Weather ----> TSGAM
+    Weather --> DG
+
     TSGAM --> Fit(Fit)
 
     Fit --> Estimator
 
-    %% Weather --> Predict
-
-    %% Estimator --> Predict
     Estimator --> Sample
 
-    %% Predict --> Total
-    Sample --> Total
+    Sample --> Calibration
 
-    Industrial --> pCalibration
-    pCalibration --> Total
-    Agricultural -------> Total
-    Transportation -------> Total
+    Industrial -------> Load
+    Agricultural -------> Load
+    Transportation -------> Load
 
-    Total --> Net
+    Load --> Net
     DG --> Net
 ```
 
@@ -245,15 +236,8 @@ class Total(pd.DataFrame):
                     if not nonelec:
                         solar = SolarEstimator()
 
-                    # create a new calibrator
-                    calibrate = Calibrate.state(state,year)
-
                     # gather the training data for this state, county, and sector
-                    loaddata = dataset(
-                        state,
-                        county,
-                        calibrate=calibrate.loc[sector[0].upper()].values[0],
-                        )
+                    loaddata = dataset(state,county)
                     training = pd.concat([loaddata,weather],axis=1)
 
                     # fit the estimators (with nans as zeros)
@@ -275,41 +259,58 @@ class Total(pd.DataFrame):
                     if not nonelec:
                         self.cache["solar"][(state,county,sector)] = solar
 
+                # calibration DG
+                if not nonelec:    
+                    calibration = float(Calibrate.solar(state,year).loc[sector[0].upper()].values[0])
+                    _logger.debug(f"{county} {state} {sector} {year} solar {calibration=}")
+
                 # no sampling requested
                 if not samples:
                     data[f"{source}_{sector}_MW"] = estimator.predict(data)
                     if not nonelec:
-                        data["elec_dg_MW"] -= solar.predict(data[["diffuse_Wpms","direct_Wpms"]].fillna(0).values)
+                        data["elec_dg_MW"] -= solar.predict(data[["diffuse_Wpms","direct_Wpms"]].fillna(0).values) * calibration
 
                 # one sample requested
                 elif samples == 1:
                     data[f"{source}_{sector}_MW"] = estimator.sample(data,1)[0]
                     if not nonelec:
-                        data["elec_dg_MW"] -= solar.sample(data,1)[0]
+                        data["elec_dg_MW"] -= solar.sample(data,1)[0] * calibration
 
                 # percentile of multiple samples requested (this can be slow)
                 else:
                     data[f"{source}_{sector}_MW"] = np.percentile(estimator.sample(data,samples),percentile)
+                    if not nonelec:
+                        data["elec_dg_MW"] -= np.percentile(solar.sample(data,samples),percentile) * calibration
 
-            # TODO: calibrate industrial loadshape to match peak
+                # calibrate loads
+                calibration = float(Calibrate.load(state,year).loc[sector[0].upper()].values[0])
+                _logger.debug(f"{county} {state} {sector} {year} load {calibration=}")
+                data[f"{source}_{sector}_MW"] *= calibration
+
+            # make flat loadshape for industry and agriculture
             loadshape = pd.DataFrame(
                 data=np.ones(len(data)),
                 index=data.index,
                 )
+
+            # get industrial loads
             data[f"{source}_industrial_MW"] = Industry(state,county,loadshape)[f"{source}_{'total' if nonelec else 'net'}_MW"]
 
-            # get agricultural loads and set transportation to zero            
+            # get agricultural loads
             data[f"{source}_agricultural_MW"] = Agriculture(state,county,loadshape)[f"{source}_{'total' if nonelec else 'net'}_MW"]
+            
+            #  and set transportation to zero until data is available
             data[f"{source}_transportation_MW"] = 0.0
             
-            
+            # finalize total load
             data[f"{source}_total_MW"] = data[[x for x in data.columns if x.endswith("_MW")]].sum(axis=1)
             data[f"{source}_net_MW"] = data[f"{source}_total_MW"]
 
-            # TODO: train DG based on solar data
+            # finalize net load
             if not nonelec:
                 data[f"elec_net_MW"] += data["elec_dg_MW"]
             
+            # save cache
             data.to_csv(cache.pathname,
                 index=True,
                 header=True,

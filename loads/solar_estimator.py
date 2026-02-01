@@ -130,6 +130,7 @@ if __name__ == '__main__':
     from loads.commercial import Commercial
     from weather import Weather
 
+    total = 0
     for state,county in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY"]].values:
 
         X = Weather(state,county)
@@ -151,6 +152,7 @@ if __name__ == '__main__':
             predict = estimator.predict(X.loc[holdout].values)
 
             peak = predict.max()
+            total += peak
             rmse = np.sqrt(np.linalg.norm(y.loc[holdout].values-predict,2)/len(holdout))
             mpe = rmse/np.mean(y.loc[holdout].values)*100
 
@@ -181,3 +183,4 @@ if __name__ == '__main__':
 
             print(f"{county+' '+state:20s}: -",flush=True)
 
+    print(f"{total=:.1f} MW")  
