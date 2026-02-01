@@ -104,10 +104,12 @@ class SolarEstimator:
 if __name__ == '__main__':
     
     """Process predictions and samples for all WECC states and counties"""
-    plots = True
-
+    
+    import sys
     import pandas as pd
     import matplotlib.pyplot as plt
+
+    plots = "--plots" in sys.argv
 
     pd.options.display.width = None
     pd.options.display.max_columns = None
@@ -120,8 +122,8 @@ if __name__ == '__main__':
     for state,county in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY"]].values:
 
         X = Weather(state,county)[[
-            # "temperature_degF",
-            # "global_Wpms",
+            "temperature_degF",
+            "global_Wpms",
             "direct_Wpms",
             "diffuse_Wpms",
             ]]
@@ -148,7 +150,7 @@ if __name__ == '__main__':
 
             print(f"{county+' '+state:20s}: {peak=:5.1f} MW, {rmse=:4.1f} MW ({mpe:.1f}%)",flush=True)
 
-            if plots:
+            if plots and peak > 10:
 
                 plt.figure(figsize=(16,8))
 
@@ -164,7 +166,9 @@ if __name__ == '__main__':
 
                 plt.plot(Y.elec_dg_MW,predict,".")
                 plt.plot([0,pmax],[0,pmax],':k')
-                
+                plt.grid()
+
+                plt.suptitle(f"{county} {state} {holdout[len(holdout)//2].strftime("%B %Y")}")
                 plt.show()
 
         else:
