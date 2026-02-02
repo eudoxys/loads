@@ -35,7 +35,7 @@ jobs:
         NSRDB_CREDENTIALS: ${{ secrets.NSRDB_CREDENTIALS }}
       run: |
         mkdir $HOME/.nsrdb
-        echo "%NSRDB_CREDENTIALS%" > $HOME/.nsrdb/credentials.json
+        echo "$NSRDB_CREDENTIALS" > $HOME/.nsrdb/credentials.json
         cd loads
         pip install ..
         python3 tests.py
