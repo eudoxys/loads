@@ -64,6 +64,7 @@ if __name__ == "__main__":
 
     # CAISO load test
     if "CAISO" in tests:
+
         print("Testing CAISO...")
         caiso_data = pd.read_csv(
             os.path.join(os.path.dirname(__file__),f"caiso/{year}.csv"),
@@ -78,21 +79,8 @@ if __name__ == "__main__":
         caiso_data.index.name="timestamp"
         caiso_data.ffill()
 
-        # print(caiso_data)
-
         # Test CAISO load
         caiso_counties = Counties(use_index="REGION").loc["CAISO"].reset_index().set_index(["ST","COUNTY"]).sort_index()
-        # # print(caiso.loc["CA"])
-        # exclude = [
-        #     "Del Norte","Siskiyou", # PAC
-        #     "Modoc", # BPAT
-        #     "El Dorado","Sacramento", # BANC
-        #     "Mariposa","Merced", # TIDC
-        #     "Los Angeles", # LADWP
-        #     "Imperial", # IID (except eastern Riverside)
-        #     ]
-        # caiso_counties = caiso_counties.reset_index().set_index("COUNTY").drop(exclude,axis=0).reset_index().set_index(["ST","COUNTY"])
-        errors = 0
         for state,county in caiso_counties.index.values:
 
             print("Reading",county,state,end="...",flush=True)
