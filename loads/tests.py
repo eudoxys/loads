@@ -53,7 +53,7 @@ if __name__ == "__main__":
     else:
         tests = ["CAISO"]
 
-    if not "GITHUB_ACTIONS" in os.environ and "WECC" in tests:
+    if "WECC" in tests:
         # WECC load test
         print("Testing WECC...")
         wecc_counties = Counties(use_index="RO").loc["WECC"].reset_index().set_index(["ST","COUNTY"]).sort_index()
@@ -93,20 +93,33 @@ if __name__ == "__main__":
 
             print("ok")
 
-        net = total["elec_net_MW"]
-        net_sum = net.sum()/1e6
-        net_max = net.max()/1e3
-        net_min = net.min()/1e3
+        try:
+            error = pd.read_csv(f"tests/wecc240_error_{year}.csv",index_col="timestamp",parse_dates=["timestamp"])
+            print("Industrial load correction ok")
+        except Exception as err:
+            print(f"No error correction ({err})")
+            error = None
+
+        net = total["elec_net_MW"]/1e3
+        if not error is None:
+            net = pd.merge(net,error,left_index=True,right_index=True)
+            net.columns = ["elec_net_MW","elec_error_MW"]
+            net.elec_net_MW -= net.elec_error_MW
+            net.drop("elec_error_MW",inplace=True,axis=1)
+            net = net["elec_net_MW"]
+        net_sum = net.sum()/1e3
+        net_max = net.max()
+        net_min = net.min()
 
         act = caiso_data["elec_actual_MW"]
         act_sum = act.sum()/1e3
         act_max = act.max()
         act_min = act.min()
 
-        test = pd.merge(total.reset_index(),caiso_data.reset_index()).set_index("timestamp")
-        err_sum = test["elec_net_MW"].sum()/1e6 - test["elec_actual_MW"].sum()/1e3
-        err_max = test["elec_net_MW"].max()/1e3 - test["elec_actual_MW"].max()
-        err_min = test["elec_net_MW"].min()/1e3 - test["elec_actual_MW"].min()
+        test = pd.merge(net.reset_index(),caiso_data.reset_index()).set_index("timestamp")
+        err_sum = test["elec_net_MW"].sum()/1e3 - test["elec_actual_MW"].sum()/1e3
+        err_max = test["elec_net_MW"].max() - test["elec_actual_MW"].max()
+        err_min = test["elec_net_MW"].min() - test["elec_actual_MW"].min()
 
         print(f"\n                       Loads      CAISO {year}     Error")
         print(   "                     ----------   ----------   -----------------")
@@ -114,3 +127,29 @@ if __name__ == "__main__":
         print(  f"Max power (GW)       {net_max:8.3f}     {act_max:8.3f}     {err_max:8.3f} ({err_max/act_max*100:+5.1f}%)")
         print(  f"Min power (GW)       {net_min:8.3f}     {act_min:8.3f}     {err_min:8.3f} ({err_min/act_min*100:+5.1f}%)")
 
+        if error is None:
+            error = (net - act).dropna()
+            error.columns=["elec_error_MW"]
+            error.round(3).to_csv(f"tests/wecc240_error_{year}.csv")
+
+        import matplotlib.pyplot as plt
+
+        # plt.plot(sorted(net.values,reverse=True),label="Model")
+        # plt.plot(sorted(act.values,reverse=True),label="Actual")
+        # plt.grid()
+        # plt.ylim([0,50])
+        # plt.xlabel("Hour")
+        # plt.ylabel("GW")
+        # plt.title(f"CAISO Load Duration {year}")
+        # plt.legend()
+
+        # plt.show()
+
+        # plt.clf()
+
+        error.plot(label=None)
+        plt.grid()
+        plt.ylabel("Industrial load correction (GW)")
+        plt.xlabel("Date/Time")
+
+        plt.show()
