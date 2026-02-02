@@ -233,12 +233,14 @@ if __name__ == "__main__":
     locations,latlon = list(wecc240_gis.GEOHASH),list(zip(wecc240_gis.LAT,wecc240_gis.LON))
     targets = {x:latlon[locations.index(x)] for x in set(locations) if x not in omitted}
 
+    column = None
     try:
         column = [x for x in sys.argv[1:] if not x.startswith("-")][0]
         year = int([x for x in sys.argv[1:] if not x.startswith("-")][1])
     except:
         print("Syntax: python3 aggregate.py [--debug] [--refresh] COLUMN YEAR",file=sys.stderr)
-        column = "elec_net_MW"
+        if column is None:
+            column = "elec_net_MW"
         year = 2020
 
     # read US nodes
