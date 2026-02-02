@@ -105,8 +105,8 @@ if __name__ == "__main__":
             net = pd.merge(net,error,left_index=True,right_index=True)
             net.columns = ["elec_net_MW","elec_error_MW"]
             net.elec_net_MW -= net.elec_error_MW
-            net.drop("elec_error_MW",inplace=True,axis=1)
-            net = net["elec_net_MW"]
+            err = net.elec_error_MW
+            net = net.elec_net_MW
         net_sum = net.sum()/1e3
         net_max = net.max()
         net_min = net.min()
@@ -134,6 +134,7 @@ if __name__ == "__main__":
 
         import matplotlib.pyplot as plt
 
+        # # plot load duration curves
         # plt.plot(sorted(net.values,reverse=True),label="Model")
         # plt.plot(sorted(act.values,reverse=True),label="Actual")
         # plt.grid()
@@ -147,9 +148,10 @@ if __name__ == "__main__":
 
         # plt.clf()
 
-        error.plot(label=None)
-        plt.grid()
-        plt.ylabel("Industrial load correction (GW)")
-        plt.xlabel("Date/Time")
+        # # plot load error
+        # (err/act*100).plot(label=None)
+        # plt.grid()
+        # plt.ylabel("Load error (%)")
+        # plt.xlabel("Date/Time")
 
-        plt.show()
+        # plt.show()
