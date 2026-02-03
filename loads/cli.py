@@ -121,7 +121,7 @@ def main(*args:list[str],**kwargs:dict[str,str]) -> int:
         parser = argparse.ArgumentParser(
             prog="loads",
             description="Electric loads data accessor",
-            epilog="See https://www.eudoxys.com/loads for documentation. ",
+            epilog="See https://www.eudoxys.com/loads for documentation.",
             )
 
         parser.add_argument("command",
@@ -170,7 +170,7 @@ def main(*args:list[str],**kwargs:dict[str,str]) -> int:
 
         # enable debug output
         if args.debug:
-            logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
+            logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
 
         match args.command:
 
