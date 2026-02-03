@@ -254,7 +254,6 @@ if __name__ == "__main__":
 
     }
     for node in omitted:
-        # result[node] = float('NaN')
         file = sources[node]
         try:
             data = pd.read_csv(file,
