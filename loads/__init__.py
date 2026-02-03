@@ -206,7 +206,6 @@ Package information
     - [eia](https://github.com/eudoxys/eia/)
     - [fips](https://github.com/eudoxys/fips/)
     - [weather](https://github.com/eudoxys/weather/)
-
 """
 
 from loads.agriculture import Agriculture
