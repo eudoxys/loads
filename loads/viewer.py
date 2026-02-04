@@ -135,12 +135,12 @@ def _(
         value=get_xaxis(),
         on_change=set_xaxis,
     )
+    _options = {x.split("_")[1].title():x for x in data.columns if x.startswith("elec_")}
     yaxis_ui = mo.ui.radio(
         label="Y axis:",
-        options={
-            x.split("_")[1].title():x for x in data.columns if x.startswith("elec_")},
+        options=_options,
         inline=True,
-        value=get_yaxis(),
+        value={y:x for x,y in _options.items()}[get_yaxis()],
         on_change=set_yaxis,
     )
     zaxis_ui = mo.ui.radio(
