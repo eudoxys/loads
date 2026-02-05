@@ -127,13 +127,13 @@ flowchart TD
     COMstock --> Commercial
     Floorarea --> Commercial
 
-    Residential --> Estimate
-    Industry --> Estimate
-    Agriculture --> Estimate
-    Weather --> Estimate
-    Commercial --> Estimate
+    Residential --> TSGAM[TSGAM Estimator]
+    Industry --> TSGAM
+    Agriculture --> TSGAM
+    Weather --> TSGAM
+    Commercial --> TSGAM
 
-    Estimate --> Calibrate
+    TSGAM --> Calibrate
 ```
 
   - `loads.agriculture`: 2019 agricultural load data
@@ -155,6 +155,8 @@ flowchart TD
   - `loads.residential`: 2018 residential building compiled load data
 
   - `loads.resstock`: 2018 residential building end-use load data
+
+  - `loads.tsgam_estimator`: time-series general additive model
 
   - `loads.units`: 2020-era residential units data
 
