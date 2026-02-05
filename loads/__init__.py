@@ -159,8 +159,6 @@ flowchart TD
 
   - `loads.agriculture`: 2019 agricultural load data
 
-  - `loads.cache`: manage local data cache
-
   - `loads.calibrate`: load calibration to energy use
 
   - `loads.cli`: command line interface
@@ -180,8 +178,6 @@ flowchart TD
   - `loads.tsgam_estimator`: time-series general additive model
 
   - `loads.units`: 2020-era residential units data
-
-  - `weather`: 2018 reference weather data
 
 Example
 -------

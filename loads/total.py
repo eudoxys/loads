@@ -112,7 +112,44 @@ from loads.solar_estimator import SolarEstimator
 _logger = logging.getLogger(__file__)
 
 class Total(pd.DataFrame):
-    """Total load aggregation class implementation"""
+    """Total load aggregation class implementation
+
+    Columns
+    -------
+
+      - `elec_residential_MW`: total residential building loads
+
+      - `elec_commercial_MW`: total commercial building loads
+
+      - `elec_industrial_MW`: total industrial loads
+
+      - `elec_agricultural_MW`: total agricultural loads
+
+      - `elec_total_MW`: total loads
+
+      - `elec_dg_MW`: total distributed generation
+
+      - `elec_net_MW`: total net loads
+
+      - `temperature_degF`: dry-bulb temperature used to predict loads
+
+      - `global_Wpms`: global horizontal irradiance used to predict DG
+
+      - `direct_Wpms`: direct normal irradiance used to to predict DG
+
+      - `diffuse_Wpms`: global diffuse irradiance used to predict DG
+
+    Caveats
+    -------
+
+      - Only direct normal and global diffuse irradiance are currently used to
+        predict DG using a simple least-squares fit
+
+      - Large loads as defined by NERC (e.g., data centers) are not included.
+
+      - Transportation loads are current set to 0 because they are less than
+        1% of total electric loads.
+    """
 
     CACHEDIR = None
     """Cache folder"""
