@@ -83,6 +83,14 @@ which outputs
     2020-12-31 23:00:00+00:00              738.641             861.597             223.618                 6.901                     0.0       1830.758     1830.758        -0.0              53.6        207.0        668.0          51.0
 
     [8784 rows x 12 columns]
+
+Known Issues
+------------
+
+1. Log-load is regarded as a better model, however the current implementation
+does not exclude zeros from training or learn when zero should be predicted.
+
+2. The current total from the main run is a prediction, not a sampling.
 """
 
 import datetime as dt
@@ -197,7 +205,6 @@ class Total(pd.DataFrame):
         state:str,
         county:str,
         year:int|str,
-        freq:str="1h",
         samples:int=None,
         percentile:float=95,
         nonelec:bool=False,
@@ -223,20 +230,34 @@ class Total(pd.DataFrame):
           - `refresh`: refresh cache data
         """
 
-        if isinstance(year,str):
+        # check values
+        try:
             year = int(year)
+        except:
+            raise ValueError(f"{year=} is not an integer")
+        assert year >= 2018, f"{year=} is not >= 2018"
+        assert samples is None or isinstance(samples,int) or samples<0, f"{samples=} is not a non-negative integer or None"
+        assert isinstance(percentile,(int,float)) and 0<=percentile<=100, f"{percentile=} is no between 0 and 1"
+        assert isinstance(nonelec,(bool,int,float)), f"{nonelec=} is not boolean"
+        assert isinstance(refresh,(bool,int,float)), f"{refresh=} is not boolean"
+
+        # options
+        freq = "1h"
         source = "nonelec" if nonelec else "elec"
 
+        # identify location of cached results
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
-        if isinstance(samples,int) and samples > 1:
-            cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}_{samples}_{percentile}.csv.gz"])
-        elif samples in [0,1]:
-            cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}.csv.gz"])
-        elif samples is None:
+        if samples is None:
             cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}_training.csv.gz"])
+        elif samples == 0:
+            cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}.csv.gz"])
+        elif samples == 1:
+            cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}_1.csv.gz"])
+        else:
+            cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}_{samples}_{percentile}.csv.gz"])
 
-        # load data from cache
+        # load refresh from cache
         if cache.exists() and not refresh:
 
             try:
@@ -251,10 +272,11 @@ class Total(pd.DataFrame):
             data = None
             _logger.debug(f"{cache=} (re)generation required")
 
+        # no results available from cache
         if data is None:
 
             # get residential and commercial loads
-            # TODO: change to log(MW), need to address zeros
+            # ISSUE: how to handle zeros so we can use log(MW)
             weather = Weather(state,county)
             training_year = weather.index.year.min().astype(int)
             if nonelec:
@@ -262,18 +284,23 @@ class Total(pd.DataFrame):
             else:
                 data = Weather(state,county,year)[["temperature_degF","global_Wpms","direct_Wpms","diffuse_Wpms"]]
 
+            # DG only possible with electric loads
             if not nonelec:
                 data["elec_dg_MW"] = 0.0
+
+            # process building sectors
             for sector,dataset in {
                     "residential":Residential,
                     "commercial":Commercial,
                     }.items():
 
-                # get previously constructor estimators 
+                # get previously constructor estimators from cache
                 if (state,county,sector) in self.cache["load"] and (state,county,sector) in self.cache["solar"]:
                     estimator = self.cache["load"][(state,county,sector)]
                     if not nonelec:
                         solar = self.cache["solar"][(state,county,sector)]
+
+                # sampling or not training year
                 elif not samples is None or year != training_year:
 
                     # create a new estimator
@@ -293,6 +320,7 @@ class Total(pd.DataFrame):
                     if not estimator.problem_.status in ["optimal", "optimal_inaccurate"]:
                         raise RuntimeError(f"unable to fit: {estimate.problem_.status}")
                     
+                    # DG only possible with electric loads
                     if not nonelec:
                         solar.fit(
                             training[self.SOLAR_INPUTS],
@@ -304,6 +332,7 @@ class Total(pd.DataFrame):
                     if not nonelec:
                         self.cache["solar"][(state,county,sector)] = solar
 
+                # no sampling and training year
                 else:
 
                     # gather the training data for this state, county, and sector
@@ -314,39 +343,55 @@ class Total(pd.DataFrame):
                     estimator = None
                     solar = None
 
-                # calibration DG
-                if not nonelec:    
-                    calibration = float(Calibrate.solar(state,year).loc[sector[0].upper()].values[0])
-                    _logger.debug(f"{county} {state} {sector} {year} solar {calibration=}")
+                # calibrate DG
+                if not nonelec:
 
-                # no sampling requested
+                    # get DG calibration 
+                    dg_calibration = float(Calibrate.solar(state,year).loc[sector[0].upper()].values[0])
+                    _logger.debug(f"{county} {state} {sector} {year} solar {dg_calibration=}")
+
+                # no estimator available
                 if not estimator:
 
+                    # use original training data
                     data[f"{source}_{sector}_MW"] = training["elec_total_MW"]
-                    if not nonelec:
-                        data["elec_dg_MW"] -= training["elec_dg_MW"] * calibration
 
-                elif not samples:
-                    data[f"{source}_{sector}_MW"] = estimator.predict(data)
+                    # DG only possible with electric loads
                     if not nonelec:
-                        data["elec_dg_MW"] -= solar.predict(data[self.SOLAR_INPUTS].fillna(0).values) * calibration
+                        data["elec_dg_MW"] -= training["elec_dg_MW"] * dg_calibration
+
+                # no sampling requested
+                elif not samples:
+
+                    # use prediction only
+                    data[f"{source}_{sector}_MW"] = estimator.predict(data)
+
+                    # DG only possible with electric loads
+                    if not nonelec:
+                        data["elec_dg_MW"] -= solar.predict(data[self.SOLAR_INPUTS].fillna(0).values) * dg_calibration
 
                 # one sample requested
                 elif samples == 1:
+
+                    # sample just once
                     data[f"{source}_{sector}_MW"] = estimator.sample(data,1)[0]
+
+                    # DG only possible with electric loads
                     if not nonelec:
-                        data["elec_dg_MW"] -= solar.sample(data,1)[0] * calibration
+                        data["elec_dg_MW"] -= solar.sample(data,1)[0] * dg_calibration
 
                 # percentile of multiple samples requested (this can be slow)
                 else:
+
+                    # sample multiple times and get percentile
                     data[f"{source}_{sector}_MW"] = np.percentile(estimator.sample(data,samples),percentile)
                     if not nonelec:
-                        data["elec_dg_MW"] -= np.percentile(solar.sample(data,samples),percentile) * calibration
+                        data["elec_dg_MW"] -= np.percentile(solar.sample(data,samples),percentile) * dg_calibration
 
                 # calibrate loads
-                calibration = float(Calibrate.load(state,year).loc[sector[0].upper()].values[0])
-                _logger.debug(f"{county} {state} {sector} {year} load {calibration=}")
-                data[f"{source}_{sector}_MW"] *= calibration
+                load_calibration = float(Calibrate.load(state,year).loc[sector[0].upper()].values[0])
+                _logger.debug(f"{county} {state} {sector} {year} load {load_calibration=}")
+                data[f"{source}_{sector}_MW"] *= load_calibration
 
             # make flat loadshape for industry and agriculture
             loadshape = pd.DataFrame(
@@ -421,7 +466,11 @@ if __name__ == "__main__":
 
         for year in range(2018,2023):
             try:
-                Total(state,county,year,refresh=refresh,samples=None if year == 2018 else 0)
+                Total(state,county,year,
+                    refresh=refresh,
+                    # ISSUE: are we sampling (1) or predicting (0)
+                    samples=None if year == 2018 else 0,
+                    )
                 _logger.info(f"{state} {county} {year} ok")
             except Exception as err:
                 (_logger.exception if debug else _logger.error)(f"{state} {county} {year} {err}")

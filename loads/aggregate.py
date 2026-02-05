@@ -88,13 +88,20 @@ class Aggregator(pd.DataFrame):
 
           - `end`: the index end date/time
         """
+
+        # generate the time index for the aggregation
         timestamps = pd.date_range(start,end,freq="1h") 
+
+        # create a data frame into which data will be aggregated
         data = pd.DataFrame(
             data = np.zeros((len(timestamps),len(targets))),
             index = timestamps,
             )
+
+        # finalize the data frame structure
         data.index.name = "timestamp"
         data.columns = sorted(targets)
+
         super().__init__(data)
 
     def add(self,target,data):
@@ -107,6 +114,8 @@ class Aggregator(pd.DataFrame):
 
           - `data`: data values to add
         """
+
+        # add the new data to the data frame
         self[target] += data[target]
 
 def aggregate(
@@ -237,14 +246,17 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
 
+    # read GIS data
     wecc240_gis = pd.read_csv("https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/gis/wecc240.csv")
+
+    # get omitted nodes
     canada = set(wecc240_gis[wecc240_gis.LAT>49].GEOHASH.values)
     mexico = set(wecc240_gis.set_index("GEOHASH").loc[["9mtzm4"]].index.values)
     omitted = canada|mexico
 
+    # generation target node data
     locations,latlon = list(wecc240_gis.GEOHASH),list(zip(wecc240_gis.LAT,wecc240_gis.LON))
     targets = {x:latlon[locations.index(x)] for x in set(locations) if x not in omitted}
-
 
     # read US nodes
     result = aggregate(targets,year,column,refresh=refresh)[0]
@@ -269,12 +281,13 @@ if __name__ == "__main__":
             _logger.exception(f"{file} read failed ({err})")
         result = pd.merge(result,data,left_index=True,right_index=True)
 
-    print(f"WECC {year} {column}:")
-    
+    # calculate results
     total = result.iloc[24:].sum(axis=1)/1000
     peak_dt = total[total==total.max()].index.values[0]
-    print(f"Peak load...... {total.max():.1f} GW at {peak_dt}")
+    result[sorted(result.columns)].to_csv(f"tests/wecc240_{column}_2020.csv",index=True)
 
+    # show results
+    print(f"WECC {year} {column}:")
+    print(f"Peak load...... {total.max():.1f} GW at {peak_dt}")
     print(f"Total energy... {aggregate(targets,year,column,refresh=refresh)[0].sum(axis=1).sum()/1e6:.1f} TWh")
 
-    result[sorted(result.columns)].to_csv(f"tests/wecc240_{column}_2020.csv",index=True)
