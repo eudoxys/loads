@@ -153,12 +153,15 @@ class Total(pd.DataFrame):
     )
     """Time-series General Additive Model estimator configuration"""
 
+    SOLAR_INPUTS = ["diffuse_Wpms","direct_Wpms"]
+    """Solar DG model independent variables to use"""
+
     def __init__(self,
         state:str,
         county:str,
         year:int|str,
         freq:str="1h",
-        samples:int=1,
+        samples:int=None,
         percentile:float=95,
         nonelec:bool=False,
         refresh:bool=False,
@@ -174,7 +177,9 @@ class Total(pd.DataFrame):
 
           - `year`: target year
 
-          - `samples`: number of AR samples to generation (0=predict onlyl)
+          - `samples`: number of AR samples to generation (`0` predicts, `1`
+            samples, `>1` samples with percentile, `None` training only if
+            year is training year otherwise predicts)
 
           - `nonelec`: use non-electric total load
 
@@ -187,10 +192,12 @@ class Total(pd.DataFrame):
 
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
-        if samples and samples > 1:
+        if isinstance(samples,int) and samples > 1:
             cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}_{samples}_{percentile}.csv.gz"])
-        else:
+        elif samples in [0,1]:
             cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}.csv.gz"])
+        elif samples is None:
+            cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}_training.csv.gz"])
 
         # load data from cache
         if cache.exists() and not refresh:
@@ -212,6 +219,7 @@ class Total(pd.DataFrame):
             # get residential and commercial loads
             # TODO: change to log(MW), need to address zeros
             weather = Weather(state,county)
+            training_year = weather.index.year.min().astype(int)
             if nonelec:
                 data = Weather(state,county,year)[["temperature_degF"]]
             else:
@@ -229,7 +237,7 @@ class Total(pd.DataFrame):
                     estimator = self.cache["load"][(state,county,sector)]
                     if not nonelec:
                         solar = self.cache["solar"][(state,county,sector)]
-                else:
+                elif not samples is None or year != training_year:
 
                     # create a new estimator
                     estimator = TsgamEstimator(config=self.TSGAM_CONFIG)
@@ -250,7 +258,7 @@ class Total(pd.DataFrame):
                     
                     if not nonelec:
                         solar.fit(
-                            training[["diffuse_Wpms","direct_Wpms"]],
+                            training[self.SOLAR_INPUTS],
                             training["elec_dg_MW"].fillna(0).abs().values,
                             )
 
@@ -259,16 +267,32 @@ class Total(pd.DataFrame):
                     if not nonelec:
                         self.cache["solar"][(state,county,sector)] = solar
 
+                else:
+
+                    # gather the training data for this state, county, and sector
+                    loaddata = dataset(state,county)
+                    training = pd.concat([loaddata,weather],axis=1)
+
+                    # disable prediction models
+                    estimator = None
+                    solar = None
+
                 # calibration DG
                 if not nonelec:    
                     calibration = float(Calibrate.solar(state,year).loc[sector[0].upper()].values[0])
                     _logger.debug(f"{county} {state} {sector} {year} solar {calibration=}")
 
                 # no sampling requested
-                if not samples:
+                if not estimator:
+
+                    data[f"{source}_{sector}_MW"] = training["elec_total_MW"]
+                    if not nonelec:
+                        data["elec_dg_MW"] -= training["elec_dg_MW"] * calibration
+
+                elif not samples:
                     data[f"{source}_{sector}_MW"] = estimator.predict(data)
                     if not nonelec:
-                        data["elec_dg_MW"] -= solar.predict(data[["diffuse_Wpms","direct_Wpms"]].fillna(0).values) * calibration
+                        data["elec_dg_MW"] -= solar.predict(data[self.SOLAR_INPUTS].fillna(0).values) * calibration
 
                 # one sample requested
                 elif samples == 1:
@@ -323,6 +347,16 @@ class Total(pd.DataFrame):
             ].round(self.PRECISION))
 
     @classmethod
+    def _clear_cache(cls):
+        """Clear the estimator cache"""
+        cls.cache = { 
+            "scale": {},
+            "load": {},
+            "solar": {},
+        }
+
+
+    @classmethod
     def makeargs(cls,**kwargs):
         """@private Return dict of accepted kwargs by this class constructor"""
         return {x:y for x,y in kwargs.items()
@@ -345,9 +379,12 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
     
     for state,county in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY"]].values:
+
+        Total._clear_cache()
+
         for year in range(2018,2023):
             try:
-                Total(state,county,year,nonelec=False,refresh=refresh,samples=None)
+                Total(state,county,year,refresh=refresh,samples=None if year == 2018 else 0)
                 _logger.info(f"{state} {county} {year} ok")
             except Exception as err:
                 (_logger.exception if debug else _logger.error)(f"{state} {county} {year} {err}")
