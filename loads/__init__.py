@@ -127,13 +127,15 @@ flowchart TD
     COMstock --> Commercial
     Floorarea --> Commercial
 
-    Residential --> TSGAM[TSGAM Estimator]
-    Industry --> TSGAM
-    Agriculture --> TSGAM
-    Weather --> TSGAM
-    Commercial --> TSGAM
+    Residential --> Predict
+    Industry --> Predict
+    Agriculture --> Predict
+    Weather --> Predict
+    Commercial --> Predict
 
-    TSGAM --> Calibrate
+    Predict --> Calibrate
+
+    Calibrate --> Total
 ```
 
   - `loads.agriculture`: 2019 agricultural load data
