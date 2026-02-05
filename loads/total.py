@@ -89,8 +89,10 @@ Known Issues
 
 1. Log-load is regarded as a better model, however the current implementation
 does not exclude zeros from training or learn when zero should be predicted.
+(See `ISSUE 1` in code below.)
 
-2. The current total from the main run is a prediction, not a sampling.
+2. The current total from the main run is a sample, not a prediction, or a
+percentile of K samples. (See `ISSUE 2` in code below.)
 """
 
 import datetime as dt
@@ -276,7 +278,7 @@ class Total(pd.DataFrame):
         if data is None:
 
             # get residential and commercial loads
-            # ISSUE: how to handle zeros so we can use log(MW)
+            # ISSUE 1: how to handle zeros so we can use log(MW)
             weather = Weather(state,county)
             training_year = weather.index.year.min().astype(int)
             if nonelec:
@@ -348,7 +350,7 @@ class Total(pd.DataFrame):
 
                     # get DG calibration 
                     dg_calibration = float(Calibrate.solar(state,year).loc[sector[0].upper()].values[0])
-                    _logger.debug(f"{county} {state} {sector} {year} solar {dg_calibration=}")
+                    _logger.debug(f"{county} {state} {sector} {year} solar {dg_calibration=:.3f}")
 
                 # no estimator available
                 if not estimator:
@@ -358,7 +360,7 @@ class Total(pd.DataFrame):
 
                     # DG only possible with electric loads
                     if not nonelec:
-                        data["elec_dg_MW"] -= training["elec_dg_MW"] * dg_calibration
+                        data["elec_dg_MW"] -= training["elec_dg_MW"].fillna(0).abs() * dg_calibration
 
                 # no sampling requested
                 elif not samples:
@@ -378,7 +380,7 @@ class Total(pd.DataFrame):
 
                     # DG only possible with electric loads
                     if not nonelec:
-                        data["elec_dg_MW"] -= solar.sample(data,1)[0] * dg_calibration
+                        data["elec_dg_MW"] -= solar.sample(data[self.SOLAR_INPUTS].fillna(0).values,1)[0] * dg_calibration
 
                 # percentile of multiple samples requested (this can be slow)
                 else:
@@ -386,11 +388,11 @@ class Total(pd.DataFrame):
                     # sample multiple times and get percentile
                     data[f"{source}_{sector}_MW"] = np.percentile(estimator.sample(data,samples),percentile)
                     if not nonelec:
-                        data["elec_dg_MW"] -= np.percentile(solar.sample(data,samples),percentile) * dg_calibration
+                        data["elec_dg_MW"] -= np.percentile(solar.sample(data[self.SOLAR_INPUTS].fillna(0).values,samples),percentile) * dg_calibration
 
                 # calibrate loads
                 load_calibration = float(Calibrate.load(state,year).loc[sector[0].upper()].values[0])
-                _logger.debug(f"{county} {state} {sector} {year} load {load_calibration=}")
+                _logger.debug(f"{county} {state} {sector} {year} load {load_calibration=:.3f}")
                 data[f"{source}_{sector}_MW"] *= load_calibration
 
             # make flat loadshape for industry and agriculture
@@ -468,8 +470,9 @@ if __name__ == "__main__":
             try:
                 Total(state,county,year,
                     refresh=refresh,
-                    # ISSUE: are we sampling (1) or predicting (0)
-                    samples=None if year == 2018 else 0,
+                    # ISSUE 2: are we sampling (1), predicting (0), or
+                    # getting the percentile for K samples (K) for 2019-2022?
+                    samples=None if year == 2018 else 1,
                     )
                 _logger.info(f"{state} {county} {year} ok")
             except Exception as err:

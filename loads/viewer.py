@@ -52,18 +52,19 @@ def _(dt, get_month, mo, set_month):
 
 
 @app.cell
-def _(mo):
-    calibrate_ui = mo.ui.checkbox(label="Calibrate",value=True)
-    return (calibrate_ui,)
+def _(mo, year_ui):
+    sample_ui = mo.ui.checkbox(label="Sample",value=year_ui.value!="2018")
+    return (sample_ui,)
 
 
 @app.cell
-def _(county_ui, mo, month_ui, state_ui, year_ui):
+def _(county_ui, mo, month_ui, sample_ui, state_ui, year_ui):
     mo.hstack([
         state_ui, 
         county_ui,
         year_ui,
         month_ui,
+        sample_ui,
     ], justify="start")
     return
 
@@ -77,41 +78,17 @@ def _(county_ui, state_ui, year_ui):
 
 
 @app.cell
-def _(COUNTY, STATE, Total, YEAR, mo):
-    mo.stop(
-        COUNTY is None,
-        mo.md("**<font color=blue>HINT**: you need to select a county</font>"),
-    )
-
-    data = Total(STATE, COUNTY, YEAR)
-    return (data,)
-
-
-@app.cell
-def _(Calibrate, STATE, calibrate_ui, year_ui):
-    if calibrate_ui.value:
-        calibration = Calibrate.load(STATE, year_ui.value).to_dict()["scalar"]
-    else:
-        calibration = {"R":1.0,"C":1.0}
-    return
-
-
-@app.cell
 def _(mo):
     get_xaxis, set_xaxis = mo.state("timestamp")
-    get_yaxis, set_yaxis = mo.state("Net")
+    get_yaxis, set_yaxis = mo.state("elec_total_MW")
     get_zaxis, set_zaxis = mo.state("temperature_degF")
-    get_plotter, set_plotter = mo.state("line")
-    return (
-        get_plotter,
-        get_xaxis,
-        get_yaxis,
-        get_zaxis,
-        set_plotter,
-        set_xaxis,
-        set_yaxis,
-        set_zaxis,
-    )
+    return get_xaxis, get_yaxis, get_zaxis, set_xaxis, set_yaxis, set_zaxis
+
+
+@app.cell
+def _(get_xaxis, mo):
+    get_plotter, set_plotter = mo.state("line" if get_xaxis()=="timestamp" else "scatter")
+    return get_plotter, set_plotter
 
 
 @app.cell
@@ -135,12 +112,11 @@ def _(
         value=get_xaxis(),
         on_change=set_xaxis,
     )
-    _options = {x.split("_")[1].title():x for x in data.columns if x.startswith("elec_")}
     yaxis_ui = mo.ui.radio(
         label="Y axis:",
-        options=_options,
+        options=sorted([x for x in data.columns if x.startswith("elec_")]),
         inline=True,
-        value={y:x for x,y in _options.items()}[get_yaxis()],
+        value=get_yaxis(),
         on_change=set_yaxis,
     )
     zaxis_ui = mo.ui.radio(
@@ -173,7 +149,7 @@ def _(COUNTY, STATE, data, plt):
             x=[y for x,y in _piedata.items() if y > 0],
             labels=[f"{x} ({y/1000:.1f} GWh)" for x,y in _piedata.items() if y > 0],
         )
-        plt.title(f"{COUNTY} {STATE} Total Electric Load")
+        plt.title(f"{COUNTY} {STATE} Total Energy Consumption")
         pieplot = plt.gca()
     except Exception as err:
         print(err)
@@ -248,6 +224,18 @@ def _(
 
 
 @app.cell
+def _(COUNTY, STATE, Total, YEAR, mo, sample_ui):
+    mo.stop(
+        COUNTY is None,
+        mo.md("**<font color=blue>HINT**: you need to select a county</font>"),
+    )
+
+    with mo.status.spinner(f"Processing totals for {COUNTY} {STATE} in {YEAR}...") as _spinner:
+        data = Total(STATE, COUNTY, YEAR,samples=None if YEAR==2018 else (1 if sample_ui.value else 0))
+    return (data,)
+
+
+@app.cell
 def _():
     import marimo as mo
     with mo.status.spinner("Loading modules...") as spinner:
@@ -260,9 +248,9 @@ def _():
         import plotly.graph_objects as go
         from scipy.optimize import curve_fit
         from fips import Counties
-        from loads import Residential, Commercial, Industry, Agriculture, Cast, Calibrate, Total
+        from loads import Total
         from weather import Weather
-    return Calibrate, Counties, Total, dt, mo, pd, plt, px
+    return Counties, Total, dt, mo, pd, plt, px
 
 
 if __name__ == "__main__":

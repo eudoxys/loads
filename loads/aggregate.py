@@ -52,6 +52,14 @@ Caveat
   - The cache assumes that the target list has not changed. If the target list
     has changed, you must use the `refresh=True` option to force
     recalculation of mappings.
+
+Issues
+------
+
+1. The Mexico loads have no loadshape and it's not clear what the load shape
+should be. See
+`https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/Mexico` for
+details.
 """
 
 import datetime as dt
@@ -283,11 +291,11 @@ if __name__ == "__main__":
 
     # calculate results
     total = result.iloc[24:].sum(axis=1)/1000
-    peak_dt = total[total==total.max()].index.values[0]
+    peak_dt = total[total==total.max()].index.values[0].astype(dt.datetime)
     result[sorted(result.columns)].to_csv(f"tests/wecc240_{column}_2020.csv",index=True)
 
     # show results
     print(f"WECC {year} {column}:")
-    print(f"Peak load...... {total.max():.1f} GW at {peak_dt}")
+    print(f"Peak load...... {total.max():.1f} GW at {peak_dt.strftime("%m/%d/%y %H:%M")}")
     print(f"Total energy... {aggregate(targets,year,column,refresh=refresh)[0].sum(axis=1).sum()/1e6:.1f} TWh")
 

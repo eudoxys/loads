@@ -3,6 +3,12 @@
 The distributed generation prediction uses a clipped least-squares fit. Samples
 are generated using the mean error and standard deviation of the prediction
 on the training data.
+
+Issues
+------
+
+1. This solar estimator is a simple least-squares fit. We can do a lot better but
+   the solar DG prediction is not used by REGROW.
 """
 
 import numpy as np
