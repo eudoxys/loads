@@ -115,7 +115,7 @@ def aggregate(
     column:str,
     refresh:bool=False,
     ) -> [pd.DataFrame, dict[str,str]]:
-    """Aggregate net loads
+    """Aggregate loads
 
     Arguments
     ---------
@@ -129,7 +129,7 @@ def aggregate(
     Returns
     -------
 
-      - `pandas.DataFrame`: aggregates of net loads
+      - `pandas.DataFrame`: aggregates of loads
 
       - `dict`: result of mapping to targets
     """
@@ -149,7 +149,7 @@ def aggregate(
             _logger.error(f"{mapping_cache=} {err}")
             mapping = None
 
-        # read net load
+        # read load
         try:
             data = pd.read_csv(data_cache.pathname,index_col="timestamp",parse_dates=["timestamp"])
             _logger.debug(f"{data_cache=} ok")
@@ -171,7 +171,7 @@ def aggregate(
         start = f"{year}-01-01 00:00:00+00:00"
         end = f"{year}-12-31 23:59:59+00:00"
 
-        # get net load aggregator
+        # get load aggregator
         data = Aggregator(targets.keys(),start,end)
 
         # map counties to targets
@@ -187,16 +187,16 @@ def aggregate(
 
             # read county totals
             total = Total(state,county,year)
-            assert column in total.columns, f"{column=} is not found in totals for {state=} {counyt=} {year=}"
+            assert column in total.columns, f"{column=} is not found in totals for {state=} {county=} {year=}"
 
-            # add county net load to aggregated load
+            # add county load to aggregated load
             data.add(target,pd.DataFrame(
                 data={target:total[column]},
                 index=total.index,
                 ))
             assert not data.isna().any().any(), f"{state} {county} {year} {geohash} --> {target} has NA values {data[data.isna()]}"
 
-        # save net load results
+        # save load results
         data.round(3).to_csv(data_cache.pathname,index=True,header=True)
 
         # save mapping result
@@ -218,7 +218,19 @@ if __name__ == "__main__":
 
     pd.options.display.max_columns = None
     pd.options.display.width = None
-    # pd.options.display.max_rows = None
+    pd.options.display.max_rows = None
+
+    if len(sys.argv) == 1:
+        print("Syntax: python3 aggregate.py [--debug] [--refresh] COLUMN YEAR",file=sys.stderr)
+
+    column = None
+    try:
+        column = [x for x in sys.argv[1:] if not x.startswith("-")][0]
+        year = int([x for x in sys.argv[1:] if not x.startswith("-")][1])
+    except:
+        if column is None:
+            column = "elec_total_MW"
+        year = 2020
 
     refresh = "--refresh" in sys.argv
     debug = "--debug" in sys.argv
@@ -233,15 +245,6 @@ if __name__ == "__main__":
     locations,latlon = list(wecc240_gis.GEOHASH),list(zip(wecc240_gis.LAT,wecc240_gis.LON))
     targets = {x:latlon[locations.index(x)] for x in set(locations) if x not in omitted}
 
-    column = None
-    try:
-        column = [x for x in sys.argv[1:] if not x.startswith("-")][0]
-        year = int([x for x in sys.argv[1:] if not x.startswith("-")][1])
-    except:
-        print("Syntax: python3 aggregate.py [--debug] [--refresh] COLUMN YEAR",file=sys.stderr)
-        if column is None:
-            column = "elec_net_MW"
-        year = 2020
 
     # read US nodes
     result = aggregate(targets,year,column,refresh=refresh)[0]
@@ -267,7 +270,11 @@ if __name__ == "__main__":
         result = pd.merge(result,data,left_index=True,right_index=True)
 
     print(f"WECC {year} {column}:")
-    print(f"Peak load...... {result.sum(axis=1).max()/1000:.1f} GW")
+    
+    total = result.iloc[24:].sum(axis=1)/1000
+    peak_dt = total[total==total.max()].index.values[0]
+    print(f"Peak load...... {total.max():.1f} GW at {peak_dt}")
+
     print(f"Total energy... {aggregate(targets,year,column,refresh=refresh)[0].sum(axis=1).sum()/1e6:.1f} TWh")
 
-    result[sorted(result.columns)].to_csv("tests/wecc240_loads_2020.csv",index=True)
+    result[sorted(result.columns)].to_csv(f"tests/wecc240_{column}_2020.csv",index=True)
