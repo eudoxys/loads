@@ -156,6 +156,7 @@ flowchart TD
 
     Aggregate --> GeoPanel
 ```
+  - `loads.aggregate`: load aggregation by geography
 
   - `loads.agriculture`: 2019 agricultural load data
 
@@ -174,6 +175,10 @@ flowchart TD
   - `loads.residential`: 2018 residential building compiled load data
 
   - `loads.resstock`: 2018 residential building end-use load data
+
+  - `loads.solar_estimator`: solar DG model
+
+  - `loads.total`: total loads by sector
 
   - `loads.tsgam_estimator`: time-series general additive model
 

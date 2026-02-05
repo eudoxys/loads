@@ -248,6 +248,7 @@ heating loads.</p></li>
 </div></pre>
 
 <ul>
+<li><p><code><a href="loads/aggregate.html">loads.aggregate</a></code>: load aggregation by geography</p></li>
 <li><p><code><a href="loads/agriculture.html">loads.agriculture</a></code>: 2019 agricultural load data</p></li>
 <li><p><code><a href="loads/calibrate.html">loads.calibrate</a></code>: load calibration to energy use</p></li>
 <li><p><code><a href="loads/cli.html">loads.cli</a></code>: command line interface</p></li>
@@ -257,6 +258,8 @@ heating loads.</p></li>
 <li><p><code><a href="loads/industry.html">loads.industry</a></code>: 2019 industrial load data</p></li>
 <li><p><code><a href="loads/residential.html">loads.residential</a></code>: 2018 residential building compiled load data</p></li>
 <li><p><code><a href="loads/resstock.html">loads.resstock</a></code>: 2018 residential building end-use load data</p></li>
+<li><p><code><a href="loads/solar_estimator.html">loads.solar_estimator</a></code>: solar DG model</p></li>
+<li><p><code><a href="loads/total.html">loads.total</a></code>: total loads by sector</p></li>
 <li><p><code><a href="loads/tsgam_estimator.html">loads.tsgam_estimator</a></code>: time-series general additive model</p></li>
 <li><p><code><a href="loads/units.html">loads.units</a></code>: 2020-era residential units data</p></li>
 </ul>
@@ -468,87 +471,92 @@ constructed.</p></li>
 </span><span id="L-156"><a href="#L-156"><span class="linenos">156</span></a>
 </span><span id="L-157"><a href="#L-157"><span class="linenos">157</span></a><span class="sd">    Aggregate --&gt; GeoPanel</span>
 </span><span id="L-158"><a href="#L-158"><span class="linenos">158</span></a><span class="sd">```</span>
-</span><span id="L-159"><a href="#L-159"><span class="linenos">159</span></a>
-</span><span id="L-160"><a href="#L-160"><span class="linenos">160</span></a><span class="sd">  - `loads.agriculture`: 2019 agricultural load data</span>
-</span><span id="L-161"><a href="#L-161"><span class="linenos">161</span></a>
-</span><span id="L-162"><a href="#L-162"><span class="linenos">162</span></a><span class="sd">  - `loads.calibrate`: load calibration to energy use</span>
-</span><span id="L-163"><a href="#L-163"><span class="linenos">163</span></a>
-</span><span id="L-164"><a href="#L-164"><span class="linenos">164</span></a><span class="sd">  - `loads.cli`: command line interface</span>
-</span><span id="L-165"><a href="#L-165"><span class="linenos">165</span></a>
-</span><span id="L-166"><a href="#L-166"><span class="linenos">166</span></a><span class="sd">  - `loads.commercial`: 2018 commercial building compiled load data</span>
-</span><span id="L-167"><a href="#L-167"><span class="linenos">167</span></a>
-</span><span id="L-168"><a href="#L-168"><span class="linenos">168</span></a><span class="sd">  - `loads.comstock`: 2018 commercial building end-use load data</span>
-</span><span id="L-169"><a href="#L-169"><span class="linenos">169</span></a>
-</span><span id="L-170"><a href="#L-170"><span class="linenos">170</span></a><span class="sd">  - `loads.floorarea`: 2020-era commercial building floor area data</span>
-</span><span id="L-171"><a href="#L-171"><span class="linenos">171</span></a>
-</span><span id="L-172"><a href="#L-172"><span class="linenos">172</span></a><span class="sd">  - `loads.industry`: 2019 industrial load data</span>
-</span><span id="L-173"><a href="#L-173"><span class="linenos">173</span></a>
-</span><span id="L-174"><a href="#L-174"><span class="linenos">174</span></a><span class="sd">  - `loads.residential`: 2018 residential building compiled load data</span>
-</span><span id="L-175"><a href="#L-175"><span class="linenos">175</span></a>
-</span><span id="L-176"><a href="#L-176"><span class="linenos">176</span></a><span class="sd">  - `loads.resstock`: 2018 residential building end-use load data</span>
-</span><span id="L-177"><a href="#L-177"><span class="linenos">177</span></a>
-</span><span id="L-178"><a href="#L-178"><span class="linenos">178</span></a><span class="sd">  - `loads.tsgam_estimator`: time-series general additive model</span>
-</span><span id="L-179"><a href="#L-179"><span class="linenos">179</span></a>
-</span><span id="L-180"><a href="#L-180"><span class="linenos">180</span></a><span class="sd">  - `loads.units`: 2020-era residential units data</span>
-</span><span id="L-181"><a href="#L-181"><span class="linenos">181</span></a>
-</span><span id="L-182"><a href="#L-182"><span class="linenos">182</span></a><span class="sd">Example</span>
-</span><span id="L-183"><a href="#L-183"><span class="linenos">183</span></a><span class="sd">-------</span>
+</span><span id="L-159"><a href="#L-159"><span class="linenos">159</span></a><span class="sd">  - `loads.aggregate`: load aggregation by geography</span>
+</span><span id="L-160"><a href="#L-160"><span class="linenos">160</span></a>
+</span><span id="L-161"><a href="#L-161"><span class="linenos">161</span></a><span class="sd">  - `loads.agriculture`: 2019 agricultural load data</span>
+</span><span id="L-162"><a href="#L-162"><span class="linenos">162</span></a>
+</span><span id="L-163"><a href="#L-163"><span class="linenos">163</span></a><span class="sd">  - `loads.calibrate`: load calibration to energy use</span>
+</span><span id="L-164"><a href="#L-164"><span class="linenos">164</span></a>
+</span><span id="L-165"><a href="#L-165"><span class="linenos">165</span></a><span class="sd">  - `loads.cli`: command line interface</span>
+</span><span id="L-166"><a href="#L-166"><span class="linenos">166</span></a>
+</span><span id="L-167"><a href="#L-167"><span class="linenos">167</span></a><span class="sd">  - `loads.commercial`: 2018 commercial building compiled load data</span>
+</span><span id="L-168"><a href="#L-168"><span class="linenos">168</span></a>
+</span><span id="L-169"><a href="#L-169"><span class="linenos">169</span></a><span class="sd">  - `loads.comstock`: 2018 commercial building end-use load data</span>
+</span><span id="L-170"><a href="#L-170"><span class="linenos">170</span></a>
+</span><span id="L-171"><a href="#L-171"><span class="linenos">171</span></a><span class="sd">  - `loads.floorarea`: 2020-era commercial building floor area data</span>
+</span><span id="L-172"><a href="#L-172"><span class="linenos">172</span></a>
+</span><span id="L-173"><a href="#L-173"><span class="linenos">173</span></a><span class="sd">  - `loads.industry`: 2019 industrial load data</span>
+</span><span id="L-174"><a href="#L-174"><span class="linenos">174</span></a>
+</span><span id="L-175"><a href="#L-175"><span class="linenos">175</span></a><span class="sd">  - `loads.residential`: 2018 residential building compiled load data</span>
+</span><span id="L-176"><a href="#L-176"><span class="linenos">176</span></a>
+</span><span id="L-177"><a href="#L-177"><span class="linenos">177</span></a><span class="sd">  - `loads.resstock`: 2018 residential building end-use load data</span>
+</span><span id="L-178"><a href="#L-178"><span class="linenos">178</span></a>
+</span><span id="L-179"><a href="#L-179"><span class="linenos">179</span></a><span class="sd">  - `loads.solar_estimator`: solar DG model</span>
+</span><span id="L-180"><a href="#L-180"><span class="linenos">180</span></a>
+</span><span id="L-181"><a href="#L-181"><span class="linenos">181</span></a><span class="sd">  - `loads.total`: total loads by sector</span>
+</span><span id="L-182"><a href="#L-182"><span class="linenos">182</span></a>
+</span><span id="L-183"><a href="#L-183"><span class="linenos">183</span></a><span class="sd">  - `loads.tsgam_estimator`: time-series general additive model</span>
 </span><span id="L-184"><a href="#L-184"><span class="linenos">184</span></a>
-</span><span id="L-185"><a href="#L-185"><span class="linenos">185</span></a><span class="sd">The following command plots the loads for Alemeda County CA in 2020:</span>
+</span><span id="L-185"><a href="#L-185"><span class="linenos">185</span></a><span class="sd">  - `loads.units`: 2020-era residential units data</span>
 </span><span id="L-186"><a href="#L-186"><span class="linenos">186</span></a>
-</span><span id="L-187"><a href="#L-187"><span class="linenos">187</span></a><span class="sd">    loads plot -S=CA -C=Alameda -Y=2020</span>
-</span><span id="L-188"><a href="#L-188"><span class="linenos">188</span></a>
-</span><span id="L-189"><a href="#L-189"><span class="linenos">189</span></a><span class="sd">Caveats</span>
-</span><span id="L-190"><a href="#L-190"><span class="linenos">190</span></a><span class="sd">-------</span>
+</span><span id="L-187"><a href="#L-187"><span class="linenos">187</span></a><span class="sd">Example</span>
+</span><span id="L-188"><a href="#L-188"><span class="linenos">188</span></a><span class="sd">-------</span>
+</span><span id="L-189"><a href="#L-189"><span class="linenos">189</span></a>
+</span><span id="L-190"><a href="#L-190"><span class="linenos">190</span></a><span class="sd">The following command plots the loads for Alemeda County CA in 2020:</span>
 </span><span id="L-191"><a href="#L-191"><span class="linenos">191</span></a>
-</span><span id="L-192"><a href="#L-192"><span class="linenos">192</span></a><span class="sd">  - Most of the data comes from online sources that are cached locally to help</span>
-</span><span id="L-193"><a href="#L-193"><span class="linenos">193</span></a><span class="sd">    with performance. However, some of the initial downloads can take a several</span>
-</span><span id="L-194"><a href="#L-194"><span class="linenos">194</span></a><span class="sd">    minutes to complete before being cached.</span>
-</span><span id="L-195"><a href="#L-195"><span class="linenos">195</span></a>
-</span><span id="L-196"><a href="#L-196"><span class="linenos">196</span></a><span class="sd">  - Some residential and commercial building types are not available in some</span>
-</span><span id="L-197"><a href="#L-197"><span class="linenos">197</span></a><span class="sd">    counties. In such cases a warning is output and a zero dataframe is</span>
-</span><span id="L-198"><a href="#L-198"><span class="linenos">198</span></a><span class="sd">    constructed.</span>
-</span><span id="L-199"><a href="#L-199"><span class="linenos">199</span></a>
-</span><span id="L-200"><a href="#L-200"><span class="linenos">200</span></a><span class="sd">Package information</span>
-</span><span id="L-201"><a href="#L-201"><span class="linenos">201</span></a><span class="sd">-------------------</span>
-</span><span id="L-202"><a href="#L-202"><span class="linenos">202</span></a>
-</span><span id="L-203"><a href="#L-203"><span class="linenos">203</span></a><span class="sd">  - Source code: https://github.com/eudoxys/loads</span>
+</span><span id="L-192"><a href="#L-192"><span class="linenos">192</span></a><span class="sd">    loads plot -S=CA -C=Alameda -Y=2020</span>
+</span><span id="L-193"><a href="#L-193"><span class="linenos">193</span></a>
+</span><span id="L-194"><a href="#L-194"><span class="linenos">194</span></a><span class="sd">Caveats</span>
+</span><span id="L-195"><a href="#L-195"><span class="linenos">195</span></a><span class="sd">-------</span>
+</span><span id="L-196"><a href="#L-196"><span class="linenos">196</span></a>
+</span><span id="L-197"><a href="#L-197"><span class="linenos">197</span></a><span class="sd">  - Most of the data comes from online sources that are cached locally to help</span>
+</span><span id="L-198"><a href="#L-198"><span class="linenos">198</span></a><span class="sd">    with performance. However, some of the initial downloads can take a several</span>
+</span><span id="L-199"><a href="#L-199"><span class="linenos">199</span></a><span class="sd">    minutes to complete before being cached.</span>
+</span><span id="L-200"><a href="#L-200"><span class="linenos">200</span></a>
+</span><span id="L-201"><a href="#L-201"><span class="linenos">201</span></a><span class="sd">  - Some residential and commercial building types are not available in some</span>
+</span><span id="L-202"><a href="#L-202"><span class="linenos">202</span></a><span class="sd">    counties. In such cases a warning is output and a zero dataframe is</span>
+</span><span id="L-203"><a href="#L-203"><span class="linenos">203</span></a><span class="sd">    constructed.</span>
 </span><span id="L-204"><a href="#L-204"><span class="linenos">204</span></a>
-</span><span id="L-205"><a href="#L-205"><span class="linenos">205</span></a><span class="sd">  - Documentation: https://www.eudoxys.com/loads</span>
-</span><span id="L-206"><a href="#L-206"><span class="linenos">206</span></a>
-</span><span id="L-207"><a href="#L-207"><span class="linenos">207</span></a><span class="sd">  - Issues: https://github.com/eudoxys/loads/issues</span>
-</span><span id="L-208"><a href="#L-208"><span class="linenos">208</span></a>
-</span><span id="L-209"><a href="#L-209"><span class="linenos">209</span></a><span class="sd">  - License: https://github.com/eudoxys/loads/blob/main/LICENSE</span>
-</span><span id="L-210"><a href="#L-210"><span class="linenos">210</span></a>
-</span><span id="L-211"><a href="#L-211"><span class="linenos">211</span></a><span class="sd">  - Dependencies: </span>
-</span><span id="L-212"><a href="#L-212"><span class="linenos">212</span></a>
-</span><span id="L-213"><a href="#L-213"><span class="linenos">213</span></a><span class="sd">    - [h5pyd](https://pypi.org/project/h5pyd/)</span>
-</span><span id="L-214"><a href="#L-214"><span class="linenos">214</span></a><span class="sd">    - [marimo](https://pypi.org/project/marimo/)</span>
-</span><span id="L-215"><a href="#L-215"><span class="linenos">215</span></a><span class="sd">    - [matplotlib](https://pypi.org/project/matplotlib/)</span>
-</span><span id="L-216"><a href="#L-216"><span class="linenos">216</span></a><span class="sd">    - [openpyxl](https://pypi.org/project/openpyxl/)</span>
-</span><span id="L-217"><a href="#L-217"><span class="linenos">217</span></a><span class="sd">    - [pandas](https://pypi.org/project/pandas/)</span>
-</span><span id="L-218"><a href="#L-218"><span class="linenos">218</span></a><span class="sd">    - [plotly](https://pypi.org/project/plotly/)</span>
-</span><span id="L-219"><a href="#L-219"><span class="linenos">219</span></a><span class="sd">    - [pytz](https://pypi.org/project/pytz/)</span>
-</span><span id="L-220"><a href="#L-220"><span class="linenos">220</span></a><span class="sd">    - [pyxlsb](https://pypi.org/project/pyxlsb/)</span>
-</span><span id="L-221"><a href="#L-221"><span class="linenos">221</span></a><span class="sd">    - [requests](https://pypi.org/project/requests/)</span>
-</span><span id="L-222"><a href="#L-222"><span class="linenos">222</span></a><span class="sd">    - [cache](https://github.com/eudoxys/cache/)</span>
-</span><span id="L-223"><a href="#L-223"><span class="linenos">223</span></a><span class="sd">    - [eia](https://github.com/eudoxys/eia/)</span>
-</span><span id="L-224"><a href="#L-224"><span class="linenos">224</span></a><span class="sd">    - [fips](https://github.com/eudoxys/fips/)</span>
-</span><span id="L-225"><a href="#L-225"><span class="linenos">225</span></a><span class="sd">    - [weather](https://github.com/eudoxys/weather/)</span>
-</span><span id="L-226"><a href="#L-226"><span class="linenos">226</span></a><span class="sd">&quot;&quot;&quot;</span>
-</span><span id="L-227"><a href="#L-227"><span class="linenos">227</span></a>
-</span><span id="L-228"><a href="#L-228"><span class="linenos">228</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.agriculture</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agriculture</span>
-</span><span id="L-229"><a href="#L-229"><span class="linenos">229</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.calibrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">Calibrate</span>
-</span><span id="L-230"><a href="#L-230"><span class="linenos">230</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.cli</span><span class="w"> </span><span class="kn">import</span> <span class="n">main</span>
-</span><span id="L-231"><a href="#L-231"><span class="linenos">231</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.comstock</span><span class="w"> </span><span class="kn">import</span> <span class="n">COMstock</span>
-</span><span id="L-232"><a href="#L-232"><span class="linenos">232</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.commercial</span><span class="w"> </span><span class="kn">import</span> <span class="n">Commercial</span>
-</span><span id="L-233"><a href="#L-233"><span class="linenos">233</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.floorarea</span><span class="w"> </span><span class="kn">import</span> <span class="n">Floorarea</span>
-</span><span id="L-234"><a href="#L-234"><span class="linenos">234</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.industry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Industry</span>
-</span><span id="L-235"><a href="#L-235"><span class="linenos">235</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.resstock</span><span class="w"> </span><span class="kn">import</span> <span class="n">RESstock</span>
-</span><span id="L-236"><a href="#L-236"><span class="linenos">236</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.residential</span><span class="w"> </span><span class="kn">import</span> <span class="n">Residential</span>
-</span><span id="L-237"><a href="#L-237"><span class="linenos">237</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.tsgam_estimator</span><span class="w"> </span><span class="kn">import</span> <span class="n">TsgamEstimator</span>
-</span><span id="L-238"><a href="#L-238"><span class="linenos">238</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.total</span><span class="w"> </span><span class="kn">import</span> <span class="n">Total</span>
-</span><span id="L-239"><a href="#L-239"><span class="linenos">239</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.units</span><span class="w"> </span><span class="kn">import</span> <span class="n">Units</span>
+</span><span id="L-205"><a href="#L-205"><span class="linenos">205</span></a><span class="sd">Package information</span>
+</span><span id="L-206"><a href="#L-206"><span class="linenos">206</span></a><span class="sd">-------------------</span>
+</span><span id="L-207"><a href="#L-207"><span class="linenos">207</span></a>
+</span><span id="L-208"><a href="#L-208"><span class="linenos">208</span></a><span class="sd">  - Source code: https://github.com/eudoxys/loads</span>
+</span><span id="L-209"><a href="#L-209"><span class="linenos">209</span></a>
+</span><span id="L-210"><a href="#L-210"><span class="linenos">210</span></a><span class="sd">  - Documentation: https://www.eudoxys.com/loads</span>
+</span><span id="L-211"><a href="#L-211"><span class="linenos">211</span></a>
+</span><span id="L-212"><a href="#L-212"><span class="linenos">212</span></a><span class="sd">  - Issues: https://github.com/eudoxys/loads/issues</span>
+</span><span id="L-213"><a href="#L-213"><span class="linenos">213</span></a>
+</span><span id="L-214"><a href="#L-214"><span class="linenos">214</span></a><span class="sd">  - License: https://github.com/eudoxys/loads/blob/main/LICENSE</span>
+</span><span id="L-215"><a href="#L-215"><span class="linenos">215</span></a>
+</span><span id="L-216"><a href="#L-216"><span class="linenos">216</span></a><span class="sd">  - Dependencies: </span>
+</span><span id="L-217"><a href="#L-217"><span class="linenos">217</span></a>
+</span><span id="L-218"><a href="#L-218"><span class="linenos">218</span></a><span class="sd">    - [h5pyd](https://pypi.org/project/h5pyd/)</span>
+</span><span id="L-219"><a href="#L-219"><span class="linenos">219</span></a><span class="sd">    - [marimo](https://pypi.org/project/marimo/)</span>
+</span><span id="L-220"><a href="#L-220"><span class="linenos">220</span></a><span class="sd">    - [matplotlib](https://pypi.org/project/matplotlib/)</span>
+</span><span id="L-221"><a href="#L-221"><span class="linenos">221</span></a><span class="sd">    - [openpyxl](https://pypi.org/project/openpyxl/)</span>
+</span><span id="L-222"><a href="#L-222"><span class="linenos">222</span></a><span class="sd">    - [pandas](https://pypi.org/project/pandas/)</span>
+</span><span id="L-223"><a href="#L-223"><span class="linenos">223</span></a><span class="sd">    - [plotly](https://pypi.org/project/plotly/)</span>
+</span><span id="L-224"><a href="#L-224"><span class="linenos">224</span></a><span class="sd">    - [pytz](https://pypi.org/project/pytz/)</span>
+</span><span id="L-225"><a href="#L-225"><span class="linenos">225</span></a><span class="sd">    - [pyxlsb](https://pypi.org/project/pyxlsb/)</span>
+</span><span id="L-226"><a href="#L-226"><span class="linenos">226</span></a><span class="sd">    - [requests](https://pypi.org/project/requests/)</span>
+</span><span id="L-227"><a href="#L-227"><span class="linenos">227</span></a><span class="sd">    - [cache](https://github.com/eudoxys/cache/)</span>
+</span><span id="L-228"><a href="#L-228"><span class="linenos">228</span></a><span class="sd">    - [eia](https://github.com/eudoxys/eia/)</span>
+</span><span id="L-229"><a href="#L-229"><span class="linenos">229</span></a><span class="sd">    - [fips](https://github.com/eudoxys/fips/)</span>
+</span><span id="L-230"><a href="#L-230"><span class="linenos">230</span></a><span class="sd">    - [weather](https://github.com/eudoxys/weather/)</span>
+</span><span id="L-231"><a href="#L-231"><span class="linenos">231</span></a><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="L-232"><a href="#L-232"><span class="linenos">232</span></a>
+</span><span id="L-233"><a href="#L-233"><span class="linenos">233</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.agriculture</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agriculture</span>
+</span><span id="L-234"><a href="#L-234"><span class="linenos">234</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.calibrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">Calibrate</span>
+</span><span id="L-235"><a href="#L-235"><span class="linenos">235</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.cli</span><span class="w"> </span><span class="kn">import</span> <span class="n">main</span>
+</span><span id="L-236"><a href="#L-236"><span class="linenos">236</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.comstock</span><span class="w"> </span><span class="kn">import</span> <span class="n">COMstock</span>
+</span><span id="L-237"><a href="#L-237"><span class="linenos">237</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.commercial</span><span class="w"> </span><span class="kn">import</span> <span class="n">Commercial</span>
+</span><span id="L-238"><a href="#L-238"><span class="linenos">238</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.floorarea</span><span class="w"> </span><span class="kn">import</span> <span class="n">Floorarea</span>
+</span><span id="L-239"><a href="#L-239"><span class="linenos">239</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.industry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Industry</span>
+</span><span id="L-240"><a href="#L-240"><span class="linenos">240</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.resstock</span><span class="w"> </span><span class="kn">import</span> <span class="n">RESstock</span>
+</span><span id="L-241"><a href="#L-241"><span class="linenos">241</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.residential</span><span class="w"> </span><span class="kn">import</span> <span class="n">Residential</span>
+</span><span id="L-242"><a href="#L-242"><span class="linenos">242</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.tsgam_estimator</span><span class="w"> </span><span class="kn">import</span> <span class="n">TsgamEstimator</span>
+</span><span id="L-243"><a href="#L-243"><span class="linenos">243</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.total</span><span class="w"> </span><span class="kn">import</span> <span class="n">Total</span>
+</span><span id="L-244"><a href="#L-244"><span class="linenos">244</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">loads.units</span><span class="w"> </span><span class="kn">import</span> <span class="n">Units</span>
 </span></pre></div>
 
 
