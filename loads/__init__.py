@@ -160,7 +160,7 @@ flowchart TD
 
   - `loads.units`: 2020-era residential units data
 
-  - `loads.weather`: 2018 reference weather data
+  - `weather`: 2018 reference weather data
 
 Example
 -------
