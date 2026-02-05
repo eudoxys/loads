@@ -106,7 +106,7 @@ Package architecture
 ```mermaid
 flowchart TD
 
-    NREL --> RESstock
+    NREL ---> RESstock
 
     Census --> Units
 
@@ -120,22 +120,41 @@ flowchart TD
 
     NREL ---> Agriculture
 
-    NREL ---> Weather
+    NREL --> Weather
+    NSRDB --> Weather
 
-    NREL --> COMstock
+    NREL ---> COMstock
 
     COMstock --> Commercial
     Floorarea --> Commercial
 
     Residential --> Predict
-    Industry --> Predict
-    Agriculture --> Predict
-    Weather --> Predict
     Commercial --> Predict
+    Weather ----> Predict
 
     Predict --> Calibrate
 
+    Industry ----> Total
+    Agriculture ----> Total
     Calibrate --> Total
+
+    EIA ------> Calibrate
+
+    subgraph Loads
+        RESstock
+        COMstock
+        Units
+        Floorarea
+        Industry
+        Agriculture
+        Residential
+        Commercial
+        Predict
+        Calibrate
+        Total --> Aggregate
+    end
+
+    Aggregate --> GeoPanel
 ```
 
   - `loads.agriculture`: 2019 agricultural load data
