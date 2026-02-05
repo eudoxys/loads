@@ -127,13 +127,13 @@ flowchart TD
     COMstock --> Commercial
     Floorarea --> Commercial
 
-    Residential --> Cast
-    Industry --> Cast
-    Agriculture --> Cast
-    Weather --> Cast
-    Commercial --> Cast
+    Residential --> Estimate
+    Industry --> Estimate
+    Agriculture --> Estimate
+    Weather --> Estimate
+    Commercial --> Estimate
 
-    Cast --> Calibrate
+    Estimate --> Calibrate
 ```
 
   - `loads.agriculture`: 2019 agricultural load data
@@ -141,8 +141,6 @@ flowchart TD
   - `loads.cache`: manage local data cache
 
   - `loads.calibrate`: load calibration to energy use
-
-  - `loads.cast`: cast data to years other than 2018/2019
 
   - `loads.cli`: command line interface
 
@@ -210,7 +208,6 @@ Package information
 
 from loads.agriculture import Agriculture
 from loads.calibrate import Calibrate
-from loads.cast import Cast
 from loads.cli import main
 from loads.comstock import COMstock
 from loads.commercial import Commercial
