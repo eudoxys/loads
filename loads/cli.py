@@ -70,6 +70,7 @@ import os
 import sys
 import argparse
 import warnings
+import logging
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -78,7 +79,6 @@ import matplotlib.pyplot as plt
 from weather import Weather
 
 from loads.agriculture import Agriculture
-from loads.cast import Cast
 from loads.commercial import Commercial
 from loads.comstock import COMstock
 from loads.industry import Industry
