@@ -167,11 +167,7 @@ class Total(pd.DataFrame):
     DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S%z"
     """Date/time format to use"""
 
-    cache = {
-        "scale": {},
-        "load": {},
-        "solar": {},
-    }
+    cache = {}
 
     PRECISION = 3
     """Precision of predicted/sampled loads"""
@@ -200,16 +196,33 @@ class Total(pd.DataFrame):
     )
     """Time-series General Additive Model estimator configuration"""
 
-    SOLAR_INPUTS = ["diffuse_Wpms","direct_Wpms"]
+    EXOGENOUS_VARIABLES = {
+        "elec_residential_MW": ["temperature_degF"],
+        "elec_commercial_MW": ["temperature_degF"],
+        "elec_total_MW": ["temperature_degF"],
+        "elec_dg_MW": ["diffuse_Wpms","direct_Wpms"],
+        "elec_net_MW": ["temperature_degF","diffuse_Wpms","direct_Wpms"],
+        "nonelec_residential_MW": ["temperature_degF"],
+        "nonelec_commercial_MW": ["temperature_degF"],
+        "nonelec_total_MW": ["temperature_degF"],
+    }
     """Solar DG model independent variables to use"""
+
+    INDUSTRY_LOADSHAPE = None
+    AGRICULTURE_LOADSHAPE = None
+    TRANSPORTATION_LOADSHAPE = None
+    """Default sector loadshapes (None is a flat load)"""
 
     def __init__(self,
         state:str,
         county:str,
-        year:int|str,
+        *,
+        Y:str="elec_total_MW",
+        X:str=None,
+        date_range:pd.DatetimeIndex=None,
         samples:int=None,
-        percentile:float=95,
-        nonelec:bool=False,
+        percentile:float=96,
+        holdout:pd.DatetimeIndex|None=None,
         refresh:bool=False,
         ):
         """Total load class constructor
@@ -221,43 +234,71 @@ class Total(pd.DataFrame):
 
           - `county`: county for which to aggregate loads
 
-          - `year`: target year
+          - `start`: start of date/time range
+
+          - `end`: end of date/time range
+
+          - `freq`: date/time range interval
 
           - `samples`: number of AR samples to generation (`0` predicts, `1`
             samples, `>1` samples with percentile, `None` training only if
             year is training year otherwise predicts)
 
-          - `nonelec`: use non-electric total load
+          - `holdout`: index of records to hold out of training for testing
 
           - `refresh`: refresh cache data
         """
 
-        # check values
-        try:
-            year = int(year)
-        except:
-            raise ValueError(f"{year=} is not an integer")
-        assert year >= 2018, f"{year=} is not >= 2018"
-        assert samples is None or isinstance(samples,int) or samples<0, f"{samples=} is not a non-negative integer or None"
-        assert isinstance(percentile,(int,float)) and 0<=percentile<=100, f"{percentile=} is no between 0 and 1"
-        assert isinstance(nonelec,(bool,int,float)), f"{nonelec=} is not boolean"
-        assert isinstance(refresh,(bool,int,float)), f"{refresh=} is not boolean"
-
-        # options
-        freq = "1h"
-        source = "nonelec" if nonelec else "elec"
-
         # identify location of cached results
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
+
+        # choose sampling method
+        assert samples is None or isinstance(samples,int), f"{sample=} is not valid"
         if samples is None:
-            cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}_training.csv.gz"])
-        elif samples == 0:
-            cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}.csv.gz"])
-        elif samples == 1:
-            cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}_1.csv.gz"])
-        else:
-            cache = Cache(package="loads",version=0,path=[state,county,year,f"T_{source}_{freq}_{samples}_{percentile}.csv.gz"])
+
+            # no sampling gets training data (also ignores date range)
+            return super().__init__(Total._get_training(state,county,X,Y,refresh))
+
+        # set default exogenous variable(s)
+        if X is None:
+            X = self.EXOGENOUS_VARIABLES[Y]
+
+        # sampling requires a valid date range
+        assert isinstance(date_range,pd.DatetimeIndex), f"{date_range=} must be Pandas DatetimeIndex"
+        if samples == 0:
+
+            # zero samples gets prediction without sampling
+            return super().__init__(Total._get_predict(state,county,date_range,X,Y,refresh))
+
+        if samples == 1:
+
+            # one sample does not use percentile
+            return super().__init__(Total._get_sample(state,county,date_range,X,Y,refresh))
+
+        if samples > 1:
+
+            assert 0<=percentile<=1, f"{percentile=} must be between 0 and 1"
+
+            # multiple samples uses percentile
+            return super().__init__(Total._get_percentile(state,county,date_range,X,Y,samples,percentile,refresh))
+
+        raise ValueError(f"{samples=} must be a non-negative integer, infinity, or None")
+
+    @classmethod
+    def _get_training(cls,
+        state:str,
+        county:str,
+        X:list[str],
+        Y:str,
+        refresh:bool=False,
+        ):
+        """Get the training data only"""
+
+        # identify location of cached results
+        nonelec = Y.startswith("nonelec_")
+        source = "nonelec" if nonelec else "elec"
+        cache = Cache(package="loads",version=0,path=[state,county,f"T_{source}_1h_training.csv.gz"])
 
         # load refresh from cache
         if cache.exists() and not refresh:
@@ -277,137 +318,45 @@ class Total(pd.DataFrame):
         # no results available from cache
         if data is None:
 
-            # get residential and commercial loads
-            # ISSUE 1: how to handle zeros so we can use log(MW)
-            weather = Weather(state,county)
-            training_year = weather.index.year.min().astype(int)
-            if nonelec:
-                data = Weather(state,county,year)[["temperature_degF"]]
-            else:
-                data = Weather(state,county,year)[["temperature_degF","global_Wpms","direct_Wpms","diffuse_Wpms"]]
+            # get training weather data
+            data = Weather(state,county)
 
             # DG only possible with electric loads
             if not nonelec:
                 data["elec_dg_MW"] = 0.0
 
-            # process building sectors
+            # get building data
             for sector,dataset in {
                     "residential":Residential,
                     "commercial":Commercial,
                     }.items():
 
-                # get previously constructor estimators from cache
-                if (state,county,sector) in self.cache["load"] and (state,county,sector) in self.cache["solar"]:
-                    estimator = self.cache["load"][(state,county,sector)]
-                    if not nonelec:
-                        solar = self.cache["solar"][(state,county,sector)]
-
-                # sampling or not training year
-                elif not samples is None or year != training_year:
-
-                    # create a new estimator
-                    estimator = TsgamEstimator(config=self.TSGAM_CONFIG)
-                    if not nonelec:
-                        solar = SolarEstimator()
-
-                    # gather the training data for this state, county, and sector
-                    loaddata = dataset(state,county)
-                    training = pd.concat([loaddata,weather],axis=1)
-
-                    # fit the estimators (with nans as zeros)
-                    estimator.fit(
-                        training[["temperature_degF"]],
-                        training[f"{source}_total_MW"].fillna(0).values,
-                        )
-                    if not estimator.problem_.status in ["optimal", "optimal_inaccurate"]:
-                        raise RuntimeError(f"unable to fit: {estimate.problem_.status}")
-                    
-                    # DG only possible with electric loads
-                    if not nonelec:
-                        solar.fit(
-                            training[self.SOLAR_INPUTS],
-                            training["elec_dg_MW"].fillna(0).abs().values,
-                            )
-
-                    # save the estimator for future use, e.g., different years
-                    self.cache["load"][(state,county,sector)] = estimator
-                    if not nonelec:
-                        self.cache["solar"][(state,county,sector)] = solar
-
-                # no sampling and training year
-                else:
-
-                    # gather the training data for this state, county, and sector
-                    loaddata = dataset(state,county)
-                    training = pd.concat([loaddata,weather],axis=1)
-
-                    # disable prediction models
-                    estimator = None
-                    solar = None
-
-                # calibrate DG
+                loaddata = dataset(state,county)
+                data[f"{source}_{sector}_MW"] = loaddata[f"{source}_total_MW"]
                 if not nonelec:
+                    data["elec_dg_MW"] += loaddata[f"{source}_dg_MW"]
 
-                    # get DG calibration 
-                    dg_calibration = float(Calibrate.solar(state,year).loc[sector[0].upper()].values[0])
-                    _logger.debug(f"{county} {state} {sector} {year} solar {dg_calibration=:.3f}")
-
-                # no estimator available
-                if not estimator:
-
-                    # use original training data
-                    data[f"{source}_{sector}_MW"] = training["elec_total_MW"]
-
-                    # DG only possible with electric loads
-                    if not nonelec:
-                        data["elec_dg_MW"] -= training["elec_dg_MW"].fillna(0).abs() * dg_calibration
-
-                # no sampling requested
-                elif not samples:
-
-                    # use prediction only
-                    data[f"{source}_{sector}_MW"] = estimator.predict(data)
-
-                    # DG only possible with electric loads
-                    if not nonelec:
-                        data["elec_dg_MW"] -= solar.predict(data[self.SOLAR_INPUTS].fillna(0).values) * dg_calibration
-
-                # one sample requested
-                elif samples == 1:
-
-                    # sample just once
-                    data[f"{source}_{sector}_MW"] = estimator.sample(data,1)[0]
-
-                    # DG only possible with electric loads
-                    if not nonelec:
-                        data["elec_dg_MW"] -= solar.sample(data[self.SOLAR_INPUTS].fillna(0).values,1)[0] * dg_calibration
-
-                # percentile of multiple samples requested (this can be slow)
-                else:
-
-                    # sample multiple times and get percentile
-                    data[f"{source}_{sector}_MW"] = np.percentile(estimator.sample(data,samples),percentile)
-                    if not nonelec:
-                        data["elec_dg_MW"] -= np.percentile(solar.sample(data[self.SOLAR_INPUTS].fillna(0).values,samples),percentile) * dg_calibration
-
-                # calibrate loads
-                load_calibration = float(Calibrate.load(state,year).loc[sector[0].upper()].values[0])
-                _logger.debug(f"{county} {state} {sector} {year} load {load_calibration=:.3f}")
-                data[f"{source}_{sector}_MW"] *= load_calibration
-
-            # make flat loadshape for industry and agriculture
+            # make flat loadshape
             loadshape = pd.DataFrame(
                 data=np.ones(len(data)),
                 index=data.index,
                 )
 
             # get industrial loads
-            data[f"{source}_industrial_MW"] = Industry(state,county,loadshape)[f"{source}_{'total' if nonelec else 'net'}_MW"]
+            data[f"{source}_industrial_MW"] = Industry(
+                state,
+                county,
+                loadshape if cls.INDUSTRY_LOADSHAPE is None else cls.INDUSTRY_LOADSHAPE,
+                )[f"{source}_{'total' if nonelec else 'net'}_MW"]
 
             # get agricultural loads
-            data[f"{source}_agricultural_MW"] = Agriculture(state,county,loadshape)[f"{source}_{'total' if nonelec else 'net'}_MW"]
+            data[f"{source}_agricultural_MW"] = Agriculture(
+                state,
+                county,
+                loadshape if cls.AGRICULTURE_LOADSHAPE is None else cls.AGRICULTURE_LOADSHAPE,
+                )[f"{source}_{'total' if nonelec else 'net'}_MW"]
             
-            #  and set transportation to zero until data is available
+            # set transportation to zero until data is available
             data[f"{source}_transportation_MW"] = 0.0
             
             # finalize total load
@@ -417,7 +366,7 @@ class Total(pd.DataFrame):
             # finalize net load
             if not nonelec:
                 data[f"elec_net_MW"] += data["elec_dg_MW"]
-            
+
             # save cache
             data.to_csv(cache.pathname,
                 index=True,
@@ -425,10 +374,158 @@ class Total(pd.DataFrame):
                 compression="gzip" if cache.pathname.endswith(".gz") else None,
                 )
 
-        super().__init__(data[
-            [x for x in data.columns if x.endswith("_MW")] +
-            [x for x in data.columns if not x.endswith("_MW")]
-            ].round(self.PRECISION))
+        return data
+
+    @classmethod
+    def _get_weather(cls,
+        state:str,
+        county:str,
+        date_range:pd.DatetimeIndex,
+        ):
+        """Get weather data for a date/time range"""
+        data = []
+        for year in set(date_range.year):
+            data.append(Weather(state,county,year))
+        data = pd.concat(data)
+        return data.loc[date_range]
+
+    @classmethod
+    def _get_estimator(cls,
+        state:str,
+        county:str,
+        X:list[str],
+        Y:str,
+        refresh:bool=False,
+        ) -> TsgamEstimator:
+        """Get estimator"""
+
+        # get cache name
+        cache = (state,county,"|".join(X),Y)
+
+        # return estimator if cache active and found in cache
+        if not cls.cache is None and cache in cls.cache:
+        
+            return cls.cache[cache]
+
+        # get training data
+        training = cls._get_training(state,county,X,Y,refresh)
+
+        # create estimator
+        estimator = TsgamEstimator(config=cls.TSGAM_CONFIG)
+
+        # fit training data
+        estimator.fit(training[X],np.log(training[Y].values))
+
+        # save estimator
+        if not cls.cache is None:
+            cls.cache[cache] = estimator
+
+        return estimator
+
+    @classmethod
+    def _get_predict(cls,
+        state:str,
+        county:str,
+        date_range:pd.DatetimeIndex,
+        X:str,
+        Y:str,
+        refresh:bool=False,
+        ) -> pd.DataFrame:
+        """Get the prediction for the specified date range"""
+        
+        # get estimator
+        estimator = cls._get_estimator(state,county,X,Y)
+
+        # get the exogenous data
+        data = cls._get_weather(state,county,date_range)[X]
+
+        # get the prediction
+        data[Y] = np.exp(estimator.predict(data[X]))
+
+        return data
+
+    @classmethod
+    def _get_sample(cls,
+        state:str,
+        county:str,
+        date_range:pd.DatetimeIndex,
+        X:str,
+        Y:str,
+        refresh:bool=False,
+        ) -> pd.DataFrame:
+        """Get the prediction for the specified date range"""
+        
+        # get estimator
+        estimator = cls._get_estimator(state,county,X,Y)
+
+        # get the exogenous data
+        data = cls._get_weather(state,county,date_range)[X]
+
+        # get the samples
+        data[Y] = np.exp(estimator.sample(data[X])[0])
+
+        return data
+
+    @classmethod
+    def test(cls,
+        state:str,
+        county:str,
+        holdout:pd.DatetimeIndex,
+        X:str=["temperature_degF"],
+        Y:str="elec_total_MW",
+        ) -> pd.DataFrame:
+        """Perform a hold-out test on the training data
+
+        Arguments
+        ---------
+
+          - `state`: state in which county is located
+
+          - `county`: county to draw data from
+
+          - `holdout`: index of hold rows
+
+          - `X`: X columns in `loads.total.Total` to use as exogenous variables
+
+          - `Y`: Y column in `loads.total.Total` to fit
+
+        Returns
+        -------
+
+          - `pd.DataFrame`: the X and Y data frame augmented with `predict` and `sample`
+        """
+
+        # get original data
+        data = cls._get_training(state,county,X,Y)[X+[Y]].copy()
+        daterange = data.index
+
+        # remove holdout data from training
+        training = data.copy()
+        training.loc[holdout,Y] = float('nan')
+
+        # remove lag windows from head and tail of training data
+        # headlag = 0
+        # taillag = 0
+        # for config in [x for x in self.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
+        #     headlag = -min(min(config.lags)+1,headlag)
+        #     taillag = -max(max(config.lags),taillag)
+        # training.loc[:training.index[headlag],X] = float('nan')
+        # training.loc[training.index[taillag]:,X] = float('nan')
+        training.dropna(inplace=True)
+
+        # get estimator
+        estimator = TsgamEstimator(config=cls.TSGAM_CONFIG)
+        estimator.fit(training[X],np.log(training[Y].values))
+
+        # get holdout data for tests
+        test = data.loc[holdout,X+[Y]]
+
+        # get the test data
+        data.loc[test.index,"predict"] = np.exp(estimator.predict(test[X]))
+        data.loc[test.index,"sample"] = np.exp(estimator.sample(test[X]))[0]
+
+        # return data
+        return data
 
     @classmethod
     def _clear_cache(cls):
@@ -453,6 +550,7 @@ if __name__ == "__main__":
     """
 
     import sys
+    import matplotlib.pyplot as plt
     
     pd.options.display.max_columns = None
     pd.options.display.width = None
@@ -462,18 +560,76 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
     
+    test_range = pd.date_range(
+        start="2018-01-01 00:00:00+0000",
+        end="2018-12-31 23:59:59+0000",
+        freq="1h",
+        )
+    holdout = test_range[test_range.month != (test_range + dt.timedelta(days=7)).month]
+
+    full_range = pd.date_range(
+        start="2018-01-01 00:00:00+0000",
+        end="2022-12-31 23:59:59+0000",
+        freq="1h",
+        )
+
     for state,county in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY"]].values:
 
         Total._clear_cache()
 
-        for year in range(2018,2023):
-            try:
-                Total(state,county,year,
-                    refresh=refresh,
-                    # ISSUE 2: are we sampling (1), predicting (0), or
-                    # getting the percentile for K samples (K) for 2019-2022?
-                    samples=None if year == 2018 else 1,
-                    )
-                _logger.info(f"{state} {county} {year} ok")
-            except Exception as err:
-                (_logger.exception if debug else _logger.error)(f"{state} {county} {year} {err}")
+        result = Total.test(state,county,holdout,Y="elec_total_MW")
+        residual = result["predict"] - result["elec_total_MW"]
+        RMSE = np.sqrt(np.mean(residual**2))
+        RMPE = RMSE/result["elec_total_MW"].mean()*100
+        print(f"{county} {state} elec_total_MW {RMPE=:.1f}%",flush=True)
+
+        result.rename({"elec_total_MW":"actual"},axis=1,inplace=True)
+        result.predict = Total(state,county,date_range=test_range,samples=0)["elec_total_MW"]
+        result.sample = Total(state,county,date_range=test_range,samples=1)["elec_total_MW"]
+
+        training = result["actual"]
+        result = Total(state,county,date_range=full_range,samples=0)
+        result.rename({"elec_total_MW":"predict"},axis=1,inplace=True)
+        result["sample"] = Total(state,county,date_range=full_range,samples=1)["elec_total_MW"]
+        result["actual"] = Total(state,county,Y="elec_total_MW")["elec_total_MW"]
+        print(result,flush=True)
+
+        result[["predict","sample","actual"]].plot(
+            figsize=(20,10),
+            title=f"{county} {state} elec_total_MW",
+            grid=True,
+            legend=True,
+            xlabel="Date/Time",
+            ylabel="Power (MW)",
+            )
+        plt.show()
+
+        # sample = Total(state,county,
+        #     start="2019-01-01 00:00:00+0000",
+        #     end="2022-12-31 23:59:59+0000",
+        #     samples=1,
+        #     percentile=0.5,
+        #     )
+        # print(sample)
+
+        # samples = Total(state,county,
+        #     start="2019-01-01 00:00:00+0000",
+        #     end="2022-12-31 23:59:59+0000",
+        #     samples=100,
+        #     percentile=0.5,
+        #     )
+        # print(samples)
+
+        # samples = Total(state,county,
+        #     start="2019-01-01 00:00:00+0000",
+        #     end="2022-12-31 23:59:59+0000",
+        #     samples=np.inf,
+        #     percentile=0.5,
+        #     )
+        # print(samples)
+
+        #     try:
+        #         # TODO
+        #         _logger.info(f"{state} {county} {year} ok")
+        #     except Exception as err:
+        #         (_logger.exception if debug else _logger.error)(f"{state} {county} {year} {err}")

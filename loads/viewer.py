@@ -224,15 +224,35 @@ def _(
 
 
 @app.cell
-def _(COUNTY, STATE, Total, YEAR, mo, sample_ui):
+def _(COUNTY, STATE, Total, YEAR, mo):
     mo.stop(
         COUNTY is None,
         mo.md("**<font color=blue>HINT**: you need to select a county</font>"),
     )
 
     with mo.status.spinner(f"Processing totals for {COUNTY} {STATE} in {YEAR}...") as _spinner:
-        data = Total(STATE, COUNTY, YEAR,samples=None if YEAR==2018 else (1 if sample_ui.value else 0))
+        data = Total(STATE, COUNTY, YEAR,samples=None)# if YEAR==2018 else (1 if sample_ui.value else 0))
     return (data,)
+
+
+@app.cell
+def _():
+    from loads import Residential
+    resdata = Residential("CA","Los Angeles")
+    return
+
+
+@app.cell
+def _():
+    from loads import Commercial
+    comdata = Commercial("CA","Los Angeles")
+    return (comdata,)
+
+
+@app.cell
+def _(comdata):
+    comdata[:750].plot(y="elec_total_MW")
+    return
 
 
 @app.cell
