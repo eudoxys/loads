@@ -191,7 +191,7 @@ class RESstock(pd.DataFrame):
                 data = pd.read_csv(cache.pathname,dtype=str,na_filter=False,low_memory=False)
                 _logger.debug(f"{cache=} ok")
             except Exception as err:
-                _logger.error(f"{cache=} {err}")
+                _logger.debug(f"{cache=} {err}")
                 cache.delete()
                 data = None
         else:

@@ -168,6 +168,7 @@ class Total(pd.DataFrame):
     """Date/time format to use"""
 
     cache = {}
+    """Estimator cache"""
 
     PRECISION = 3
     """Precision of predicted/sampled loads"""
@@ -200,18 +201,48 @@ class Total(pd.DataFrame):
         "elec_residential_MW": ["temperature_degF"],
         "elec_commercial_MW": ["temperature_degF"],
         "elec_total_MW": ["temperature_degF"],
-        "elec_dg_MW": ["diffuse_Wpms","direct_Wpms"],
-        "elec_net_MW": ["temperature_degF","diffuse_Wpms","direct_Wpms"],
+        "elec_dg_MW": ["direct_Wpms","diffuse_Wpms"],
         "nonelec_residential_MW": ["temperature_degF"],
         "nonelec_commercial_MW": ["temperature_degF"],
         "nonelec_total_MW": ["temperature_degF"],
     }
-    """Solar DG model independent variables to use"""
+    """Exogenous variable to use for prediction variables
+
+    Notes
+    -----
+
+    1. Based on experience `elec_dg_MW` uses only diffuse and direct solar at this time.
+    """
+
+    TRANSFORMATIONS = { # pre/post processors of Y values
+        "elec_residential_MW" : (np.log,np.exp),
+        "elec_commercial_MW" : (np.log,np.exp),
+        "elec_total_MW" : (np.log,np.exp),
+        "nonelec_residential_MW" : (np.log,np.exp),
+        "nonelec_commercial_MW" : (np.log,np.exp),
+        "nonelec_total_MW" : (np.log,np.exp),
+        "elec_dg_MW": (np.negative,np.negative),
+        # Notes: 
+        # 1. elec_net_MW cannot be done in log domain because it can be negative
+        # 2. no transformations are identified for ind/agr/tra yet.
+    }
+    """Data pre/post processors for various Y values
+
+    Notes
+    -----
+
+    1. `elec_net_MW` cannot be done in log domain because it can be negative
+    
+    2. No transformations are identified for ind/agr/tra yet.
+    """
 
     INDUSTRY_LOADSHAPE = None
     AGRICULTURE_LOADSHAPE = None
     TRANSPORTATION_LOADSHAPE = None
     """Default sector loadshapes (None is a flat load)"""
+
+    TRAINING_YEAR = 2018
+    """Year of training data"""
 
     def __init__(self,
         state:str,
@@ -286,6 +317,22 @@ class Total(pd.DataFrame):
         raise ValueError(f"{samples=} must be a non-negative integer, infinity, or None")
 
     @classmethod
+    def _preprocess(cls,data:np.ndarray,name:str):
+        """Apply preprocessing transformation to data based on name"""
+        try:
+            return cls.TRANSFORMATIONS[name][0](data)
+        except KeyError:
+            return data
+
+    @classmethod
+    def _postprocess(cls,data:np.ndarray,name:str):
+        """Apply postprocessing transformation to X based on Y"""
+        try:
+            return cls.TRANSFORMATIONS[name][1](data)
+        except KeyError:
+            return data
+
+    @classmethod
     def _get_training(cls,
         state:str,
         county:str,
@@ -301,25 +348,24 @@ class Total(pd.DataFrame):
         cache = Cache(package="loads",version=0,path=[state,county,f"T_{source}_1h_training.csv.gz"])
 
         # load refresh from cache
+        data = None
         if cache.exists() and not refresh:
 
             try:
                 data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
                 _logger.debug(f"{cache=} ok")
             except Exception as err:
-                data = None
                 cache.delete()
-                _logger.error(f"{cache=} {err}")
+                _logger.debug(f"{cache=} {err}")
 
         else:
-            data = None
             _logger.debug(f"{cache=} (re)generation required")
 
         # no results available from cache
         if data is None:
 
             # get training weather data
-            data = Weather(state,county)
+            data = Weather(state,county,cls.TRAINING_YEAR)
 
             # DG only possible with electric loads
             if not nonelec:
@@ -330,8 +376,9 @@ class Total(pd.DataFrame):
                     "residential":Residential,
                     "commercial":Commercial,
                     }.items():
-
-                loaddata = dataset(state,county)
+                loaddata = dataset(state,county,
+                    calibrate=lambda x:cls._calibrate(state,sector,x),
+                    )
                 data[f"{source}_{sector}_MW"] = loaddata[f"{source}_total_MW"]
                 if not nonelec:
                     data["elec_dg_MW"] += loaddata[f"{source}_dg_MW"]
@@ -376,6 +423,32 @@ class Total(pd.DataFrame):
 
         return data
 
+    @staticmethod
+    def _calibrate(
+        state,
+        sector,
+        data,
+        ):
+        """Calibrate load/solar data to state energy usage"""
+
+        for year in set(data.index.year):
+            
+            dt_range = pd.date_range(
+                start=f"{year}-01-01 00:00:00+0000",
+                end=f"{year}-12-31 23:59:59+0000",
+                freq="1h"
+                )
+
+            load = Calibrate.load(state,year).loc[sector[0].upper()].values[0]
+            data.loc[dt_range,[x for x in data.columns if x != "elec_dg_MW"]] *= load
+
+            solar = Calibrate.solar(state,year).loc[sector[0].upper()].values[0]
+            data.loc[dt_range,"elec_dg_MW"] *= solar
+
+        data["elec_net_MW"] = data["elec_total_MW"] + data["elec_dg_MW"]
+
+        return data
+
     @classmethod
     def _get_weather(cls,
         state:str,
@@ -399,11 +472,11 @@ class Total(pd.DataFrame):
         ) -> TsgamEstimator:
         """Get estimator"""
 
-        # get cache name
+        # get runtime cache name
         cache = (state,county,"|".join(X),Y)
 
         # return estimator if cache active and found in cache
-        if not cls.cache is None and cache in cls.cache:
+        if not cls.cache is None and cache in cls.cache and not refresh:
         
             return cls.cache[cache]
 
@@ -414,7 +487,7 @@ class Total(pd.DataFrame):
         estimator = TsgamEstimator(config=cls.TSGAM_CONFIG)
 
         # fit training data
-        estimator.fit(training[X],np.log(training[Y].values))
+        estimator.fit(training[X],cls._preprocess(training[Y].values,Y))
 
         # save estimator
         if not cls.cache is None:
@@ -433,14 +506,44 @@ class Total(pd.DataFrame):
         ) -> pd.DataFrame:
         """Get the prediction for the specified date range"""
         
-        # get estimator
-        estimator = cls._get_estimator(state,county,X,Y)
+        cache = Cache(package="loads",version=0,path=[state,county,
+            f"predict_{Y}_{date_range.min()}_{date_range.max()}.csv.gz"])
 
-        # get the exogenous data
-        data = cls._get_weather(state,county,date_range)[X]
+        data = None
+        if cache.exists() and not refresh:
 
-        # get the prediction
-        data[Y] = np.exp(estimator.predict(data[X]))
+            try:
+                data = pd.read_csv(cache.pathname,index_col=0,parse_dates=[0])
+                _logger.debug(f"{cache=} ok")
+            except Exception as err:
+                cache.delete()
+                _logger.debug(f"{cache=} {err}")
+        else:
+            _logger.debug(f"{cache=} (re)generation required")
+
+        if data is None:
+
+            # get estimator
+            estimator = cls._get_estimator(state,county,X,Y,refresh)
+
+            # get the exogenous data
+            data = cls._get_weather(state,county,date_range)[X]
+
+            # get the prediction
+            data[Y] = cls._postprocess(estimator.predict(data[X]),Y)
+
+            # remove lag windows from head and tail of training data
+            headlag = 0
+            taillag = 0
+            for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
+                headlag = -min(min(config.lags)+1,headlag)
+                taillag = -max(max(config.lags),taillag)
+            data.loc[:data.index[headlag],Y] = float('nan')
+            data.loc[data.index[taillag]:,Y] = float('nan')
+
+            data.to_csv(cache.pathname,index=True,header=True,
+                compression="gzip" if cache.pathname.endswith(".gz") else None,
+                )
 
         return data
 
@@ -455,14 +558,44 @@ class Total(pd.DataFrame):
         ) -> pd.DataFrame:
         """Get the prediction for the specified date range"""
         
-        # get estimator
-        estimator = cls._get_estimator(state,county,X,Y)
+        cache = Cache(package="loads",version=0,path=[state,county,
+            f"sample_{Y}_{date_range.min()}_{date_range.max()}.csv.gz"])
 
-        # get the exogenous data
-        data = cls._get_weather(state,county,date_range)[X]
+        data = None
+        if cache.exists() and not refresh:
 
-        # get the samples
-        data[Y] = np.exp(estimator.sample(data[X])[0])
+            try:
+                data = pd.read_csv(cache.pathname,index_col=0,parse_dates=[0])
+                _logger.debug(f"{cache=} ok")
+            except:
+                cache.delete()
+                _logger.debug(f"{cache=} {err}")
+        else:
+            _logger.debug(f"{cache=} (re)generation required")
+
+        if data is None:
+
+            # get estimator
+            estimator = cls._get_estimator(state,county,X,Y,refresh)
+
+            # get the exogenous data
+            data = cls._get_weather(state,county,date_range)[X]
+
+            # get the samples
+            data[Y] = cls._postprocess(estimator.sample(data[X])[0],Y)
+
+            # remove lag windows from head and tail of training data
+            headlag = 0
+            taillag = 0
+            for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
+                headlag = -min(min(config.lags)+1,headlag)
+                taillag = -max(max(config.lags),taillag)
+            data.loc[:data.index[headlag],Y] = float('nan')
+            data.loc[data.index[taillag]:,Y] = float('nan')
+
+            data.to_csv(cache.pathname,index=True,header=True,
+                compression="gzip" if cache.pathname.endswith(".gz") else None,
+                )
 
         return data
 
@@ -503,26 +636,27 @@ class Total(pd.DataFrame):
         training = data.copy()
         training.loc[holdout,Y] = float('nan')
 
-        # remove lag windows from head and tail of training data
-        # headlag = 0
-        # taillag = 0
-        # for config in [x for x in self.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
-        #     headlag = -min(min(config.lags)+1,headlag)
-        #     taillag = -max(max(config.lags),taillag)
-        # training.loc[:training.index[headlag],X] = float('nan')
-        # training.loc[training.index[taillag]:,X] = float('nan')
+        # TODO: drop NaNs until TSGAM accepts NaN inputs 
         training.dropna(inplace=True)
 
         # get estimator
         estimator = TsgamEstimator(config=cls.TSGAM_CONFIG)
-        estimator.fit(training[X],np.log(training[Y].values))
-
-        # get holdout data for tests
-        test = data.loc[holdout,X+[Y]]
+        estimator.fit(training[X],cls._preprocess(training[Y].values,Y))
 
         # get the test data
-        data.loc[test.index,"predict"] = np.exp(estimator.predict(test[X]))
-        data.loc[test.index,"sample"] = np.exp(estimator.sample(test[X]))[0]
+        data["predict"] = cls._postprocess(estimator.predict(data[X]),Y)
+        data["sample"] = cls._postprocess(estimator.sample(data[X]),Y)[0]
+        
+        # remove lag windows from head and tail of training data
+        headlag = 0
+        taillag = 0
+        for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
+            headlag = -min(min(config.lags)+1,headlag)
+            taillag = -max(max(config.lags),taillag)
+        data.loc[:data.index[headlag],"predict"] = float('nan')
+        data.loc[data.index[taillag]:,"predict"] = float('nan')
+        data.loc[:data.index[headlag],"sample"] = float('nan')
+        data.loc[data.index[taillag]:,"sample"] = float('nan')
 
         # return data
         return data
@@ -530,11 +664,7 @@ class Total(pd.DataFrame):
     @classmethod
     def _clear_cache(cls):
         """Clear the estimator cache"""
-        cls.cache = { 
-            "scale": {},
-            "load": {},
-            "solar": {},
-        }
+        cls.cache = {}
 
 
     @classmethod
@@ -549,14 +679,17 @@ if __name__ == "__main__":
     The main script refreshes the cache with debugging enabled.
     """
 
-    import sys
+    import os, sys
     import matplotlib.pyplot as plt
     
     pd.options.display.max_columns = None
     pd.options.display.width = None
+    # pd.options.display.max_rows = None
 
     refresh = "--refresh" in sys.argv
     debug = "--debug" in sys.argv
+    plot = "--plot" in sys.argv
+    show = "--show" in sys.argv
 
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
     
@@ -568,68 +701,80 @@ if __name__ == "__main__":
     holdout = test_range[test_range.month != (test_range + dt.timedelta(days=7)).month]
 
     full_range = pd.date_range(
-        start="2018-01-01 00:00:00+0000",
+        start="2019-01-01 00:00:00+0000",
         end="2022-12-31 23:59:59+0000",
         freq="1h",
         )
 
     for state,county in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY"]].values:
 
-        Total._clear_cache()
+        for variable in ["elec_total_MW","elec_dg_MW"]:
 
-        result = Total.test(state,county,holdout,Y="elec_total_MW")
-        residual = result["predict"] - result["elec_total_MW"]
-        RMSE = np.sqrt(np.mean(residual**2))
-        RMPE = RMSE/result["elec_total_MW"].mean()*100
-        print(f"{county} {state} elec_total_MW {RMPE=:.1f}%",flush=True)
+            try:
 
-        result.rename({"elec_total_MW":"actual"},axis=1,inplace=True)
-        result.predict = Total(state,county,date_range=test_range,samples=0)["elec_total_MW"]
-        result.sample = Total(state,county,date_range=test_range,samples=1)["elec_total_MW"]
+                file = f"tests/{state}/{county}/{variable}.csv"
+                if os.path.exists(file) and not refresh:
+                    try:
+                        result = pd.read_csv(file,index_col="timestamp",parse_dates=["timestamp"])
+                    except:
+                        result = None
+                else:
+                    result = None
 
-        training = result["actual"]
-        result = Total(state,county,date_range=full_range,samples=0)
-        result.rename({"elec_total_MW":"predict"},axis=1,inplace=True)
-        result["sample"] = Total(state,county,date_range=full_range,samples=1)["elec_total_MW"]
-        result["actual"] = Total(state,county,Y="elec_total_MW")["elec_total_MW"]
-        print(result,flush=True)
+                if result is None:
 
-        result[["predict","sample","actual"]].plot(
-            figsize=(20,10),
-            title=f"{county} {state} elec_total_MW",
-            grid=True,
-            legend=True,
-            xlabel="Date/Time",
-            ylabel="Power (MW)",
-            )
-        plt.show()
+                    Total._clear_cache()
 
-        # sample = Total(state,county,
-        #     start="2019-01-01 00:00:00+0000",
-        #     end="2022-12-31 23:59:59+0000",
-        #     samples=1,
-        #     percentile=0.5,
-        #     )
-        # print(sample)
+                    result = Total.test(state,county,holdout,Y=variable).rename({variable:"actual",},axis=1)
+                    result["holdout"] = result.index.isin(holdout)
+                    residual = result["predict"] - result["actual"]
+                    RMSE = np.sqrt(np.mean(residual**2))
+                    MEAN = result["actual"].mean()
+                    PRMSE = RMSE/MEAN*100 if MEAN != 0 else (0.0 if RMSE == 0 else np.inf)
+                    _logger.info(f"{state} {county} {variable} holdout {PRMSE=:.1f}%")
 
-        # samples = Total(state,county,
-        #     start="2019-01-01 00:00:00+0000",
-        #     end="2022-12-31 23:59:59+0000",
-        #     samples=100,
-        #     percentile=0.5,
-        #     )
-        # print(samples)
+                    Total._clear_cache()
 
-        # samples = Total(state,county,
-        #     start="2019-01-01 00:00:00+0000",
-        #     end="2022-12-31 23:59:59+0000",
-        #     samples=np.inf,
-        #     percentile=0.5,
-        #     )
-        # print(samples)
+                    columns = Total.EXOGENOUS_VARIABLES[variable]+[variable]
+                    tsgam = Total(state,county,Y=variable,date_range=full_range,samples=0)[columns]\
+                        .rename({variable:"predict"},axis=1)
+                    tsgam["sample"] = Total(state,county,Y=variable,date_range=full_range,samples=1)[[variable]]
+                    result = pd.concat([result,tsgam])
+                    
+                    result.index.name = "timestamp"
+                    os.makedirs(os.path.split(file)[0],exist_ok=True)
+                    result.round(3).to_csv(file,index=True,header=True)
 
-        #     try:
-        #         # TODO
-        #         _logger.info(f"{state} {county} {year} ok")
-        #     except Exception as err:
-        #         (_logger.exception if debug else _logger.error)(f"{state} {county} {year} {err}")
+                else:
+                    
+                    _logger.info(f"{file} ok")
+
+                if plot and variable == "elec_total_MW":
+                    result.plot(
+
+                        figsize=(20,20),
+                        x="temperature_degF",
+                        y=["actual","predict","sample"],
+                        marker=".",
+                        linestyle="",
+
+                        # figsize=(30,15),
+                        # y=["training","predict","sample","actual"],
+                        # xlabel="Date/Time",
+
+                        ylabel="Power (MW)",
+                        title=f"{county} {state} {variable}",
+                        grid=True,
+                        legend=True,
+                        )
+                    if show:
+                        plt.show(block=wait)
+                        if not wait:
+                            plt.pause(0.1)
+                    elif not os.path.exists(file.replace(".csv",".png")):
+                        plt.savefig(file.replace(".csv",".png"))
+                    plt.close()
+
+            except Exception as err:
+
+                (_logger.exception if debug else _logger.error)(f"{state} {county} {err}")

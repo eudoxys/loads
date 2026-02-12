@@ -131,6 +131,7 @@ which outputs the following
 
 import os
 import logging
+from typing import Callable
 
 import pandas as pd
 
@@ -238,7 +239,7 @@ class Residential(pd.DataFrame):
         *,
         collect=None,
         refresh:bool=False,
-        calibrate:float|dict[str,float]|None=None,
+        calibrate:float|dict[str,float]|Callable|None=None,
         ):
         """Construct building types data frame
 
@@ -290,7 +291,7 @@ class Residential(pd.DataFrame):
             except Exception as err:
                 data = None
                 cache.delete()
-                _logger.error(f"{cache=} {err}")
+                _logger.debug(f"{cache=} {err}")
 
         else:
             data = None
@@ -360,6 +361,11 @@ class Residential(pd.DataFrame):
                 data[columns] *= calibrate["load"]
             if "solar" in calibrate:
                 data["elec_dg_MW"] *= calibrate["solar"]
+        elif callable(calibrate):
+            data = calibrate(data)
+        else:
+            assert calibrate is None, f"{calibrate=} is not valid"
+
                         
         super().__init__(data[sorted(data.columns)])
 
@@ -384,6 +390,6 @@ if __name__ == "__main__":
     for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
         try:
             Residential(state,county,refresh=refresh)
-            _logger.debug(f"{state} {county} ok")
+            _logger.info(f"{state} {county} ok")
         except Exception as err:
             (_logger.exception if debug else _logger.error)(f"{state} {county} {err}")

@@ -132,7 +132,7 @@ class Floorarea(pd.DataFrame):
                 except Exception as err:
                     data = None
                     cache.delete()
-                    _logger.error(f"{cache=} {err}")
+                    _logger.debug(f"{cache=} {err}")
             else:
                 data = None
                 _logger.debug(f"{cache=} (re)generation required")

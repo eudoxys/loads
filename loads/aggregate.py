@@ -128,7 +128,7 @@ class Aggregator(pd.DataFrame):
 
 def aggregate(
     targets:dict[str,list[float,float]],
-    year:int,
+    dt_range:int|list[int]|pd.DatetimeIndex,
     column:str,
     refresh:bool=False,
     ) -> [pd.DataFrame, dict[str,str]]:
@@ -139,7 +139,7 @@ def aggregate(
 
       - `targets`: list of targets locations
 
-      - `year`: year for which aggregrates are collected
+      - `dt_range`: date range or year for which aggregrates are collected
 
       - `refresh`: force refresh of cached data
 
@@ -153,9 +153,34 @@ def aggregate(
 
     assert column.endswith("_MW"), f"{column=} is not a column to aggregate (only MW columns can be aggregated)"
 
+    if isinstance(dt_range,int):
+        dt_range = pd.date_range(
+            start=f"{dt_range}-01-01 00:00:00+0000",
+            end=f"{dt_range}-12-31 23:59:59+0000",
+            freq="1h",
+            )
+    elif isinstance(dt_range,list) and np.ndarray([isinstance(x,int) for x in dt_range]).all():
+        dt_list = []
+        for year in dt_range:
+            dt_list.append(pd.date_range(
+                start=f"{year}-01-01 00:00:00+0000",
+                end=f"{year}-12-31 23:59:59+0000",
+                freq="1h",
+                ))
+    else:
+        assert isinstance(dt_range,(pd.DatetimeIndex,list)), f"{dt_range=} is not a valid DatetimeIndex, year, or list of years"
+        dt_range = pd.DatetimeIndex(sorted(dt_range))
+
+    start = dt_range.min().year
+    end = dt_range.max().year
+
     # read cache if possible/desired
-    mapping_cache = Cache(package="loads",version=0,path=["aggregated",year,f"mapping.csv"])
-    data_cache = Cache(package="loads",version=0,path=["aggregated",year,f"{column}.csv"])
+    if start == end:
+        mapping_cache = Cache(package="loads",version=0,path=["aggregated",start,f"mapping.csv"])
+        data_cache = Cache(package="loads",version=0,path=["aggregated",start,f"{column}.csv"])
+    else:
+        mapping_cache = Cache(package="loads",version=0,path=["aggregated",f"{start}-{end}",f"mapping.csv"])
+        data_cache = Cache(package="loads",version=0,path=["aggregated",f"{start}-{end}",f"{column}.csv"])            
     if data_cache.exists() and mapping_cache.exists() and not refresh:
 
         # read mapping
@@ -181,15 +206,13 @@ def aggregate(
         mapping = None
 
     # if elec_total_MW is None or elec_dg_MW is None or mapping is None:
-    if data is None or mapping is None:
+    if data is None or mapping is None or refresh:
 
         # build mapping table
         mapping = {}
-        start = f"{year}-01-01 00:00:00+00:00"
-        end = f"{year}-12-31 23:59:59+00:00"
 
         # get load aggregator
-        data = Aggregator(targets.keys(),start,end)
+        data = Aggregator(targets.keys(),f"{start}-01-01 00:00:00+00:00",f"{end}-12-31 23:59:59+00:00")
 
         # map counties to targets
         for state,county,lat,lon,geohash in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY","LAT","LON","GEOHASH"]].values:
@@ -203,7 +226,8 @@ def aggregate(
             mapping[geohash] = target
 
             # read county totals
-            total = Total(state,county,year)
+            Total._clear_cache()
+            total = Total(state,county,Y=column,date_range=dt_range,samples=1).fillna(0)
             assert column in total.columns, f"{column=} is not found in totals for {state=} {county=} {year=}"
 
             # add county load to aggregated load
@@ -211,9 +235,9 @@ def aggregate(
                 data={target:total[column]},
                 index=total.index,
                 ))
-            assert not data.isna().any().any(), f"{state} {county} {year} {geohash} --> {target} has NA values {data[data.isna()]}"
 
         # save load results
+        data.sort_index(inplace=True)
         data.round(3).to_csv(data_cache.pathname,index=True,header=True)
 
         # save mapping result
@@ -227,30 +251,39 @@ def aggregate(
 if __name__ == "__main__":
     """Create aggregate loads for WECC 240 network
 
-    Syntax: python3 aggregate.py [--debug] [--refresh] COLUMN YEAR ...
+    Syntax: python3 aggregate.py [--debug] [--refresh] COLUMN YEAR[,...]
     """
     import os
     import sys
     import pytz
-
-    pd.options.display.max_columns = None
-    pd.options.display.width = None
-    pd.options.display.max_rows = None
-
-    if len(sys.argv) == 1:
-        print("Syntax: python3 aggregate.py [--debug] [--refresh] COLUMN YEAR",file=sys.stderr)
-
-    column = None
-    try:
-        column = [x for x in sys.argv[1:] if not x.startswith("-")][0]
-        year = int([x for x in sys.argv[1:] if not x.startswith("-")][1])
-    except:
-        if column is None:
-            column = "elec_total_MW"
-        year = 2020
+    import matplotlib.pyplot as plt
 
     refresh = "--refresh" in sys.argv
     debug = "--debug" in sys.argv
+
+    pd.options.display.max_columns = None
+    pd.options.display.width = None
+    # pd.options.display.max_rows = None
+
+    if len(sys.argv) == 1:
+        print("Syntax: python3 aggregate.py [--debug] [--refresh] COLUMN [START END]",file=sys.stderr)
+
+    column = None
+    start = None
+    end = None
+    args = [x for x in sys.argv[1:] if not x.startswith("-")]
+    try:
+        column = args[0]
+        start = args[1]
+        end = args[2]
+    except:
+        if column is None:
+            column = "elec_total_MW"
+        if start is None:
+            start = "2018-01-01 00:00:00+0000"
+        if end is None:
+            end = "2022-12-31 23:59:59+0000"
+    dt_range = pd.date_range(start=start,end=end,freq="1h")
 
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
 
@@ -267,7 +300,7 @@ if __name__ == "__main__":
     targets = {x:latlon[locations.index(x)] for x in set(locations) if x not in omitted}
 
     # read US nodes
-    result = aggregate(targets,year,column,refresh=refresh)[0]
+    result = aggregate(targets,dt_range,column,refresh=refresh)[0]
 
     # read non-US nodes
     sources = {
@@ -283,19 +316,19 @@ if __name__ == "__main__":
                 index_col=["timestamp"],
                 usecols=["timestamp","load_MW"],
                 parse_dates=["timestamp"],
-                )
+                ).sort_index().ffill().bfill().fillna(0)
             data.columns=[node]
         except Exception as err:
             _logger.exception(f"{file} read failed ({err})")
         result = pd.merge(result,data,left_index=True,right_index=True)
 
     # calculate results
-    total = result.iloc[24:].sum(axis=1)/1000
+    total = result.ffill().bfill().sum(axis=1)/1000
     peak_dt = total[total==total.max()].index.values[0].astype(dt.datetime)
-    result[sorted(result.columns)].to_csv(f"tests/wecc240_{column}_2020.csv",index=True)
+    result[sorted(result.columns)].to_csv(f"tests/wecc240_2025_load.csv",index=True)
 
     # show results
-    print(f"WECC {year} {column}:")
+    print(f"WECC {args}:")
     print(f"Peak load...... {total.max():.1f} GW at {peak_dt.strftime("%m/%d/%y %H:%M")}")
-    print(f"Total energy... {aggregate(targets,year,column,refresh=refresh)[0].sum(axis=1).sum()/1e6:.1f} TWh")
+    print(f"Total energy... {aggregate(targets,dt_range,column,refresh=refresh)[0].sum(axis=1).sum()/1e6:.1f} TWh")
 

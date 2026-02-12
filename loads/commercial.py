@@ -33,6 +33,7 @@ which outputs the following
 import os
 import pandas as pd
 import logging
+from typing import Callable
 
 from fips import States, Counties
 from loads.floorarea import Floorarea
@@ -108,7 +109,7 @@ class Commercial(pd.DataFrame):
         *,
         collect=None,
         refresh:bool=False,
-        calibrate:float|dict[str,float]|None="auto",
+        calibrate:float|dict[str,float]|Callable|None=None,
         ):
         """Construct building types data frame
 
@@ -134,11 +135,6 @@ class Commercial(pd.DataFrame):
         This class compiles the building type data for a county by collecting
         COMstock columns, scaling by the floor area in that year, and finally
         computing total electric and non-electric loads in MW.
-
-        If calibrate is set to `'auto'`, then the loadshape will scaled based
-        on the contents of the `loads.commercial.Commercial.CALIBRATE` data
-        if the `state` is among its keys. Alternatively, a float value can be
-        provided to scale accordingly. 
         """
         # pylint: disable=too-many-locals
         assert state in States()["ST"].values, f"{state=} is not valid"
@@ -152,20 +148,6 @@ class Commercial(pd.DataFrame):
         total_area = 0.0
         data = None
 
-        # split floor areas by building type
-        actual_areas = Floorarea(state=state,county=county,year=year)\
-            .set_index("BUILDING_TYPE")\
-            .sort_index()
-        split_areas = {"BUILDING_TYPE":[],"FLOORAREA":[],"SPLITS":[],"FRACTION":[]}
-        actual_areas_sum = actual_areas.FLOORAREA.sum()
-        for bts,area in list(actual_areas.iterrows()):
-            for bt in bts.split("+"):
-                split_areas["BUILDING_TYPE"].append(bt if bt else "OTH")
-                split_areas["FLOORAREA"].append(area.FLOORAREA / len(bts.split("+")))
-                split_areas["SPLITS"].append(bts)
-                split_areas["FRACTION"].append(area.FLOORAREA/actual_areas_sum if actual_areas_sum > 0 else 0.0)
-        split_areas = pd.DataFrame(split_areas).set_index("BUILDING_TYPE")
-
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
         cache = Cache(package="loads",version=0,path=[state,county,"C.csv.gz"])
@@ -176,12 +158,26 @@ class Commercial(pd.DataFrame):
             except Exception as err:
                 data = None
                 cache.delete()
-                _logger.error(f"{cache=} {err}")
+                _logger.debug(f"{cache=} {err}")
         else:
             data = None
             _logger.debug(f"{cache=} (re)generation required")
 
         if data is None:
+
+            # split floor areas by building type
+            actual_areas = Floorarea(state=state,county=county,year=year)\
+                .set_index("BUILDING_TYPE")\
+                .sort_index()
+            split_areas = {"BUILDING_TYPE":[],"FLOORAREA":[],"SPLITS":[],"FRACTION":[]}
+            actual_areas_sum = actual_areas.FLOORAREA.sum()
+            for bts,area in list(actual_areas.iterrows()):
+                for bt in bts.split("+"):
+                    split_areas["BUILDING_TYPE"].append(bt if bt else "OTH")
+                    split_areas["FLOORAREA"].append(area.FLOORAREA / len(bts.split("+")))
+                    split_areas["SPLITS"].append(bts)
+                    split_areas["FRACTION"].append(area.FLOORAREA/actual_areas_sum if actual_areas_sum > 0 else 0.0)
+            split_areas = pd.DataFrame(split_areas).set_index("BUILDING_TYPE")
 
             # collect building type data
             data = {}
@@ -246,6 +242,10 @@ class Commercial(pd.DataFrame):
                 data[columns] *= calibrate["load"]
             if "solar" in calibrate:
                 data["elec_dg_MW"] *= calibrate["solar"]
+        elif callable(calibrate):
+            data = calibrate(data)
+        else:
+            assert calibrate is None, f"{calibrate=} is not valid"
             
         super().__init__(data[sorted(data.columns)])
 
@@ -269,7 +269,7 @@ if __name__ == "__main__":
 
     for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
         try:
-            Commercial(state,county,refresh=True)
-            _logger.debug(f"{state} {county} ok")
+            Commercial(state,county,refresh=refresh)
+            _logger.info(f"{state} {county} ok")
         except Exception as err:
             (_logger.exception if debug else _logger.error)(f"{state} {county} {err}")

@@ -204,6 +204,7 @@ class Calibrate(pd.DataFrame):
 
     def __init__(self,
         load:pd.DataFrame,
+        *,
         energy:dict[str,float]|None=None,
         peak:dict[str,float]|None=None,
         scale:float=1.0,
