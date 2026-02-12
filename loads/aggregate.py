@@ -251,7 +251,7 @@ def aggregate(
 if __name__ == "__main__":
     """Create aggregate loads for WECC 240 network
 
-    Syntax: python3 aggregate.py [--debug] [--refresh] COLUMN YEAR[,...]
+    Syntax: python3 aggregate.py [--debug] [--refresh] COLUMN [START END]
     """
     import os
     import sys
@@ -337,7 +337,5 @@ if __name__ == "__main__":
         energy = data[column].sum().sum()/1e3
         peak = data.max().values[0]
         peak_dt = data[data[column]==peak].index.values[0].astype(dt.datetime)
-        # energy = aggregate(targets,dt_range,column,refresh=refresh)[0].sum(axis=1).sum()/1e6
         print(f"{year}   {energy:9.1f}   {peak:9.1f}   {peak_dt:%m/%d/%y %H:%M UTC}")
-    # print(f"  US energy... {:.1f} TWh")
 
