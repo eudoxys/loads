@@ -324,11 +324,20 @@ if __name__ == "__main__":
 
     # calculate results
     total = result.ffill().bfill().sum(axis=1)/1000
-    peak_dt = total[total==total.max()].index.values[0].astype(dt.datetime)
     result[sorted(result.columns)].to_csv(f"tests/wecc240_2025_load.csv",index=True)
 
     # show results
-    print(f"WECC {args}:")
-    print(f"Peak load...... {total.max():.1f} GW at {peak_dt.strftime("%m/%d/%y %H:%M")}")
-    print(f"Total energy... {aggregate(targets,dt_range,column,refresh=refresh)[0].sum(axis=1).sum()/1e6:.1f} TWh")
+    print(f"WECC",column,start,"--",end)
+    print("       US energy    US peak                      ")
+    print("Year     (TWh)        (GW)          Peak day     ")
+    print("----   ---------   ---------   ------------------")
+    for year in total.index.year.unique():
+        data = total[total.index.year==year].to_frame()
+        data.columns = [column]
+        energy = data[column].sum().sum()/1e3
+        peak = data.max().values[0]
+        peak_dt = data[data[column]==peak].index.values[0].astype(dt.datetime)
+        # energy = aggregate(targets,dt_range,column,refresh=refresh)[0].sum(axis=1).sum()/1e6
+        print(f"{year}   {energy:9.1f}   {peak:9.1f}   {peak_dt:%m/%d/%y %H:%M UTC}")
+    # print(f"  US energy... {:.1f} TWh")
 
