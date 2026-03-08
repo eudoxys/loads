@@ -15,7 +15,7 @@ def _(mo):
 @app.cell
 def _(Total, cluster_ui, mo):
     # variable selection
-    _options = sorted([x for x in Total.COLUMNS if x.endswith("_MW")])
+    _options = sorted(Total.COLUMNS)#[x for x in Total.COLUMNS if x.endswith("_MW")])
     variable_ui = mo.ui.dropdown(options=_options,value="elec_total_MW",label="Clustering variable:")
 
     mo.hstack([variable_ui,cluster_ui],justify='start')
