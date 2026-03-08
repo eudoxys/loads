@@ -1,222 +1,260 @@
-import marimo
+"""County clustering
 
-__generated_with = "0.19.6"
-app = marimo.App(width="medium")
+Example
+-------
 
+The following example performs k-means clustering of WECC counties into 6
+clusters based on total electric load:
 
-@app.cell
-def _(mo):
-    mo.md(r"""
-    This notebook perform holdout testing of the TSGAM load model on the medoid counties for the selected number of county clusters.
-    """)
-    return
-
-
-@app.cell
-def _(Counties, Total, mo, np):
-    # load county data into U and C arrays
-    U = [] # u-matrix from SVD
-    C = [] # county name
-    W = [] # county weight
-    counties = Counties(use_index="RO", selection="WECC")[
-            ["ST", "COUNTY"]
-        ].values
-    for _state, _county in mo.status.progress_bar(
-        collection=counties,
-        title="Reading WECC county loads",
-        remove_on_exit=True,
-    ):
-        _load = np.reshape(Total(_state, _county).elec_total_MW.values,(365,24)).T
-        _u,_d,_l = np.linalg.svd(_load)
-        W.append(float(_load.sum()/1e6))
-        U.append(_u[:,0])
-        C.append(f"{_county} {_state}")
-    return C, U, W, counties
-
-
-@app.cell
-def _(mo):
-    # clustering UI
-    cluster_ui = mo.ui.slider(start=1,stop=10,step=1,debounce=True,value=2,label="Number of k-means clusters:")
-    show_ui = mo.ui.radio(label="Show",options=["Centroids","Medoids"],inline=True,value="Centroids")
-    mo.hstack([cluster_ui,show_ui],justify="start")
-    return cluster_ui, show_ui
-
-
-@app.cell
-def _(C, U, W, cluster_ui, plt, show_ui):
-    # clustering analysis results
-    from sklearn.cluster import KMeans
-    from sklearn.metrics import pairwise_distances_argmin_min
-    kmeans = KMeans(n_clusters=cluster_ui.value, n_init="auto", random_state=0).fit(U,sample_weight=W)
-    match show_ui.value:
-        case "Centroids":
-            plt.plot(kmeans.cluster_centers_.T)
-        case "Medoids":
-            closest, _ = pairwise_distances_argmin_min(kmeans.cluster_centers_, U)
-            for x in closest:
-                plt.plot(U[x], label=C[x])
-            plt.legend()
-        case "_":
-            raise ValueError(f"{show_ui.value=} invalid")
-
-    plt.grid()
-    plt.title(f"k-Means cluster {show_ui.value.lower()} with $k={cluster_ui.value}$")
-    plt.xlabel = "Hour of day"
-
-    plt.gca()
-    return (kmeans,)
-
-
-@app.cell
-def _(C, cluster_ui, counties, kmeans):
-    # members of clusters
-    members = {n+1:[C[m] for m,x in enumerate(kmeans.labels_) if x == n] for n in range(cluster_ui.value)}
-    members[None] = [f"{y} {x}" for x,y in counties]
-    return (members,)
-
-
-@app.cell
-def _(label_ui, members, mo):
-    # states UI based on cluster members
-    _options = sorted(set([x.split(" ")[-1] for x in members[label_ui.value]]))
-    state_ui = mo.ui.dropdown(options=_options,value=_options[0],label="State:")
-    return (state_ui,)
-
-
-@app.cell
-def _(C, cluster_ui, label_ui, members, mo, state_ui):
-    # county UI based on cluster members
-    if cluster_ui.value is None:
-        _counties = [" ".join(x.split(" ")[:-1]) for x in C if x.endswith(state_ui.value)]
-    else:
-        _counties = [" ".join(x.split(" ")[:-1]) for x in members[label_ui.value]]
-    county_ui = mo.ui.dropdown(options=sorted(_counties),value=_counties[0],label="County:")
-    return (county_ui,)
-
-
-@app.cell
-def _(cluster_ui, mo):
-    # cluster label UI
-    label_ui = mo.ui.dropdown(options=range(1,cluster_ui.value+1),label="Cluster:")
-    return (label_ui,)
-
-
-@app.cell
-def _(Total, county_ui, state_ui):
-    # data from state and county UI
-    state = state_ui.value
-    county = county_ui.value
-    data = Total(state,county)
-    return county, data, state
-
-
-@app.cell
-def _(county_ui, label_ui, mo, state_ui):
-    # data selection UI
-    mo.hstack([state_ui,county_ui,label_ui],justify="start")
-    return
-
-
-@app.cell
-def _(county, data, np, plt, seaborn, state):
-    # plot data for selected state and county
-    load = np.reshape(data.elec_total_MW.values,(365,24))
-    _u,_d,_l = np.linalg.svd(load.T)
-
-    plt.figure(figsize=(16,8))
-    plt.suptitle(f"{state} {county}")
-
-    plt.subplot(1,2,2)
-    plt.plot(_u[:,0])
-    plt.grid()
-    plt.gca().set_xlabel("Hour of day")
-    plt.gca().set_ylabel("U[:,0]")
-    plt.title("Decomposition")
-
-    plt.subplot(1,2,1)
-    ax = seaborn.heatmap(load)
-    ax.set_ylabel("Day of year")
-    ax.set_xlabel("Hour of day")
-    plt.title("Heatmap")
-
-    county_loads = plt.gca()
-    return (county_loads,)
-
-
-@app.cell
-def _(county_loads, mo):
-    # tabs UI
-    mo.ui.tabs({
-        "Loads":county_loads,
-        "Tests":None,
-    })
-    return
-
-
-@app.cell
-def _(county, data, mo, state, tsgam):
-    # TSGAM holdout test
-    mo.stop((data.elec_total_MW==0).all(),mo.md(f"**<font color=red>ERROR**: {county} {state} has no total load data</font>"))
-    # Multi-harmonic configuration for time features
-    multi_harmonic_config = tsgam.TsgamMultiHarmonicConfig(
-        num_harmonics=[6, 4, 3],
-        periods=[365.2425 * 24, 7 * 24, 24]
-    )
-
-    # Spline configuration for temperature (exogenous variable)
-    exog_config: list[tsgam.TsgamSplineConfig | tsgam.TsgamLinearConfig] = [
-        tsgam.TsgamSplineConfig(
-            knots=[],  # Empty list means knots will be auto-generated from data
-            n_knots=10,  # Number of knots to generate
-            lags=[-3, -2, -1, 0, 1, 2, 3],
-            reg_weight=1e-4,  # Regularization weight for coefficients
-            diff_reg_weight=1.0  # Regularization weight for differences between lags
-        )
-    ]
-
-    # No AR model in baseline (AR is added later in the notebook)
-    ar_config = tsgam.TsgamArConfig(
-        lags = list(range(1,36))
-        )
-
-    # Solver configuration
-    solver_config = tsgam.TsgamSolverConfig(
-        solver='CLARABEL',
-        verbose=False
-    )
-
-    # Create main config
-    config = tsgam.TsgamEstimatorConfig(
-        multi_harmonic_config=multi_harmonic_config,
-        exog_config=exog_config,
-        ar_config=ar_config,
-        solver_config=solver_config,
-        random_state=None,
-        debug=False
-    )
-
-    # Create estimator
-    estimator = tsgam.TsgamEstimator(config=config)
-
-    # fit the data
-    # estimator.fit(data.temperature_degF.to_frame(),data.elec_total_MW)
-    # mo.stop( estimator.problem_.status not in ["optimal","optimal_inaccurate"], f"**<font color=red>ERROR**: fit is {estimator.problem_.status}")
-    return
-
-
-@app.cell
-def _():
-    # modules
-    import marimo as mo
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import seaborn
-    from total import Total
     from fips import Counties
-    import tsgam_estimator as tsgam
-    return Counties, Total, mo, np, plt, seaborn, tsgam
+    counties = [f"{y} {x}" for x,y in Counties(use_index="RO", selection="WECC")[["ST", "COUNTY"]].values]
+    from loads import Cluster
+    cluster = Cluster(counties,"elec_total_MW")
+    cluster.kmeans(n_clusters=6)
+    print(cluster.medoids)
 
+The output is
 
-if __name__ == "__main__":
-    app.run()
+    {'Kings CA', 'Maricopa AZ', 'Pierce WA', 'Los Angeles CA', 'Lewis and Clark MT', 'Apache AZ'}
+
+"""
+
+from typing import Callable
+
+import pandas as pd
+import numpy as np
+import sklearn
+
+from loads.total import Total
+
+class Cluster:
+    """County clustering class implementation"""
+
+    RANDOM_STATE=0
+    """Initial state of random number generator for kmeans clustering algorithm"""
+
+    N_INIT="auto"
+    """Value of KMeans `n_init` parameter"""
+
+    cache = {}
+
+    def __init__(self,
+        counties:list,
+        column:str,
+        threshold:int=0.99,
+        preprocess:Callable=None,
+        progress:Callable=None,
+        refresh:bool=False,
+        ):
+        """Construct county clustering object
+
+        Arguments
+        ---------
+
+          - `counties`: list of counties to process
+
+          - `column`: data column to use when processing
+
+          - `threshold`: power spectrum threshold value
+
+          - `preprocess`: data preprocessing function
+
+          - `progress`: progress callback
+
+          - `refresh`: refresh internal data cache
+
+        Description
+        -----------
+
+        The `counties` members must be provided in the format `NAME ST` where
+        `NAME` is the canonical county name(i.e., without "County", "Parish",
+        etc.) and `ST` is state abbreviation (e.g., "AZ")
+
+        The `column` value must be the name of a column included in the `Total`
+        data.
+
+        If the `preprocessing` function is callable, then the specified column
+        data is passed to the specified function before SVD is performed.
+
+        If `progress` is callable then callback is called for each county as
+        it is processed. It is called with `None` when processing is done.
+
+        Methodology
+        -----------
+
+        K-means clustering is performed using the left-most column of the $U$
+        matrix returned by the singular value decomposition of each county's
+        specified data column. The `U` attribute contains the collected $U_0$
+        column vectors. The k-means clustering is weighted according to the
+        county's total energy consumption, the value of which is available in
+        the `W` attribute. The significance of the $U_0$ of each county is
+        available in the `D` attribute.  The mean county normalized load is
+        available in the `M` attribute.
+
+        Caveat
+        ------
+
+        The `loads.cluster.Cluster.__init__` constructor calls
+        `loads.total.Total`, which can take considerable amount of time if
+        the data flow has not been previously processed and cached.
+        """
+
+        if refresh:
+            self.cache = {}
+
+        self.C = list(counties) # list of counties
+        """County names"""
+
+        self.U = [] # u[:,0] matrix from SVD of column
+        """Collected $U_0$ column vectors from county data SVD"""
+
+        self.D = [] # normalized power spectrum of cluster
+        """Collected normalized $D$ values from county data SVD"""
+        
+        self.W = [] # county weights
+        """County energy weights"""
+
+        self.M = [] # county mean normalized loadshape
+        """County normalized mean loads"""
+
+        self.K = 1 # power spectrum threshold value (columns of U)
+        """Power spectrum threshold value"""
+
+        for county in counties:
+            if progress:
+                progress(county)
+            state_abbr = county.split(" ")[-1]
+            county_name = " ".join(county.split(" ")[:-1])
+            if county in self.cache:
+                data = self.cache[county]
+            else:
+                data = Total(state_abbr,county_name).fillna(0)
+                self.cache[county] = data
+            data = data[column]
+            if preprocess:
+                data = preprocess(data)
+            load = np.reshape(data.values,(365,24)).T
+            u,d,_ = np.linalg.svd(load)
+            dsum = np.sum(d)
+            if dsum > 0:
+                self.D.append(d/dsum)
+                spectrum = [x for x in np.cumsum(self.D[-1]) if x<threshold]
+                k = len(spectrum) if spectrum else None
+            else:
+                self.D.append(np.array([1.0]+[0.0]*(len(d)-1)))
+                k = 1
+            self.K = max(self.K,len(self.D[-1]) if k is None else k)
+            # self.U.append(u[:,0:k].flatten())
+            self.U.append(u)
+            m = np.mean(load,axis=1)
+            mm = np.mean(m)
+            self.M.append(m / mm if mm != 0 else 0.0)
+            self.W.append(float(load.sum()/1e6))
+
+        self.U = np.array([x[:,0:self.K].flatten() for x in self.U])
+
+        self.cluster = None
+        """K-means clustering object (see `numpy.linalg.kmeans`)"""
+        
+        self.centroids = None
+        """K-means clustering centroid vectors"""
+
+        self.closest = None
+        """K-means clustering closest cluster"""
+
+        self.medoids = None
+        """K-means clustering medoid county name"""
+
+        self.members = None
+        """K-means clustering member county names"""
+
+        if progress:
+            progress(None)
+
+    def kmeans(self,
+        n_clusters:int,
+        ) -> sklearn.cluster.KMeans:
+        """Perform clustering analysis on county data
+
+        Arguments
+        ---------
+
+          - `n_clusters`: desired number of clusters
+
+        Returns
+        -------
+
+          - `sklearn.cluster.KMeans`: k-means cluster fit
+
+        Description
+        -----------
+
+        Performs the k-means cluster for the given number of clusters.
+        Sets the follow attributes:
+
+          - `loads.cluster.Cluster.cluster`: the k-means cluster object
+
+          - `loads.cluster.Cluster.centroids`: the cluster centroid vectors
+
+          - `loads.cluster.Cluster.medoids`: the cluster medoid names
+
+          - `loads.cluster.Cluster.members`: the cluster member names
+        """
+        assert isinstance(n_clusters,int), "n_clusters must be an integer"
+        assert n_clusters > 1, "n_clusters must be greater than 1"
+
+        self.cluster = sklearn.cluster.KMeans(
+            n_clusters=n_clusters,
+            n_init=self.N_INIT,
+            random_state=self.RANDOM_STATE,
+            )
+        try:
+            self.cluster.fit(self.U,sample_weight=self.W)
+        except Exception as err:
+            print("EXCEPTION:",err)
+            print(self.U)
+            raise
+        
+        self.centroids = self.cluster.cluster_centers_.tolist()
+        self.closest, _ = sklearn.metrics.pairwise_distances_argmin_min(self.cluster.cluster_centers_, self.U)
+        self.medoids = [self.C[x] for x in self.closest]
+        self.members = [[self.C[m] for m,x in enumerate(self.cluster.labels_) if x == n] 
+            for n in range(n_clusters)]
+
+        return self.cluster
+
+if __name__ == '__main__':
+    
+    from fips import Counties
+    counties = [f"{y} {x}" for x,y in Counties(use_index="RO", selection="WECC")[
+        ["ST", "COUNTY"]
+        ].values]
+
+    for column,check in {
+        "elec_total_MW": {
+            'Lewis and Clark MT',
+            'Los Angeles CA',
+            'Kings CA',
+            'Apache AZ',
+            'Pierce WA',
+            'Maricopa AZ',
+            },
+        "elec_dg_MW": {
+            'Riverside CA',
+            'Douglas OR',
+            'Contra Costa CA',
+            'Jefferson CO',
+            'Maricopa AZ',
+            'Alameda CA',
+            }
+        }.items():
+        print("Testing",column,end="",flush=True)
+        cluster = Cluster(counties,
+            column=column,
+            preprocess=np.abs,
+            progress=lambda x:print(end=".",flush=True) if x else print(flush=True),
+            )
+        cluster.kmeans(n_clusters=len(check))
+        # assert cluster.medoids == check, f"{column} medoids is not correct: {cluster.medoids=} != {check=}"
+        print(column,cluster.medoids)
+

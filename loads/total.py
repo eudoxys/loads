@@ -101,6 +101,15 @@ import logging
 import pandas as pd
 import numpy as np
 
+from tsgam_estimator import (
+    TsgamEstimatorConfig, 
+    TsgamMultiPeriodicConfig,
+    TsgamSplineConfig,
+    TsgamArConfig,
+    TsgamSolverConfig,
+    TsgamEstimator,
+    )
+
 from fips import Counties
 from weather import Weather
 from cache import Cache
@@ -109,14 +118,6 @@ from loads.commercial import Commercial
 from loads.industry import Industry
 from loads.agriculture import Agriculture
 from loads.calibrate import Calibrate
-from loads.tsgam_estimator import (
-    TsgamEstimatorConfig, 
-    TsgamMultiHarmonicConfig,
-    TsgamSplineConfig,
-    TsgamArConfig,
-    TsgamSolverConfig,
-    TsgamEstimator,
-    )
 from loads.solar_estimator import SolarEstimator
 
 _logger = logging.getLogger(__file__)
@@ -174,7 +175,7 @@ class Total(pd.DataFrame):
     """Precision of predicted/sampled loads"""
 
     TSGAM_CONFIG = TsgamEstimatorConfig(
-        multi_harmonic_config=TsgamMultiHarmonicConfig(
+        multi_periodic_config=TsgamMultiPeriodicConfig(
             num_harmonics=[6, 4, 3],
             periods=[365.2425 * 24, 7 * 24, 24]
         ),
@@ -243,6 +244,21 @@ class Total(pd.DataFrame):
 
     TRAINING_YEAR = 2018
     """Year of training data"""
+
+    COLUMNS = {
+        "temperature_degF": "Outdoor air temperature",
+        "humidity_pc": "Relative humidity",
+        "global_Wpms": "Global horizontal solar irradiance",
+        "direct_Wpms": "Direct normal solar irradiance",
+        "diffuse_Wpms": "Diffuse solar irradiance",
+        "elec_residential_MW": "Total residential building loads",
+        "elec_commercial_MW": "Total commercial building loads",
+        "elec_industrial_MW": "Total industrial loads",
+        "elec_agricultural_MW": "Total agricultural loads",
+        "elec_total_MW": "Total loads",
+        "elec_dg_MW": "Total distributed generation",
+        "elec_net_MW": "Total net loads",
+    }
 
     def __init__(self,
         state:str,
@@ -606,6 +622,7 @@ class Total(pd.DataFrame):
         holdout:pd.DatetimeIndex,
         X:str=["temperature_degF"],
         Y:str="elec_total_MW",
+        n_samples:int=0,
         ) -> pd.DataFrame:
         """Perform a hold-out test on the training data
 
@@ -621,6 +638,8 @@ class Total(pd.DataFrame):
           - `X`: X columns in `loads.total.Total` to use as exogenous variables
 
           - `Y`: Y column in `loads.total.Total` to fit
+
+          - `samples`: number of sample columns to generate
 
         Returns
         -------
@@ -645,19 +664,29 @@ class Total(pd.DataFrame):
 
         # get the test data
         data["predict"] = cls._postprocess(estimator.predict(data[X]),Y)
-        data["sample"] = cls._postprocess(estimator.sample(data[X]),Y)[0]
-        
-        # remove lag windows from head and tail of training data
         headlag = 0
         taillag = 0
         for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
-            headlag = -min(min(config.lags)+1,headlag)
+            headlag = -min(min(config.lags),headlag)
             taillag = -max(max(config.lags),taillag)
-        data.loc[:data.index[headlag],"predict"] = float('nan')
-        data.loc[data.index[taillag]:,"predict"] = float('nan')
-        data.loc[:data.index[headlag],"sample"] = float('nan')
-        data.loc[data.index[taillag]:,"sample"] = float('nan')
-
+        # data.loc[:headlag]["predict"] = float('nan')
+        # data.loc[taillag:]["predict"] = float('nan')
+        if n_samples > 0:
+            samples = cls._postprocess(estimator.sample(data[X],n_samples=n_samples),Y)
+            samples[:,:headlag] = float('nan')
+            samples[:,taillag:] = float('nan')
+            if samples.shape[0] == 1:
+                data["sample"] = samples[0,:]
+            else:
+                data = pd.concat([data,
+                                    pd.DataFrame(
+                                        data={
+                                            f"sample_{n}":samples[n,:] 
+                                            for n in range(samples.shape[0])
+                                            },
+                                        index=data.index)],
+                    axis=1)
+        
         # return data
         return data
 
@@ -727,9 +756,9 @@ if __name__ == "__main__":
 
                     result = Total.test(state,county,holdout,Y=variable).rename({variable:"actual",},axis=1)
                     result["holdout"] = result.index.isin(holdout)
-                    residual = result["predict"] - result["actual"]
+                    residual = result["predict"] - result["holdout"]
                     RMSE = np.sqrt(np.mean(residual**2))
-                    MEAN = result["actual"].mean()
+                    MEAN = result["holdout"].mean()
                     PRMSE = RMSE/MEAN*100 if MEAN != 0 else (0.0 if RMSE == 0 else np.inf)
                     _logger.info(f"{state} {county} {variable} holdout {PRMSE=:.1f}%")
 
