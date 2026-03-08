@@ -114,8 +114,14 @@ class Cluster:
         self.W = [] # county weights
         """County energy weights"""
 
+        self.L = [] # county mean loadshape
+        """County mean loadshape"""
+
         self.M = [] # county mean normalized loadshape
-        """County normalized mean loads"""
+        """County mean-normalized mean loadshape"""
+
+        self.P = [] # county max normalized loadshape
+        """County max-normalized mean loadshape"""
 
         self.K = 1 # power spectrum threshold value (columns of U)
         """Power spectrum threshold value"""
@@ -134,7 +140,9 @@ class Cluster:
             if preprocess:
                 data = preprocess(data)
             load = np.reshape(data.values,(365,24)).T
+            
             u,d,_ = np.linalg.svd(load)
+            
             dsum = np.sum(d)
             if dsum > 0:
                 self.D.append(d/dsum)
@@ -144,11 +152,17 @@ class Cluster:
                 self.D.append(np.array([1.0]+[0.0]*(len(d)-1)))
                 k = 1
             self.K = max(self.K,len(self.D[-1]) if k is None else k)
-            # self.U.append(u[:,0:k].flatten())
             self.U.append(u)
+
             m = np.mean(load,axis=1)
+            self.L.append(m)
             mm = np.mean(m)
             self.M.append(m / mm if mm != 0 else 0.0)
+
+            p = np.max(load,axis=1)
+            pp = np.max(load)
+            self.P.append(p / pp if pp != 0 else 0.0)
+
             self.W.append(float(load.sum()/1e6))
 
         self.U = np.array([x[:,0:self.K].flatten() for x in self.U])

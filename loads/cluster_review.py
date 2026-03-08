@@ -23,12 +23,12 @@ def _(Total, cluster_ui, mo):
 
 
 @app.cell
-def _(clusters, county_loads, members_ui, mo, selection):
+def _(clusters, county_loads, members_ui, mo, normalize_ui, selection, svd_ui):
     # main tabs UI
     mo.ui.tabs(
         {
-            "Load data": mo.vstack([selection, county_loads]),
-            "Cluster medoids": mo.vstack([selection, clusters]),
+            "Load data": mo.vstack([mo.hstack([selection,svd_ui]), county_loads]),
+            "Cluster medoids": mo.vstack([normalize_ui,clusters]),
             "County assignments": members_ui,
         },
         lazy=True,
@@ -67,16 +67,23 @@ def _(mo):
 
 
 @app.cell
-def _(closest, cluster, cluster_ui, plt):
+def _(cluster, mo):
+    _options = [("None (MW)",cluster.L),("Mean (pu.MW)",cluster.M),("Peak (pu.MW)",cluster.P)]
+    normalize_ui = mo.ui.radio(label="Plot normalization:",options=dict(_options),inline=True,value=_options[0][0])
+    return (normalize_ui,)
+
+
+@app.cell
+def _(closest, cluster, cluster_ui, normalize_ui, plt):
     # clustering tab plot
     plt.figure(figsize=(10,7))
     plt.clf()
     for x in closest:
-        plt.plot(cluster.M[x], label=f"{cluster.C[x]}")
-    plt.gca().set_ylabel("Mean normalized loadshape (pu.MW)")
+        plt.plot(normalize_ui.value[x], label=f"{cluster.C[x]}")
+    plt.gca().set_ylabel("Mean loadshape")
     plt.legend()
     plt.gca().set_xlabel("Hour of day (UTC)")
-    plt.title(f"k-Means cluster medoids with $k={cluster_ui.value}$")
+    plt.title(f"$k$-Means cluster medoids ($k={cluster_ui.value}$)")
     plt.grid()
     clusters = plt.gca()
     return (clusters,)
@@ -122,18 +129,12 @@ def _(cluster, cluster_ui, default, label_ui, members, mo, state_ui):
 
 
 @app.cell
-def _(Total, closest, cluster, cluster_ui, kmeans, np):
+def _(closest, cluster, cluster_ui, kmeans, np):
     # save medoids data to file for later processing
     medoids = [cluster.C[x] for x in closest]
     weights = np.zeros(cluster_ui.value)
     for _n, _m in enumerate(kmeans.labels_):
         weights[_m] += cluster.W[_n]
-    # [print(medoids,weights,cluster_ui.value)]
-    # pd.DataFrame(
-    #     {"county": medoids, "weight": (weights / weights.sum()).round(3)}
-    #     ).to_csv("tsgam_test/medoids.csv", index=False, header=True)
-    for _county in medoids:
-        Total(_county.split(" ")[-1]," ".join(_county.split(" ")[:-1])).to_csv(f"tsgam_test/{_county}.csv")
     return
 
 
@@ -161,7 +162,13 @@ def _(county_ui, label_ui, mo, state_ui):
 
 
 @app.cell
-def _(county, data, np, plt, seaborn, state, variable_ui):
+def _(cluster, mo):
+    svd_ui = mo.ui.slider(label="$U$-column",steps=range(cluster.U.shape[1]//24),value=0,debounce=True,show_value=True)
+    return (svd_ui,)
+
+
+@app.cell
+def _(county, data, np, plt, seaborn, state, svd_ui, variable_ui):
     # plot data for selected state and county
     load = np.reshape(data.elec_total_MW.values,(365,24))
     _u,_d,_l = np.linalg.svd(load.T)
@@ -170,11 +177,11 @@ def _(county, data, np, plt, seaborn, state, variable_ui):
     plt.suptitle(f"{state} {county}")
 
     plt.subplot(1,2,2)
-    plt.plot(_u[:,0])
+    plt.plot(_u[:,svd_ui.value])
     plt.grid()
     plt.gca().set_xlabel("Hour of day (UTC)")
-    plt.gca().set_ylabel("U[:,0]")
-    plt.title(f"{variable_ui.value} decomposition $U_0$")
+    plt.gca().set_ylabel(f"U[:,{svd_ui.value}]")
+    plt.title(f"{variable_ui.value} decomposition $U_{svd_ui.value}$")
 
     plt.subplot(1,2,1)
     ax = seaborn.heatmap(load)
