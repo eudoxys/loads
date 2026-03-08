@@ -180,8 +180,6 @@ flowchart TD
 
   - `loads.total`: total loads by sector
 
-  - `loads.tsgam_estimator`: time-series general additive model
-
   - `loads.units`: 2020-era residential units data
 
 Example
@@ -233,13 +231,13 @@ Package information
 from loads.agriculture import Agriculture
 from loads.calibrate import Calibrate
 from loads.cli import main
+from loads.cluster import Cluster
 from loads.comstock import COMstock
 from loads.commercial import Commercial
 from loads.floorarea import Floorarea
 from loads.industry import Industry
 from loads.resstock import RESstock
 from loads.residential import Residential
-from loads.tsgam_estimator import TsgamEstimator
 from loads.total import Total
 from loads.units import Units
 
