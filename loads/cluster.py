@@ -15,7 +15,7 @@ clusters based on total electric load:
 
 The output is
 
-    {'Kings CA', 'Maricopa AZ', 'Pierce WA', 'Los Angeles CA', 'Lewis and Clark MT', 'Apache AZ'}
+    ['Riverside CA', 'Orange CA', 'Los Angeles CA', 'King WA', 'Salt Lake UT', 'Maricopa AZ']
 
 """
 
