@@ -1,6 +1,7 @@
 """County loadshape clustering
 
-This notebook performs clustering of WECC counties based on climate and load data.
+This [marimo](https://marimo.io/) notebook performs clustering of WECC
+counties based on climate and load data.
 
 Clustering is performed based on the singular value decomposition (SVD) of the
 specified load variable, which can be either one of the exogenous weather
