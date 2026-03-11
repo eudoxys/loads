@@ -1,15 +1,42 @@
+"""County loadshape clustering
+
+This notebook performs clustering of WECC counties based on climate and load data.
+
+Clustering is performed based on the singular value decomposition (SVD) of the
+specified load variable, which can be either one of the exogenous weather
+variables or the endogenous load variables.  The number of cluster can be
+selected as well.
+
+- The **Load data** tab presents a "heat map" of MW loads for the selected
+  county with hour of day on the horizontal axis and day of year on the
+  vertical axis.  The $U$ matrix of the SVD result is also shown with a
+  control to select which column of $U$ is plotted. If a particular cluster
+  is selected only the counties in that cluster are listed and the medoid
+  county is shown by default.
+
+- The **Cluster medoids** tab plots the medoid county loadshape for each
+  cluster, either as raw (MW), mean-normalized (pu.MW), or peak-normalized
+  (pu.MW).
+
+- The **County assignments** tab provides a downloadable table of which
+  counties are assigned to each cluster.
+
+- The **County map** tab displays a map of the US showing which counties were
+  grouped together in clusters. Note that the map can be very large and may
+  take a few seconds to display.
+"""
+
 import marimo
 
 __generated_with = "0.20.2"
-app = marimo.App(width="medium")
+app = marimo.App(width="medium", app_title="County Loadshape Clustering")
 
 
 @app.cell
-def _(mo):
-    mo.md(r"""
-    This notebook performs clustering of WECC counties based on climate and load data.
-    """)
-    return
+def _(__doc__, mo):
+    docs = __doc__.split("\n")
+    mo.md(f"# {docs[0]}")
+    return (docs,)
 
 
 @app.cell
@@ -23,13 +50,25 @@ def _(Total, cluster_ui, mo):
 
 
 @app.cell
-def _(clusters, county_loads, members_ui, mo, normalize_ui, selection, svd_ui):
+def _(
+    clusters,
+    county_loads,
+    docs,
+    fig,
+    members_ui,
+    mo,
+    normalize_ui,
+    selection,
+    svd_ui,
+):
     # main tabs UI
     mo.ui.tabs(
         {
             "Load data": mo.vstack([mo.hstack([selection,svd_ui]), county_loads]),
             "Cluster medoids": mo.vstack([normalize_ui,clusters]),
             "County assignments": members_ui,
+            "County map": fig,
+            "Help": mo.md("\n".join(docs[1:])),
         },
         lazy=True,
     )
@@ -39,12 +78,11 @@ def _(clusters, county_loads, members_ui, mo, normalize_ui, selection, svd_ui):
 @app.cell
 def _(Cluster, Counties, cluster_ui, mo, np, variable_ui):
     # counties clustering
-    counties = [
-        f"{y} {x}"
-        for x, y in Counties(use_index="RO", selection="WECC")[
-            ["ST", "COUNTY"]
-        ].values
-    ]
+    counties = {
+        f"{y} {x}":z
+        for x, y, z in Counties(use_index="RO", selection="WECC")[
+            ["ST", "COUNTY","FIPS"]
+        ].values}
     with mo.status.progress_bar(
         collection=counties, title="Reading county data...", remove_on_exit=True
     ) as _bar:
@@ -62,7 +100,7 @@ def _(Cluster, Counties, cluster_ui, mo, np, variable_ui):
 @app.cell
 def _(mo):
     # clustering UI
-    cluster_ui = mo.ui.slider(start=1,stop=10,step=1,debounce=True,value=6,label="Number of k-means clusters:")
+    cluster_ui = mo.ui.slider(start=1,stop=10,step=1,debounce=True,show_value=True,value=6,label="Number of k-means clusters:")
     return (cluster_ui,)
 
 
@@ -104,7 +142,7 @@ def _(cluster, mo, pd):
 def _(closest, cluster, counties, label_ui):
     # members of clusters
     members = {n+1:m for n,m in enumerate(cluster.members)}
-    members[None] = counties
+    members[None] = list(counties)
     default = members[None][0] if label_ui.value is None else cluster.C[closest[label_ui.value-1]]
     return default, members
 
@@ -135,7 +173,7 @@ def _(closest, cluster, cluster_ui, kmeans, np):
     weights = np.zeros(cluster_ui.value)
     for _n, _m in enumerate(kmeans.labels_):
         weights[_m] += cluster.W[_n]
-    return
+    return (medoids,)
 
 
 @app.cell
@@ -194,6 +232,43 @@ def _(county, data, np, plt, seaborn, state, svd_ui, variable_ui):
 
 
 @app.cell
+def _(cluster, counties, medoids, pd):
+    from urllib.request import urlopen
+    import json
+
+    with urlopen(
+        "https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json"
+    ) as response:
+        _counties = json.load(response)
+
+    df = pd.read_csv(
+        "https://raw.githubusercontent.com/plotly/datasets/master/fips-unemp-16.csv",
+        dtype={"fips": str},
+    )
+    _clusters = dict(zip(counties.values(),cluster.cluster.labels_))
+    _df = df.set_index("fips")
+    _found = [x for x in _df.index if x in _clusters.keys()]
+    _df.loc[_found,"cluster"] = [_clusters[x] for x in _found]
+    _df.dropna(inplace=True)
+    _df.drop("unemp",axis=1,inplace=True)
+    _df["cluster"] = [medoids[x] for x in _df["cluster"].astype(int)]
+    _df["county"] = pd.DataFrame({"county":counties.keys()},index=counties.values())
+    import plotly.express as px
+
+    fig = px.choropleth(
+        _df.reset_index(),
+        geojson=_counties,
+        locations="fips",
+        hover_data=["county","cluster"],
+        color="cluster",
+        scope="usa",
+        labels={"cluster": "Cluster","county":"County","fips":"FIPS"},
+    )
+    fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0});
+    return (fig,)
+
+
+@app.cell
 def _():
     # modules
     import marimo as mo
@@ -205,8 +280,9 @@ def _():
     from loads import Total
     from loads import Cluster
     from fips import Counties
+    from cluster_review import __doc__
 
-    return Cluster, Counties, Total, mo, np, pd, plt, seaborn
+    return Cluster, Counties, Total, __doc__, mo, np, pd, plt, seaborn
 
 
 if __name__ == "__main__":
