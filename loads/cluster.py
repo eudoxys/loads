@@ -102,31 +102,39 @@ class Cluster:
         if refresh:
             self.cache = {}
 
-        self.C = list(counties) # list of counties
+        self.C = list(counties)
         """County names"""
 
-        self.U = [] # u[:,0] matrix from SVD of column
+        self.U = []
         """Collected $U_0$ column vectors from county data SVD"""
 
-        self.D = [] # normalized power spectrum of cluster
+        self.D = []
         """Collected normalized $D$ values from county data SVD"""
         
-        self.W = [] # county weights
+        self.W = []
         """County energy weights"""
 
-        self.L = [] # county mean loadshape
+        self.L = []
         """County mean loadshape"""
 
-        self.M = [] # county mean normalized loadshape
+        self.M = []
         """County mean-normalized mean loadshape"""
 
-        self.P = [] # county max normalized loadshape
+        self.Mnorm = []
+        """County loadshape means"""
+
+        self.P = []
         """County max-normalized mean loadshape"""
 
-        self.K = 1 # power spectrum threshold value (columns of U)
+        self.Pnorm = []
+        """County loadshape peaks"""
+
+        self.K = 1
         """Power spectrum threshold value"""
 
         for county in counties:
+
+            # load data
             if progress:
                 progress(county)
             state_abbr = county.split(" ")[-1]
@@ -143,6 +151,7 @@ class Cluster:
             
             u,d,_ = np.linalg.svd(load)
             
+            # evaluate power spectrum
             dsum = np.sum(d)
             if dsum > 0:
                 self.D.append(d/dsum)
@@ -151,18 +160,25 @@ class Cluster:
             else:
                 self.D.append(np.array([1.0]+[0.0]*(len(d)-1)))
                 k = 1
+
+            # get U
             self.K = max(self.K,len(self.D[-1]) if k is None else k)
             self.U.append(u)
 
+            # get mean load and normalize mean loadshape
             m = np.mean(load,axis=1)
             self.L.append(m)
             mm = np.mean(m)
             self.M.append(m / mm if mm != 0 else 0.0)
+            self.Mnorm.append(mm)
 
+            # get peak load and normalize peak loadshape
             p = np.max(load,axis=1)
             pp = np.max(load)
             self.P.append(p / pp if pp != 0 else 0.0)
+            self.Pnorm.append(pp)
 
+            # save county weight
             self.W.append(float(load.sum()/1e6))
 
         self.U = np.array([x[:,0:self.K].flatten() for x in self.U])
