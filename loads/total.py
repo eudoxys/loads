@@ -287,7 +287,7 @@ class Total(pd.DataFrame):
 
           - `freq`: date/time range interval
 
-          - `samples`: number of AR samples to generation (`0` predicts, `1`
+          - `samples`: number of AR samples to generate (`0` predicts, `1`
             samples, `>1` samples with percentile, `None` training only if
             year is training year otherwise predicts)
 
@@ -325,7 +325,10 @@ class Total(pd.DataFrame):
 
         if samples > 1:
 
-            assert 0<=percentile<=1, f"{percentile=} must be between 0 and 1"
+            if percentile is None:
+                return super().__init__(Total._get_samples(state,county,date_range,X,Y,samples,refresh))
+
+            assert 0<=percentile<=100, f"{percentile=} must be between 0 and 1"
 
             # multiple samples uses percentile
             return super().__init__(Total._get_percentile(state,county,date_range,X,Y,samples,percentile,refresh))
@@ -522,44 +525,23 @@ class Total(pd.DataFrame):
         ) -> pd.DataFrame:
         """Get the prediction for the specified date range"""
         
-        cache = Cache(package="loads",version=0,path=[state,county,
-            f"predict_{Y}_{date_range.min()}_{date_range.max()}.csv.gz"])
+        # get estimator
+        estimator = cls._get_estimator(state,county,X,Y,refresh)
 
-        data = None
-        if cache.exists() and not refresh:
+        # get the exogenous data
+        data = cls._get_weather(state,county,date_range)[X]
 
-            try:
-                data = pd.read_csv(cache.pathname,index_col=0,parse_dates=[0])
-                _logger.debug(f"{cache=} ok")
-            except Exception as err:
-                cache.delete()
-                _logger.debug(f"{cache=} {err}")
-        else:
-            _logger.debug(f"{cache=} (re)generation required")
+        # get the prediction
+        data[Y] = cls._postprocess(estimator.predict(data[X]),Y)
 
-        if data is None:
-
-            # get estimator
-            estimator = cls._get_estimator(state,county,X,Y,refresh)
-
-            # get the exogenous data
-            data = cls._get_weather(state,county,date_range)[X]
-
-            # get the prediction
-            data[Y] = cls._postprocess(estimator.predict(data[X]),Y)
-
-            # remove lag windows from head and tail of training data
-            headlag = 0
-            taillag = 0
-            for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
-                headlag = -min(min(config.lags)+1,headlag)
-                taillag = -max(max(config.lags),taillag)
-            data.loc[:data.index[headlag],Y] = float('nan')
-            data.loc[data.index[taillag]:,Y] = float('nan')
-
-            data.to_csv(cache.pathname,index=True,header=True,
-                compression="gzip" if cache.pathname.endswith(".gz") else None,
-                )
+        # remove lag windows from head and tail of training data
+        headlag = 0
+        taillag = 0
+        for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
+            headlag = -min(min(config.lags)+1,headlag)
+            taillag = -max(max(config.lags),taillag)
+        data.loc[:data.index[headlag],Y] = float('nan')
+        data.loc[data.index[taillag]:,Y] = float('nan')
 
         return data
 
@@ -572,46 +554,83 @@ class Total(pd.DataFrame):
         Y:str,
         refresh:bool=False,
         ) -> pd.DataFrame:
-        """Get the prediction for the specified date range"""
+        """Get the AR samples for the specified date range"""
         
-        cache = Cache(package="loads",version=0,path=[state,county,
-            f"sample_{Y}_{date_range.min()}_{date_range.max()}.csv.gz"])
+        # get estimator
+        estimator = cls._get_estimator(state,county,X,Y,refresh)
 
-        data = None
-        if cache.exists() and not refresh:
+        # get the exogenous data
+        data = cls._get_weather(state,county,date_range)[X]
 
-            try:
-                data = pd.read_csv(cache.pathname,index_col=0,parse_dates=[0])
-                _logger.debug(f"{cache=} ok")
-            except:
-                cache.delete()
-                _logger.debug(f"{cache=} {err}")
-        else:
-            _logger.debug(f"{cache=} (re)generation required")
+        # get the samples
+        data[Y] = cls._postprocess(estimator.sample(data[X])[0],Y)
 
-        if data is None:
+        # remove lag windows from head and tail of training data
+        headlag = 0
+        taillag = 0
+        for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
+            headlag = -min(min(config.lags)+1,headlag)
+            taillag = -max(max(config.lags),taillag)
+        data.loc[:data.index[headlag],Y] = float('nan')
+        data.loc[data.index[taillag]:,Y] = float('nan')
 
-            # get estimator
-            estimator = cls._get_estimator(state,county,X,Y,refresh)
+        return data
 
-            # get the exogenous data
-            data = cls._get_weather(state,county,date_range)[X]
+    @classmethod
+    def _get_samples(cls,
+        state:str,
+        county:str,
+        date_range:pd.DatetimeIndex,
+        X:str,
+        Y:str,
+        n_samples:int,
+        refresh:bool=False,
+        ) -> pd.DataFrame:
+        """Get the AR samples for the specified date range"""
+        
+        # get estimator
+        estimator = cls._get_estimator(state,county,X,Y,refresh)
 
-            # get the samples
-            data[Y] = cls._postprocess(estimator.sample(data[X])[0],Y)
+        # get the exogenous data
+        data = cls._get_weather(state,county,date_range)[X]
 
-            # remove lag windows from head and tail of training data
-            headlag = 0
-            taillag = 0
-            for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
-                headlag = -min(min(config.lags)+1,headlag)
-                taillag = -max(max(config.lags),taillag)
-            data.loc[:data.index[headlag],Y] = float('nan')
-            data.loc[data.index[taillag]:,Y] = float('nan')
+        # get the samples
+        samples = [data]
+        for n,sample in enumerate(estimator.sample(data[X],n_samples=n_samples)):
+            samples.append(pd.DataFrame(
+                data={f"sample_{n}":cls._postprocess(sample,Y)},
+                index=data.index),
+            )
+        data = pd.concat(samples,axis=1).copy() # copy avoids coming fragmentation warning
 
-            data.to_csv(cache.pathname,index=True,header=True,
-                compression="gzip" if cache.pathname.endswith(".gz") else None,
-                )
+        # remove lag windows from head and tail of training data
+        headlag = 0
+        taillag = 0
+        for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
+            headlag = -min(min(config.lags)+1,headlag)
+            taillag = -max(max(config.lags),taillag)
+        data.loc[:data.index[headlag],Y] = float('nan')
+        data.loc[data.index[taillag]:,Y] = float('nan')
+
+        return data
+
+    @classmethod
+    def _get_percentile(cls,
+        state:str,
+        county:str,
+        date_range:pd.DatetimeIndex,
+        X:str,
+        Y:str,
+        n_samples:int,
+        percentile:int,
+        refresh:bool=False,
+        ) -> pd.DataFrame:
+        """Get the AR sample at specified percentile for the specified date range"""
+        
+        data = cls._get_samples(state,county,date_range,X,Y,n_samples,refresh)
+        columns = [x for x in data.columns if x.startswith("sample_")]
+        data[Y] = np.percentile(data[columns],percentile,axis=1)
+        data.drop(columns,inplace=True,axis=1)
 
         return data
 
@@ -713,12 +732,14 @@ if __name__ == "__main__":
     
     pd.options.display.max_columns = None
     pd.options.display.width = None
-    # pd.options.display.max_rows = None
+    pd.options.display.max_rows = None
 
-    refresh = "--refresh" in sys.argv
+    refresh = True # "--refresh" in sys.argv
     debug = "--debug" in sys.argv
     plot = "--plot" in sys.argv
     show = "--show" in sys.argv
+
+    test_variables = ["elec_total_MW"]
 
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
     
@@ -737,7 +758,7 @@ if __name__ == "__main__":
 
     for state,county in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY"]].values:
 
-        for variable in ["elec_total_MW","elec_dg_MW"]:
+        for variable in test_variables:
 
             try:
 
@@ -767,10 +788,14 @@ if __name__ == "__main__":
                     columns = Total.EXOGENOUS_VARIABLES[variable]+[variable]
                     tsgam = Total(state,county,Y=variable,date_range=full_range,samples=0)[columns]\
                         .rename({variable:"predict"},axis=1)
-                    tsgam["sample"] = Total(state,county,Y=variable,date_range=full_range,samples=1)[[variable]]
+                    tsgam["sample"] = Total(state,county,Y=variable,date_range=full_range,samples=1000,percentile=95)[[variable]]
                     result = pd.concat([result,tsgam])
                     
                     result.index.name = "timestamp"
+
+                    print(result)
+                    quit()
+                    
                     os.makedirs(os.path.split(file)[0],exist_ok=True)
                     result.round(3).to_csv(file,index=True,header=True)
 
