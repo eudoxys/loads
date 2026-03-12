@@ -1,16 +1,3 @@
-# TSGAM
-
-- [ ] Normalize dependent variable to max
-
-- [ ] Process TSGAM using `temperature_degF` and `humidity_pc` exogenous variables
-
-- [ ] Add Bennet's holdout algorithm
-
-- [ ] Find optimal models for medoid counties
-
-- [ ] Check optimal models for random counties to see if the match medoid county optimal models
-
-
 # Totals
 
 - [x] Read residential, commercial, industrial, and agricultural load data from NREL
@@ -37,3 +24,15 @@
 - [x] Cluster review notebook
 
 - [x] Generate `tests/clusters.csv` for all counties, all total fields, for k from 2 to 10
+
+# TSGAM
+
+- [ ] Normalize dependent variable to max
+
+- [ ] Process TSGAM using `temperature_degF` and `humidity_pc` exogenous variables
+
+- [ ] Add Bennet's holdout algorithm
+
+- [ ] Find optimal models for medoid counties
+
+- [ ] Check optimal models for random counties to see if the match medoid county optimal models
