@@ -174,7 +174,7 @@ def _(closest, cluster, cluster_ui, kmeans, np):
     weights = np.zeros(cluster_ui.value)
     for _n, _m in enumerate(kmeans.labels_):
         weights[_m] += cluster.W[_n]
-    return (medoids,)
+    return
 
 
 @app.cell
@@ -233,39 +233,31 @@ def _(county, data, np, plt, seaborn, state, svd_ui, variable_ui):
 
 
 @app.cell
-def _(cluster, counties, medoids, pd):
-    from urllib.request import urlopen
-    import json
-
+def _(cluster, counties, json, pd, px, urlopen):
+    # county map
     with urlopen(
         "https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json"
     ) as response:
         _counties = json.load(response)
 
-    df = pd.read_csv(
-        "https://raw.githubusercontent.com/plotly/datasets/master/fips-unemp-16.csv",
-        dtype={"fips": str},
+    _df = pd.DataFrame(
+        {
+            "fips": counties.values(),
+            "county": counties.keys(),
+            "cluster": [cluster.medoids[x] for x in cluster.cluster.labels_],
+        }
     )
-    _clusters = dict(zip(counties.values(),cluster.cluster.labels_))
-    _df = df.set_index("fips")
-    _found = [x for x in _df.index if x in _clusters.keys()]
-    _df.loc[_found,"cluster"] = [_clusters[x] for x in _found]
-    _df.dropna(inplace=True)
-    _df.drop("unemp",axis=1,inplace=True)
-    _df["cluster"] = [medoids[x] for x in _df["cluster"].astype(int)]
-    _df["county"] = pd.DataFrame({"county":counties.keys()},index=counties.values())
-    import plotly.express as px
 
-    fig = px.choropleth(
-        _df.reset_index(),
+    fig = px.choropleth(_df,
         geojson=_counties,
         locations="fips",
-        hover_data=["county","cluster"],
+        hover_data={"county":True, "cluster":True, "fips":False},
         color="cluster",
         scope="usa",
-        labels={"cluster": "Cluster","county":"County","fips":"FIPS"},
+        labels={"cluster": "Cluster", "county": "County", "fips":"FIPS"},
     )
-    fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0});
+    fig.update_geos(center={"lat":40,"lon":-115},projection_scale=1,lonaxis_range=[-125,-100])
+    fig.update_layout(height=500,width=800,margin={"r": 0, "t": 0, "l": 0, "b": 0});
     return (fig,)
 
 
@@ -281,9 +273,25 @@ def _():
     from loads import Total
     from loads import Cluster
     from fips import Counties
+    from urllib.request import urlopen
+    import json
+    import plotly.express as px
     from cluster_review import __doc__
 
-    return Cluster, Counties, Total, __doc__, mo, np, pd, plt, seaborn
+    return (
+        Cluster,
+        Counties,
+        Total,
+        __doc__,
+        json,
+        mo,
+        np,
+        pd,
+        plt,
+        px,
+        seaborn,
+        urlopen,
+    )
 
 
 if __name__ == "__main__":
