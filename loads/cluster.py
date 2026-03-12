@@ -1,3 +1,5 @@
+# pylint: disable=line-too-long
+
 """County clustering
 
 Example
@@ -19,6 +21,8 @@ The output is
 
 """
 
+# pylint: enable=line-too-long
+
 from typing import Callable
 
 import pandas as pd
@@ -30,6 +34,7 @@ from loads.total import Total
 class Cluster:
     """County clustering class implementation"""
 
+    # pylint: disable=too-many-instance-attributes
     RANDOM_STATE=0
     """Initial state of random number generator for kmeans clustering algorithm"""
 
@@ -39,6 +44,7 @@ class Cluster:
     cache = {}
 
     def __init__(self,
+        # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         counties:list,
         column:str,
         threshold:int=0.99,
@@ -102,6 +108,8 @@ class Cluster:
         if refresh:
             self.cache = {}
 
+        # pylint: disable=invalid-name
+
         self.C = list(counties)
         """County names"""
 
@@ -110,7 +118,7 @@ class Cluster:
 
         self.D = []
         """Collected normalized $D$ values from county data SVD"""
-        
+
         self.W = []
         """County energy weights"""
 
@@ -132,6 +140,32 @@ class Cluster:
         self.K = 1
         """Power spectrum threshold value"""
 
+        # read county data
+        self.loaddata(counties,column,threshold,preprocess,progress,refresh)
+
+        # pylint: enable=invalid-name
+
+        self.cluster = None
+        """K-means clustering object (see `numpy.linalg.kmeans`)"""
+
+        self.centroids = None
+        """K-means clustering centroid vectors"""
+
+        self.closest = None
+        """K-means clustering closest cluster"""
+
+        self.medoids = None
+        """K-means clustering medoid county name"""
+
+        self.members = None
+        """K-means clustering member county names"""
+
+        if progress:
+            progress(None)
+
+    def loaddata(self,counties,column,threshold,preprocess,progress,refresh):
+        # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+        """Read county data for the specified column"""
         for county in counties:
 
             # load data
@@ -139,7 +173,7 @@ class Cluster:
                 progress(county)
             state_abbr = county.split(" ")[-1]
             county_name = " ".join(county.split(" ")[:-1])
-            if county in self.cache:
+            if county in self.cache and not refresh:
                 data = self.cache[county]
             else:
                 data = Total(state_abbr,county_name).fillna(0)
@@ -148,9 +182,9 @@ class Cluster:
             if preprocess:
                 data = preprocess(data)
             load = np.reshape(data.values,(365,24)).T
-            
+
             u,d,_ = np.linalg.svd(load)
-            
+
             # evaluate power spectrum
             dsum = np.sum(d)
             if dsum > 0:
@@ -182,24 +216,6 @@ class Cluster:
             self.W.append(float(load.sum()/1e6))
 
         self.U = np.array([x[:,0:self.K].flatten() for x in self.U])
-
-        self.cluster = None
-        """K-means clustering object (see `numpy.linalg.kmeans`)"""
-        
-        self.centroids = None
-        """K-means clustering centroid vectors"""
-
-        self.closest = None
-        """K-means clustering closest cluster"""
-
-        self.medoids = None
-        """K-means clustering medoid county name"""
-
-        self.members = None
-        """K-means clustering member county names"""
-
-        if progress:
-            progress(None)
 
     def kmeans(self,
         n_clusters:int,
@@ -244,42 +260,51 @@ class Cluster:
             print("EXCEPTION:",err)
             print(self.U)
             raise
-        
+
         self.centroids = self.cluster.cluster_centers_.tolist()
-        self.closest, _ = sklearn.metrics.pairwise_distances_argmin_min(self.cluster.cluster_centers_, self.U)
+        self.closest, _ = sklearn.metrics.pairwise_distances_argmin_min(
+                self.cluster.cluster_centers_,
+                self.U,
+                )
         self.medoids = [self.C[x] for x in self.closest]
-        self.members = [[self.C[m] for m,x in enumerate(self.cluster.labels_) if x == n] 
+        self.members = [[self.C[m] for m,x in enumerate(self.cluster.labels_) if x == n]
             for n in range(n_clusters)]
 
         return self.cluster
 
 if __name__ == '__main__':
+
+    # pylint: disable=pointless-string-statement
+
     """
     This test script generates tests/clusters.csv of all WECC counties for k
     in [2..10]
     """
+
     from fips import Counties
     counties_list = [f"{y} {x}" for x,y in Counties(use_index="RO", selection="WECC")[
         ["ST", "COUNTY"]
         ].values]
 
     result = []
-    max_k = 10
+    MAX_K = 10
     columns = list(Total.COLUMNS.keys())
     print("Reading county data",end="...",flush=True)
-    for column in columns:
+    for _column in columns:
 
-        cluster = Cluster(counties_list,column=column,preprocess=np.abs,progress=(lambda x:print(end=".",flush=True) if x else print(flush=True)) if column == columns[0] else None)
-        for k in range(2,max_k+1):
+        cluster = Cluster(counties_list,column=_column,preprocess=np.abs)
+        for _k in range(2,MAX_K+1):
 
-            cluster.kmeans(n_clusters=k)
+            cluster.kmeans(n_clusters=_k)
             for medoid,members in zip(cluster.medoids,cluster.members):
-                states = [x.split(" ")[-1] for x in members]
-                counties = [" ".join(x.split(" ")[:-1]) for x in members]
-                df = pd.DataFrame({"state":states,"county":counties})
-                df["column"] = column
-                df["k"] = k
+                _states = [x.split(" ")[-1] for x in members]
+                _counties = [" ".join(x.split(" ")[:-1]) for x in members]
+                df = pd.DataFrame({"state":_states,"county":_counties})
+                df["column"] = _column
+                df["k"] = _k
                 df["medoid"] = medoid
                 result.append(df)
-        print(column,"ok")
-    pd.concat(result).sort_values(["state","county","column","k"]).to_csv("tests/clusters.csv",index=False,header=True)
+        print(_column,"ok")
+    pd.concat(result)\
+        .sort_values(["state","county","column","k"])\
+        .to_csv("tests/clusters.csv",index=False,header=True)
