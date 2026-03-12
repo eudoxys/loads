@@ -254,37 +254,32 @@ class Cluster:
         return self.cluster
 
 if __name__ == '__main__':
-    
+    """
+    This test script generates tests/clusters.csv of all WECC counties for k
+    in [2..10]
+    """
     from fips import Counties
-    counties = [f"{y} {x}" for x,y in Counties(use_index="RO", selection="WECC")[
+    counties_list = [f"{y} {x}" for x,y in Counties(use_index="RO", selection="WECC")[
         ["ST", "COUNTY"]
         ].values]
 
-    for column,check in {
-        "elec_total_MW": {
-            'Lewis and Clark MT',
-            'Los Angeles CA',
-            'Kings CA',
-            'Apache AZ',
-            'Pierce WA',
-            'Maricopa AZ',
-            },
-        "elec_dg_MW": {
-            'Riverside CA',
-            'Douglas OR',
-            'Contra Costa CA',
-            'Jefferson CO',
-            'Maricopa AZ',
-            'Alameda CA',
-            }
-        }.items():
-        print("Testing",column,end="",flush=True)
-        cluster = Cluster(counties,
-            column=column,
-            preprocess=np.abs,
-            progress=lambda x:print(end=".",flush=True) if x else print(flush=True),
-            )
-        cluster.kmeans(n_clusters=len(check))
-        # assert cluster.medoids == check, f"{column} medoids is not correct: {cluster.medoids=} != {check=}"
-        print(column,cluster.medoids)
+    result = []
+    max_k = 10
+    columns = list(Total.COLUMNS.keys())
+    print("Reading county data",end="...",flush=True)
+    for column in columns:
 
+        cluster = Cluster(counties_list,column=column,preprocess=np.abs,progress=(lambda x:print(end=".",flush=True) if x else print(flush=True)) if column == columns[0] else None)
+        for k in range(2,max_k+1):
+
+            cluster.kmeans(n_clusters=k)
+            for medoid,members in zip(cluster.medoids,cluster.members):
+                states = [x.split(" ")[-1] for x in members]
+                counties = [" ".join(x.split(" ")[:-1]) for x in members]
+                df = pd.DataFrame({"state":states,"county":counties})
+                df["column"] = column
+                df["k"] = k
+                df["medoid"] = medoid
+                result.append(df)
+        print(column,"ok")
+    pd.concat(result).sort_values(["state","county","column","k"]).to_csv("tests/clusters.csv",index=False,header=True)
