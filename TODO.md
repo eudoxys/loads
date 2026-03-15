@@ -27,11 +27,11 @@
 
 # TSGAM
 
-- [ ] Normalize dependent variable to max
+- [x] Normalize dependent variable to max
 
-- [ ] Process TSGAM using `temperature_degF` and `humidity_pc` exogenous variables
+- [x] Process TSGAM using `temperature_degF` and `humidity_pc` exogenous variables
 
-- [ ] Add Bennet's holdout algorithm
+- [x] Add Bennet's holdout algorithm
 
 - [ ] Find optimal models for medoid counties
 
