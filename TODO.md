@@ -6,7 +6,7 @@
 
 - [x] Aggregate counties total loads to geographic nodes such as WECC240 busses
 
-- [ ] Read solar and wind from NREL
+- [ ] Read solar and wind DG from NREL
 
 - [ ] Calculate net loads
 
