@@ -33,6 +33,6 @@
 
 - [x] Add Bennet's holdout algorithm
 
-- [ ] Find optimal models for medoid counties
+- [x] Find optimal models for medoid counties
 
-- [ ] Check optimal models for random counties to see if the match medoid county optimal models
+- [x] Check optimal models for random counties to see if the match medoid county optimal models
