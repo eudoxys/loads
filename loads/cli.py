@@ -323,7 +323,6 @@ def _plot(args,data):
         case "total":
             pd.options.display.max_columns = None
             pd.options.display.width = None
-            print(data)
             data[["elec_residential_MW","elec_commercial_MW","elec_industrial_MW",
                 "elec_agricultural_MW","elec_transportation_MW","elec_dg_MW"]].plot(
                     figsize=(20,10),
@@ -331,6 +330,7 @@ def _plot(args,data):
                     grid=True,
                     xlabel="Date & time (UTC)",
                     ylabel="Load (MW)",
+                    title=f"{args.county} {args.state} Loads"
                     )
         case "_":
             data[["elec_baseload_MW","elec_cooling_MW","elec_heating_MW","elec_dg_MW",

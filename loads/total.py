@@ -17,45 +17,47 @@ The county-level total and net loads are calculated as follows:
 ```mermaid
 flowchart TD
 
-    OpenEI ---> Industrial
-    OpenEI ---> Agricultural
-    OpenEI ---> Transportation
+    NLR --> OpenEI
+    OpenEI --> Industrial
+    OpenEI --> Agricultural
+    OpenEI --> Transportation
 
-    Energy --------> Calibration
+    EIA ---> Energy
+    Energy -------> Calibration
 
-    EIA --> Energy
-    NREL --> Weather
+    NLR --> RESstock
+    NLR --> COMstock
+    NLR ---> Weather
 
-    Calibration --> Load
-    Calibration --> DG
+    Residential --> Loads
+    Commercial --> Loads
+    Industrial --> Loads
+    Agricultural --> Loads
+    Transportation --> Loads
 
-    Residential --> TSGAM
-    Commercial --> TSGAM
 
-    NREL --> RESstock
-    NREL --> COMstock
+    Loads --> Fit
 
     RESstock --> Residential
     COMstock --> Commercial
 
+    Weather ---> Fit
     Weather --> Sample[Sample/Predict]
-    Weather ----> TSGAM
     Weather --> DG
 
-    TSGAM --> Fit(Fit)
+    subgraph TSGAM Estimator
+        Fit --> Estimator
 
-    Fit --> Estimator
+        Estimator --> Sample
 
-    Estimator --> Sample
+    end
 
-    Sample --> Calibration
+    Sample --> Total
 
-    Industrial -------> Load
-    Agricultural -------> Load
-    Transportation -------> Load
+    Total --> Calibration
+    DG --> Calibration
 
-    Load --> Net
-    DG --> Net
+    Calibration --> Net
 ```
 
 Example
@@ -118,7 +120,6 @@ from loads.commercial import Commercial
 from loads.industry import Industry
 from loads.agriculture import Agriculture
 from loads.calibrate import Calibrate
-from loads.solar_estimator import SolarEstimator
 
 _logger = logging.getLogger(__file__)
 

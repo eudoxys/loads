@@ -176,11 +176,22 @@ flowchart TD
 
   - `loads.resstock`: 2018 residential building end-use load data
 
-  - `loads.solar_estimator`: solar DG model
-
   - `loads.total`: total loads by sector
 
+  - `loads.transportation`: 2019 transportation load data
+
   - `loads.units`: 2020-era residential units data
+
+Notebooks
+---------
+
+The following `marimo` notebooks are available to review the results of
+applying the `loads` model tools on the WECC system.
+
+  - `review_clusters.py` provides a notebook to review the results of county
+    clustering
+
+  - `review_loads.py` provides a notebook to review the load data
 
 Example
 -------
@@ -228,16 +239,18 @@ Package information
     - [weather](https://github.com/eudoxys/weather/)
 """
 
+from loads.aggregate import Aggregator
 from loads.agriculture import Agriculture
 from loads.calibrate import Calibrate
 from loads.cli import main
 from loads.cluster import Cluster
-from loads.comstock import COMstock
 from loads.commercial import Commercial
+from loads.comstock import COMstock
 from loads.floorarea import Floorarea
 from loads.industry import Industry
-from loads.resstock import RESstock
 from loads.residential import Residential
+from loads.resstock import RESstock
 from loads.total import Total
+from loads.transportation import Transportation
 from loads.units import Units
 
