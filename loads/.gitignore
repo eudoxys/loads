@@ -2,3 +2,4 @@
 *_test_*.csv
 .cache*
 tests/
+tsgam_test/
