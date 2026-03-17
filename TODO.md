@@ -6,6 +6,8 @@
 
 - [x] Aggregate counties total loads to geographic nodes such as WECC240 busses
 
+- [x] Change training from {RES,COM}stock weather to NSRDB weather
+
 - [ ] Read solar and wind DG from NREL
 
 - [ ] Calculate net loads
