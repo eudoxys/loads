@@ -535,6 +535,7 @@ class Total(pd.DataFrame):
         data = cls._get_weather(state,county,date_range)[X]
 
         # get the prediction
+        data.index = pd.DatetimeIndex([str(x) for x in data.index]) # force index to dt index
         data[Y] = cls._postprocess(estimator.predict(data[X]),Y)
 
         # remove lag windows from head and tail of training data
