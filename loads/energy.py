@@ -6,6 +6,7 @@ import datetime as dt
 
 import pandas as pd
 
+from cache import Cache
 from loads.total import Total
 from fips import Counties
 
@@ -20,6 +21,7 @@ class Energy(pd.DataFrame):
         groupby="1MS",
         datetime_format=None,
         progress=None,
+        refresh=False,
         ):
         """Construct energy use data frame for a county
 
@@ -46,28 +48,38 @@ class Energy(pd.DataFrame):
         else:
             assert hasattr(counties,"__iter__"), f"counties is not iterable"
 
-        result = []
-        for n,county in enumerate(counties):
-            if progress:
-                progress(state,county,n+1,len(counties))
-            if isinstance(year,(list,tuple)):
-                assert month is None, f"month cannot be specified when multiple years are specified"
-                start = dt.datetime(year[0],1,1,0,0,0,0,dt.timezone.utc)
-                stop = dt.datetime(year[1]+1,1,1,0,0,0,0,dt.timezone.utc) - dt.timedelta(seconds=1)
-            else:
-                start = dt.datetime(year,1 if month is None else month,1,0,0,0,0,dt.timezone.utc)
-                stop = dt.datetime(
-                    year+1 if month==12 or month is None else year,
-                    1 if month==12 or month is None else month+1,
-                    1,0,0,0,0,dt.timezone.utc) - dt.timedelta(seconds=1)
+        cache = Cache(package="loads",version=0,path=[state,f"T_{min(year)}-{max(year)}_{month}_{groupby}.csv.gz"])
+        energy = None
+        if cache.exists() and not refresh:
+            try:
+                energy = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
+            except Exception as err:
+                cache.delete()
+        if energy is None:
+            result = []
+            for n,county in enumerate(counties):
+                if progress:
+                    progress(state,county,n+1,len(counties))
+                if isinstance(year,(list,tuple)):
+                    assert month is None, f"month cannot be specified when multiple years are specified"
+                    start = dt.datetime(year[0],1,1,0,0,0,0,dt.timezone.utc)
+                    stop = dt.datetime(year[1]+1,1,1,0,0,0,0,dt.timezone.utc) - dt.timedelta(seconds=1)
+                else:
+                    start = dt.datetime(year,1 if month is None else month,1,0,0,0,0,dt.timezone.utc)
+                    stop = dt.datetime(
+                        year+1 if month==12 or month is None else year,
+                        1 if month==12 or month is None else month+1,
+                        1,0,0,0,0,dt.timezone.utc) - dt.timedelta(seconds=1)
 
-            total = Total(state,county,date_range=pd.date_range(start,stop,freq="1h"),samples=0)
-            energy = total.drop("temperature_degF",axis=1).resample(groupby).sum()
-            energy.columns = [f"{county} {state}"]
-            if datetime_format:
-                energy.index = [x.strftime(datetime_format) for x in energy.index]
-            result.append(energy)
-        super().__init__(pd.concat(result,axis=1))
+                total = Total(state,county,date_range=pd.date_range(start,stop,freq="1h"),samples=0)
+                energy = total.drop("temperature_degF",axis=1).resample(groupby).sum()
+                energy.columns = [f"{county} {state}"]
+                result.append(energy)
+            energy = pd.concat(result,axis=1)
+            energy.to_csv(cache.pathname,index=True,header=True,compression="gzip" if cache.pathname.endswith(".gz") else None)
+        if datetime_format:
+            energy.index = [x.strftime(datetime_format) for x in energy.index]
+        super().__init__(energy)
 
 
 if __name__ == '__main__':
