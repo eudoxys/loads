@@ -282,15 +282,17 @@ class Total(pd.DataFrame):
 
           - `county`: county for which to aggregate loads
 
-          - `start`: start of date/time range
+          - `Y`: column to use for Y values
 
-          - `end`: end of date/time range
+          - `X`: column to use for X values (defaults to exogenous variables of
+            `Y`, see `loads.total.EXOGENOUS_VARIABLES`)
 
-          - `freq`: date/time range interval
+          - `date_range`: date/time index to use
 
           - `samples`: number of AR samples to generate (`0` predicts, `1`
-            samples, `>1` samples with percentile, `None` training only if
-            year is training year otherwise predicts)
+            samples, `>1` samples with percentile, `None` for training data)
+
+          - `percentile`: percentile to use when `samples` > 1
 
           - `holdout`: index of records to hold out of training for testing
 
@@ -794,9 +796,6 @@ if __name__ == "__main__":
                     
                     result.index.name = "timestamp"
 
-                    print(result)
-                    quit()
-                    
                     os.makedirs(os.path.split(file)[0],exist_ok=True)
                     result.round(3).to_csv(file,index=True,header=True)
 
