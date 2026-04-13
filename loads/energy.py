@@ -79,12 +79,13 @@ if __name__ == '__main__':
     pd.options.display.max_rows = None
     pd.options.display.width = None
 
-    states = sorted(set(Counties(use_index=["SYSTEM"],selection=["WECC"],set_index=["ST"]).index))
-    for state in states:
+    states = set(Counties(use_index=["SYSTEM"],selection=["WECC"],set_index=["ST"]).index)
+    for n,state in enumerate(sorted(states)):
 
+        print(f"Processing {state} ({n+1} of {len(states)} states in WECC)...",flush=True)
         energy = Energy(state,None,[2018,2022],
             datetime_format="%b %Y",
-            progress=lambda *x: print(f"Processing {x[1]} {x[0]} ({x[2]} of {x[3]})...",flush=True)
+            progress=lambda *x: print(f"  {x[1]} {x[0]} ({x[2]} of {x[3]} counties in {state})...",flush=True)
             )
         total = energy.sum(axis=1)
         for column in energy.columns:
@@ -92,7 +93,6 @@ if __name__ == '__main__':
         print(energy)
         # print(energy.sum(axis=1).values)
 
-        break
         # energy.plot(
         #     figsize=(20,10),
         #     kind='bar',
