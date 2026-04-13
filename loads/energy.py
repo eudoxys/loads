@@ -75,6 +75,10 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
 
+    pd.options.display.max_columns = None
+    pd.options.display.max_rows = None
+    pd.options.display.width = None
+
     states = sorted(set(Counties(use_index=["SYSTEM"],selection=["WECC"],set_index=["ST"]).index))
     for state in states:
 
@@ -82,8 +86,13 @@ if __name__ == '__main__':
             datetime_format="%b %Y",
             progress=lambda *x: print(f"Processing {x[1]} {x[0]} ({x[2]} of {x[3]})...",flush=True)
             )
-        print(energy / energy.sum(axis=1))
+        total = energy.sum(axis=1)
+        for column in energy.columns:
+            energy[column] /= total
+        print(energy)
+        # print(energy.sum(axis=1).values)
 
+        break
         # energy.plot(
         #     figsize=(20,10),
         #     kind='bar',
