@@ -42,7 +42,7 @@ class Energy(pd.DataFrame):
         """
 
         if counties is None:
-            counties = Counties(use_index=["SYSTEM"],selection=["WECC"],set_index=["ST","COUNTY"]).loc[state].index.values
+            counties = Counties(use_index=["ST"],selection=[state],set_index=["COUNTY"]).index.values
         elif isinstance(counties,str):
             counties = [counties]
         else:
