@@ -200,13 +200,13 @@ class Total(pd.DataFrame):
     """Time-series General Additive Model estimator configuration"""
 
     EXOGENOUS_VARIABLES = {
-        "elec_residential_MW": ["temperature_degF"],
-        "elec_commercial_MW": ["temperature_degF"],
-        "elec_total_MW": ["temperature_degF"],
+        "elec_residential_MW": ["temperature_degF","humidity_pc"],
+        "elec_commercial_MW": ["temperature_degF","humidity_pc"],
+        "elec_total_MW": ["temperature_degF","humidity_pc"],
         "elec_dg_MW": ["direct_Wpms","diffuse_Wpms"],
-        "nonelec_residential_MW": ["temperature_degF"],
-        "nonelec_commercial_MW": ["temperature_degF"],
-        "nonelec_total_MW": ["temperature_degF"],
+        "nonelec_residential_MW": ["temperature_degF","humidity_pc"],
+        "nonelec_commercial_MW": ["temperature_degF","humidity_pc"],
+        "nonelec_total_MW": ["temperature_degF","humidity_pc"],
     }
     """Exogenous variable to use for prediction variables
 
@@ -217,12 +217,13 @@ class Total(pd.DataFrame):
     """
 
     TRANSFORMATIONS = { # pre/post processors of Y values
-        "elec_residential_MW" : (np.log,np.exp),
-        "elec_commercial_MW" : (np.log,np.exp),
-        "elec_total_MW" : (np.log,np.exp),
-        "nonelec_residential_MW" : (np.log,np.exp),
-        "nonelec_commercial_MW" : (np.log,np.exp),
-        "nonelec_total_MW" : (np.log,np.exp),
+        "elec_residential_MW" : (None,None),
+        "elec_commercial_MW" : (None,None),
+        "elec_total_MW" : (None,None),
+        "elec_net_MW" : (None,None),
+        "nonelec_residential_MW" : (None,None),
+        "nonelec_commercial_MW" : (None,None),
+        "nonelec_total_MW" : (None,None),
         "elec_dg_MW": (np.negative,np.negative),
         # Notes: 
         # 1. elec_net_MW cannot be done in log domain because it can be negative
@@ -343,7 +344,7 @@ class Total(pd.DataFrame):
         """Apply preprocessing transformation to data based on name"""
         try:
             return cls.TRANSFORMATIONS[name][0](data)
-        except KeyError:
+        except (KeyError, TypeError):
             return data
 
     @classmethod
@@ -351,7 +352,7 @@ class Total(pd.DataFrame):
         """Apply postprocessing transformation to X based on Y"""
         try:
             return cls.TRANSFORMATIONS[name][1](data)
-        except KeyError:
+        except (KeyError, TypeError):
             return data
 
     @classmethod
@@ -716,7 +717,8 @@ class Total(pd.DataFrame):
     @classmethod
     def _clear_cache(cls):
         """Clear the estimator cache"""
-        cls.cache = {}
+        if not cls.cache is None:
+            cls.cache = {}
 
 
     @classmethod

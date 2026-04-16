@@ -168,6 +168,8 @@ flowchart TD
 
   - `loads.comstock`: 2018 commercial building end-use load data
 
+  - `loads.energy`: County and state-level periodic energy consumption
+
   - `loads.floorarea`: 2020-era commercial building floor area data
 
   - `loads.industry`: 2019 industrial load data
