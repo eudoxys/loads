@@ -1,6 +1,9 @@
 """Distributed generation
 
+This module processes county DG data.
 """
+
+import os
 
 import numpy as np
 import pandas as pd
@@ -9,9 +12,10 @@ from scipy.interpolate import CubicSpline
 from fips import Counties
 from weather import Weather
 from eia import Form861m
+from energy import Energy
 
 class SolarModel(pd.DataFrame):
-
+    """Solar DG model"""
     default_model = {
         "global_Wpms": (0.2,0.0),
         "diffuse_Wpms": 0.0,
@@ -38,87 +42,88 @@ class SolarModel(pd.DataFrame):
         super().__init__(data)
 
 class DG(pd.DataFrame):
-
+    """Distribution generation dataframe"""
     eia_data = {}
 
-    def __init__(self,state,county,date_range,model=None):
+    def __init__(self,
+        state:str,
+        county:str,
+        date_range:pd.DatetimeIndex=None,
+        source:str=None,
+        ):
 
         # get default solar model if needed
-        if model is None:
-            model = SolarModel
+        if source == SolarModel:
 
-        # get total
+            # get total
 
-        # get monthly solar production from EIA
-        for year,month in sorted(set((x.year,x.month) for x in dates)):
-            if (year,month) not in self.eia_data:
-                self.eia_data[(year,month)] = Form861m(year,month).set_index("state")
-        eia = pd.concat(self.eia_data.values()).reset_index().set_index(["state"])
-        eia = eia.loc[state].set_index("date").sort_index()[["tot_mwh"]]
+            # get monthly solar production from EIA
+            for year,month in sorted(set((x.year,x.month) for x in dates)):
+                if (year,month) not in self.eia_data:
+                    self.eia_data[(year,month)] = Form861m(year,month).set_index("state")
+            eia = pd.concat(self.eia_data.values()).reset_index().set_index(["state"])
+            eia = eia.loc[state].set_index("date").sort_index()[["tot_mwh"]]
 
-        # get hourly weather
-        weather = []
-        for year in sorted(set(x.year for x in dates)):
-            weather.append(Weather(state,county,year))
-        weather = pd.concat(weather)
-        weather.index = pd.DatetimeIndex(weather.index)
+            # get hourly weather
+            weather = []
+            for year in sorted(set(x.year for x in dates)):
+                weather.append(Weather(state,county,year))
+            weather = pd.concat(weather)
+            weather.index = pd.DatetimeIndex(weather.index)
 
-        # get hourly solar production from weather
-        solar = model(weather.loc[date_range])
+            # get hourly solar production from weather
+            solar = model(weather.loc[date_range])
 
-        # compute monthly solar production from weather
-        energy = solar.resample("1MS").sum()
+            # compute monthly solar production from weather
+            energy = solar.resample("1MS").sum()
 
-        # compute monthly scaling from weather to EIA
-        scale = (eia.tot_mwh/energy.solar_Wpms).to_frame(name="solar_puMW")
+            # compute monthly scaling from weather to EIA
+            scale = (eia.tot_mwh/energy.solar_Wpms).to_frame(name="solar_puMW")
 
-        # compute hourly spline of monthly scaling
-        x = [x.timestamp() for x in scale.index.to_pydatetime()]
-        y = scale.solar_puMW.values
-        spline = CubicSpline(x,y)
-        hourly = solar.solar_Wpms * spline([x.timestamp() for x in date_range.to_pydatetime()])
+            # compute hourly spline of monthly scaling
+            x = [x.timestamp() for x in scale.index.to_pydatetime()]
+            y = scale.solar_puMW.values
+            spline = CubicSpline(x,y)
+            hourly = solar.solar_Wpms * spline([x.timestamp() for x in date_range.to_pydatetime()])
+
+        elif isinstance(source,src):
+            hourly = pd.read_csv(src,index=["timestamp"],parse_dates=["timestamp"])
+            if isinstance(date_range,pd.DatetimeIndex):
+                hourly = hourly.loc[date_range]
+        else:
+            raise ValueError(f"{source} is not valid")
 
         super().__init__(hourly)
 
-if __name__ == "__main__":
+def compile(
+    source:str="wecc/dgen.csv.gz",
+    target:str="wecc/county_dg.csv.gz",
+    county_file:str="https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/data/county_nodes.csv"
+    ):
+    """Compile DG data
 
+    Arguments
+    ---------
+
+    - `source`: source node power DG data file
+
+    - `target`: target county power DG data file
+
+    - `county_file`: county energy DG data file
+
+    """
     years = [2018,2022] # year start/stop
 
-    # pd.options.display.max_rows = None
-    pd.options.display.max_columns = None
-    pd.options.display.width = None
-
-    dgen = pd.read_csv("wecc/dgen.csv.gz",index_col=[0],parse_dates=[0])
+    dgen = pd.read_csv(source,index_col=[0],parse_dates=[0])
     dgen.columns = [x.split("_")[0] for x in dgen.columns]
 
     dates = pd.date_range(f"{min(years)}-01-01 00:00:00+0000",f"{max(years)}-12-31 23:59:59+0000",freq="1h")
-
-    # # Show individual county DG based on weather
-    # import matplotlib.pyplot as plt
-    # last = None
-    # counties = Counties(use_index=["SYSTEM"],selection=["WECC"],set_index=["ST","COUNTY"])
-    # for county,data in counties[["LAT","LON","GEOHASH"]].sort_index().iterrows():
-    #     solar = DG(*county,dates)
-    #     solar.plot(figsize=(20,10))
-    #     plt.grid()
-    #     plt.xlabel("Date/Time")
-    #     plt.ylabel("DG [MW]")
-    #     plt.title(f"{county[1]} {county[0]}")
-    #     plt.show()
-
-    from fips import Counties
-    from energy import Energy
-    import numpy as np
 
     counties = Counties(use_index=["SYSTEM"],selection=["WECC"]).sort_values(["ST","COUNTY"])
     counties["COUNTY"] = [f"{y} {x}" for x,y in counties[["ST","COUNTY"]].values]
     counties.set_index("GEOHASH",inplace=True)
 
-    county_nodes = pd.read_csv(
-        "https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/data/county_nodes.csv",
-        index_col=[0],
-        names=["NODE"]
-        )
+    county_nodes = pd.read_csv(county_file,index_col=[0],names=["NODE"])
 
     nodes = pd.merge(counties,county_nodes,left_index=True,right_index=True)\
         .reset_index()\
@@ -173,11 +178,23 @@ if __name__ == "__main__":
             ))
         print("ok")
 
-    (pd.concat(result,axis=1)/1000).round(3).to_csv("wecc/county_dg.csv.gz",index=True,header=True,compression="gzip")
+    result = (pd.concat(result,axis=1)/1000).round(3)
+
+    if target is None:
+        return result
+    else:
+        result.to_csv(target,index=True,header=True,compression="gzip")
     
-    # summary = energy.groupby(["NODE","COUNTY"]).sum().reset_index()
-    # summary["ST"] = [x.split()[-1] for x in summary["COUNTY"]]
-    # summary["COUNTY"] = [" ".join(x.split()[:-1]) for x in summary["COUNTY"]]
-    # print(summary.set_index(["ST","COUNTY","NODE"]).sort_index())
 
 
+
+if __name__ == "__main__":
+
+    # pd.options.display.max_rows = None
+    pd.options.display.max_columns = None
+    pd.options.display.width = None
+
+    output = "wecc/county_dg.csv.gz"
+    if not os.path.exists(output):
+        compile(target=output)
+    print(pd.read_csv(output,index_col=["timestamp"],parse_dates=["timestamp"]).resample("ME").sum())
