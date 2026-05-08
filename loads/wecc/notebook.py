@@ -14,7 +14,7 @@ def _(mo):
 
 @app.cell
 def _(pd):
-    data = pd.read_csv("county_dg.csv",index_col=[0],parse_dates=[0])
+    data = pd.read_csv("county_dg.csv.gz",index_col=[0],parse_dates=[0])
     return (data,)
 
 

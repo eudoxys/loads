@@ -173,7 +173,7 @@ if __name__ == "__main__":
             ))
         print("ok")
 
-    (pd.concat(result,axis=1)/1000).round(3).to_csv("wecc/county_dg.csv",index=True,header=True)
+    (pd.concat(result,axis=1)/1000).round(3).to_csv("wecc/county_dg.csv.gz",index=True,header=True,compression="gzip")
     
     # summary = energy.groupby(["NODE","COUNTY"]).sum().reset_index()
     # summary["ST"] = [x.split()[-1] for x in summary["COUNTY"]]
