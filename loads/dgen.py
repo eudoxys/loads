@@ -8,11 +8,11 @@ import os
 import numpy as np
 import pandas as pd
 from scipy.interpolate import CubicSpline
+import matplotlib.pyplot as plt
 
 from fips import Counties
 from weather import Weather
 from eia import Form861m
-from energy import Energy
 
 class SolarModel(pd.DataFrame):
     """Solar DG model"""
@@ -41,59 +41,66 @@ class SolarModel(pd.DataFrame):
                 data["solar_Wpms"] += np.polyval(polynomial,weather[column])
         super().__init__(data)
 
+
 class DG(pd.DataFrame):
     """Distribution generation dataframe"""
     eia_data = {}
+    dg_data = None
 
     def __init__(self,
         state:str,
         county:str,
-        date_range:pd.DatetimeIndex=None,
-        source:str=None,
+        date_range:pd.DatetimeIndex|None=None,
+        source:str="wecc/county_dg.csv.gz",
         ):
 
-        # get default solar model if needed
-        if source == SolarModel:
+        if self.dg_data is None:
 
-            # get total
+            # get default solar model if needed
+            if source == SolarModel:
 
-            # get monthly solar production from EIA
-            for year,month in sorted(set((x.year,x.month) for x in dates)):
-                if (year,month) not in self.eia_data:
-                    self.eia_data[(year,month)] = Form861m(year,month).set_index("state")
-            eia = pd.concat(self.eia_data.values()).reset_index().set_index(["state"])
-            eia = eia.loc[state].set_index("date").sort_index()[["tot_mwh"]]
+                # get total
 
-            # get hourly weather
-            weather = []
-            for year in sorted(set(x.year for x in dates)):
-                weather.append(Weather(state,county,year))
-            weather = pd.concat(weather)
-            weather.index = pd.DatetimeIndex(weather.index)
+                # get monthly solar production from EIA
+                for year,month in sorted(set((x.year,x.month) for x in dates)):
+                    if (year,month) not in self.eia_data:
+                        self.eia_data[(year,month)] = Form861m(year,month).set_index("state")
+                eia = pd.concat(self.eia_data.values()).reset_index().set_index(["state"])
+                eia = eia.loc[state].set_index("date").sort_index()[["tot_mwh"]]
 
-            # get hourly solar production from weather
-            solar = model(weather.loc[date_range])
+                # get hourly weather
+                weather = []
+                for year in sorted(set(x.year for x in dates)):
+                    weather.append(Weather(state,county,year))
+                weather = pd.concat(weather)
+                weather.index = pd.DatetimeIndex(weather.index)
 
-            # compute monthly solar production from weather
-            energy = solar.resample("1MS").sum()
+                # get hourly solar production from weather
+                solar = model(weather.loc[date_range])
 
-            # compute monthly scaling from weather to EIA
-            scale = (eia.tot_mwh/energy.solar_Wpms).to_frame(name="solar_puMW")
+                # compute monthly solar production from weather
+                energy = solar.resample("1MS").sum()
 
-            # compute hourly spline of monthly scaling
-            x = [x.timestamp() for x in scale.index.to_pydatetime()]
-            y = scale.solar_puMW.values
-            spline = CubicSpline(x,y)
-            hourly = solar.solar_Wpms * spline([x.timestamp() for x in date_range.to_pydatetime()])
+                # compute monthly scaling from weather to EIA
+                scale = (eia.tot_mwh/energy.solar_Wpms).to_frame(name="solar_puMW")
 
-        elif isinstance(source,src):
-            hourly = pd.read_csv(src,index=["timestamp"],parse_dates=["timestamp"])
-            if isinstance(date_range,pd.DatetimeIndex):
-                hourly = hourly.loc[date_range]
-        else:
-            raise ValueError(f"{source} is not valid")
+                # compute hourly spline of monthly scaling
+                x = [x.timestamp() for x in scale.index.to_pydatetime()]
+                y = scale.solar_puMW.values
+                spline = CubicSpline(x,y)
+                hourly = solar.solar_Wpms * spline([x.timestamp() for x in date_range.to_pydatetime()])
 
-        super().__init__(hourly)
+            elif isinstance(source,str):
+                hourly = pd.read_csv(source,index_col=["timestamp"],parse_dates=["timestamp"])
+                if isinstance(date_range,pd.DatetimeIndex):
+                    hourly = hourly.loc[date_range]
+            else:
+                raise ValueError(f"{source} is not valid")
+
+            self.dg_data = hourly
+
+        result = self.dg_data[[f"{county} {state}"]].rename({f"{county} {state}":"elec_dg_MW"},axis=1)
+        super().__init__(result)
 
 def compile(
     source:str="wecc/dgen.csv.gz",
@@ -197,4 +204,10 @@ if __name__ == "__main__":
     output = "wecc/county_dg.csv.gz"
     if not os.path.exists(output):
         compile(target=output)
-    print(pd.read_csv(output,index_col=["timestamp"],parse_dates=["timestamp"]).resample("ME").sum())
+    # pd.read_csv(output,index_col=["timestamp"],parse_dates=["timestamp"]).resample("ME").sum()["San Diego CA"].plot(grid=True)
+    # plt.show()
+    date_range = pd.date_range(
+        start=f"2018-01-01 07:00:00+0000",
+        end=f"2019-01-01 07:00:00+0000",
+        freq="1h")
+    print(DG("CA","San Diego",date_range))

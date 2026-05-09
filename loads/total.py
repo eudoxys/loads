@@ -120,6 +120,7 @@ from loads.commercial import Commercial
 from loads.industry import Industry
 from loads.agriculture import Agriculture
 from loads.calibrate import Calibrate
+from dgen import DG
 
 _logger = logging.getLogger(__file__)
 
@@ -262,12 +263,15 @@ class Total(pd.DataFrame):
         "elec_net_MW": "Total net loads",
     }
 
+    DG = None
+
     def __init__(self,
         state:str,
         county:str,
         *,
         Y:str="elec_total_MW",
         X:str=None,
+        dg:bool|pd.DataFrame|None=True,
         date_range:pd.DatetimeIndex=None,
         samples:int=None,
         percentile:float=96,
@@ -288,6 +292,8 @@ class Total(pd.DataFrame):
           - `X`: column to use for X values (defaults to exogenous variables of
             `Y`, see `loads.total.EXOGENOUS_VARIABLES`)
 
+          - `dg`: flag for distributed generation (`True` for 861m, `False` for stock, `None`, or `pandas.DataFrame`)
+
           - `date_range`: date/time index to use
 
           - `samples`: number of AR samples to generate (`0` predicts, `1`
@@ -303,6 +309,14 @@ class Total(pd.DataFrame):
         # identify location of cached results
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
+
+        # DG handling
+        if dg is None or dg is False:
+            self.DG = dg
+        elif dg is True:
+            self.DG = DG(state,county,date_range)
+        elif not isinstance(dg,pd.DataFrame):
+            raise ValueError(f"{dg=} is invalid")
 
         # choose sampling method
         assert samples is None or isinstance(samples,int), f"{sample=} is not valid"
@@ -403,10 +417,18 @@ class Total(pd.DataFrame):
                     calibrate=lambda x:cls._calibrate(state,sector,x),
                     )
                 data[f"{source}_{sector}_MW"] = loaddata[f"{source}_total_MW"]
-                if not nonelec:
-                    data["elec_dg_MW"] += loaddata[f"{source}_dg_MW"]
+                if not nonelec and self.DG == False:
+                        data["elec_dg_MW"] += loaddata[f"{source}_dg_MW"]
 
-            # make flat loadshape
+            # get alternate DG
+            if isinstance(self.DG,pd.DataFrame):
+                date_range = pd.date_range(
+                    start=f"{cls.TRAINING_YEAR}-01-01 00:00:00+0000",
+                    end=f"{cls.TRAINING_YEAR}-12-31 23:59:59+0000",
+                    freq="1h")
+                data["elec_dg_MW"] = DG(state,county,date_range)
+
+            # make flat loadshape for industry and agriculture
             loadshape = pd.DataFrame(
                 data=np.ones(len(data)),
                 index=data.index,
