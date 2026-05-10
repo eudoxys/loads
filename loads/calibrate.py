@@ -367,7 +367,7 @@ class Calibrate(pd.DataFrame):
         Arguments
         ---------
 
-          - `state`: state for which to compute calibrations
+          - `state`: state for which loads are calibration
 
           - `year`: the year for which loads are calibrated
 
@@ -384,9 +384,9 @@ class Calibrate(pd.DataFrame):
         The residential and commercial distributed generation data is obtained
         from the NLR RESstock and COMstock data repositories. These data sets
         have not been calibrated against the state-level EIA Form 861m energy
-        use. This function is used to obtain
-        the state-level calibrations for any given year available from EIA.
-        See `eia.form861m.Form861m` for details.
+        use. This function is used to obtain the state-level calibrations for
+        any given year available from EIA. See `eia.form861m.Form861m` for
+        details.
 
         Caveats
         -------
