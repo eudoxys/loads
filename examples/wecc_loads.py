@@ -53,7 +53,7 @@ print("ok")
 totals = []
 for state,county in wecc_counties.index:
     county_st = f"{county} {state}"
-    print(f"Processing {county} {state}...",flush=True)
+    print(f"Processing {county} {state}",end="...",flush=True)
 
     cache = Cache(package="loads",version=0,path=[state,county,f"Total_{start[:4]}-{stop[:4]}.csv"])
     if cache.exists():
