@@ -67,6 +67,7 @@ for state,county in wecc_counties.index:
         dg = wecc_dg[county_st]
         load["elec_dg_MW"] = dg
     else:
+        print("WARNING: no DG data")
         load["elec_dg_MW"] = 0.0
         dg = load["elec_dg_MW"]
 
@@ -75,25 +76,28 @@ for state,county in wecc_counties.index:
     load["state_mwh"] = mwh
 
     # get county contribution factor to state-level energy total
-    cf = wecc_cf[county_st].resample("1h").ffill()
-    load["county_cf"] = cf
+    if county_st in wecc_cf.columns:
+        cf = wecc_cf[county_st].resample("1h").ffill()
+        load["county_cf"] = cf
 
-    # get original county-level energy total
-    old_mwh = load["elec_total_MW"].resample("MS").sum().resample("1h").ffill()
-    load["old_mwh"] = old_mwh
+        # get original county-level energy total
+        old_mwh = load["elec_total_MW"].resample("MS").sum().resample("1h").ffill()
+        load["old_mwh"] = old_mwh
 
-    # calculate actual county-level energy total
-    new_mwh = mwh * cf + dg.resample("MS").sum().resample("1h").ffill()
-    load["new_mwh"] = new_mwh
-    
-    # calculate new MW
-    load["new_MW"] = load["elec_total_MW"] * new_mwh / old_mwh
+        # calculate actual county-level energy total
+        new_mwh = mwh * cf + dg.resample("MS").sum().resample("1h").ffill()
+        load["new_mwh"] = new_mwh
+        
+        # calculate new MW
+        load["new_MW"] = load["elec_total_MW"] * new_mwh / old_mwh
 
-    totals.append(load["new_MW"].to_frame(county_st).round(3))
-    print(load.dropna())
+        totals.append(load["new_MW"].to_frame(county_st).round(3))
+        # print(load.dropna())
 
-    result = pd.concat(totals,axis=1)
-    result.index.name = "timestamp"
-    result.to_csv("county_totals.csv",index=True)
+        result = pd.concat(totals,axis=1)
+        result.index.name = "timestamp"
+        result.to_csv("county_totals.csv",index=True)
+        print("ok")
+    else:
+        print("WARNING: no CF data")
 
-    print("ok")
