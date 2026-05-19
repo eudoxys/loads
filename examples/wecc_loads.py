@@ -63,8 +63,12 @@ for state,county in wecc_counties.index:
         load.to_csv(cache.pathname,index=True)
 
     # get county DG
-    dg = wecc_dg[county_st]
-    load["elec_dg_MW"] = dg
+    if county_st in wecc_dg.columns:
+        dg = wecc_dg[county_st]
+        load["elec_dg_MW"] = dg
+    else:
+        load["elec_dg_MW"] = 0.0
+        dg = load["elec_dg_MW"]
 
     # get state-level energy total
     mwh = wecc_mwh[state].resample("1h").ffill()
@@ -86,7 +90,7 @@ for state,county in wecc_counties.index:
     load["new_MW"] = load["elec_total_MW"] * new_mwh / old_mwh
 
     totals.append(load["new_MW"].to_frame(county_st).round(3))
-    print(load)
+    print(load.dropna())
 
     result = pd.concat(totals,axis=1)
     result.index.name = "timestamp"
