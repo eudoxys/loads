@@ -52,7 +52,10 @@ class DG(pd.DataFrame):
         county:str,
         date_range:pd.DatetimeIndex|None=None,
         source:str="wecc/county_dg.csv.gz",
+        on_missing:str="fillna"
         ):
+
+        assert on_missing in ["fillna",None], f"{on_missing=} is invalid"
 
         if self.dg_data is None:
 
@@ -91,21 +94,44 @@ class DG(pd.DataFrame):
                 hourly = solar.solar_Wpms * spline([x.timestamp() for x in date_range.to_pydatetime()])
 
             elif isinstance(source,str):
+
+                # use specified data source
                 hourly = pd.read_csv(source,index_col=["timestamp"],parse_dates=["timestamp"])
+
+                # extract date_range
                 if isinstance(date_range,pd.DatetimeIndex):
-                    hourly = hourly.loc[date_range]
+
+                    # isolate missing date/times
+                    missing = [x for x in date_range if x not in hourly.index]
+
+                    # reduce to date/times founds
+                    hourly = hourly.loc[[x for x in date_range if x in hourly.index]]
+
+                    # fill missing, if desired
+                    if on_missing == "fillna":
+                        hourly = pd.concat([hourly,pd.DataFrame(index=missing)],axis=0).sort_index()
+            
             else:
+            
                 raise ValueError(f"{source} is not valid")
 
             self.dg_data = hourly
 
-        result = self.dg_data[[f"{county} {state}"]].rename({f"{county} {state}":"elec_dg_MW"},axis=1)
+        county_st = f"{county} {state}"
+        if county_st in self.dg_data.columns:
+            result = self.dg_data[[county_st]].rename({county_st:"elec_dg_MW"},axis=1)
+        else:
+            result = pd.DataFrame(
+                data=(0 for x in date_range),
+                index=date_range,
+                )
         super().__init__(result)
 
 def compile(
     source:str="wecc/dgen.csv.gz",
     target:str="wecc/county_dg.csv.gz",
-    county_file:str="https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/data/county_nodes.csv"
+    county_file:str="https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/data/dgen.csv.gz",
+    system:str="WECC",
     ):
     """Compile DG data
 
@@ -118,25 +144,33 @@ def compile(
 
     - `county_file`: county energy DG data file
 
+    - `system`: system for which counties will be compiled
+
     """
     years = [2018,2022] # year start/stop
 
+    # read the raw from NREL
     dgen = pd.read_csv(source,index_col=[0],parse_dates=[0])
     dgen.columns = [x.split("_")[0] for x in dgen.columns]
 
+    # setup the date/time index
     dates = pd.date_range(f"{min(years)}-01-01 00:00:00+0000",f"{max(years)}-12-31 23:59:59+0000",freq="1h")
 
-    counties = Counties(use_index=["SYSTEM"],selection=["WECC"]).sort_values(["ST","COUNTY"])
+    # get the counties in the system
+    counties = Counties(use_index=["SYSTEM"],selection=[system]).sort_values(["ST","COUNTY"])
     counties["COUNTY"] = [f"{y} {x}" for x,y in counties[["ST","COUNTY"]].values]
     counties.set_index("GEOHASH",inplace=True)
 
+    # read the nodes list
     county_nodes = pd.read_csv(county_file,index_col=[0],names=["NODE"])
 
+    # merge counties and nodes to get the mapping
     nodes = pd.merge(counties,county_nodes,left_index=True,right_index=True)\
         .reset_index()\
         .set_index(["NODE","ST","COUNTY"])
     mapping = nodes.reset_index()[["COUNTY","NODE"]].set_index("COUNTY")["NODE"].to_dict()
 
+    # collate the energy data
     energy = []
     keep = set(counties["COUNTY"])
     for state in counties.ST.unique():
@@ -148,30 +182,31 @@ def compile(
     energy.index.names = ("MONTH","COUNTY")
     energy = energy.reset_index().set_index(["NODE","MONTH","COUNTY"])
 
+    # calculate the totals
     totals = energy.groupby(["NODE","MONTH"]).sum().rename({"COUNTY_MWH":"NODE_MWH"},axis=1)
 
+    # merge the totals with the energy data
     energy = pd.merge(energy,totals,left_index=True,right_index=True).sort_index()
     energy["COUNTY_CF"] = energy["COUNTY_MWH"] / energy["NODE_MWH"]
 
-    wecc_nodes = set(energy.index.get_level_values(0).unique())
+    # get the set of nodes
+    system_nodes = set(energy.index.get_level_values(0).unique())
 
     # read WECC nodal DG
-    wecc240_dg = pd.read_csv(
-        "https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/data/dgen.csv.gz",
-        index_col=[0],dtype=float,parse_dates=[0]
-        ).resample("MS").sum().unstack().to_frame("NODE_DG_MWH")
-    dg_nodes = set(wecc240_dg.index.get_level_values(0).unique())
+    system_dg = pd.read_csv(county_file,index_col=[0],dtype=float,parse_dates=[0])\
+        .resample("MS").sum().unstack().to_frame("NODE_DG_MWH")
+    dg_nodes = set(system_dg.index.get_level_values(0).unique())
 
-    dropset = wecc_nodes - dg_nodes
+    # identify nodes to drop because they have no DG data
+    dropset = system_nodes - dg_nodes
     energy.drop([x for x in energy.index if x[0] in dropset],inplace=True)
 
+    # setup the result index
     energy.reset_index(inplace=True)
     energy.set_index(["COUNTY","NODE","MONTH"],inplace=True)
     energy.sort_index(inplace=True)
 
-    # print(energy,flush=True)
-    # print(dgen)
-
+    # finalize county-level DG
     result = []
     for county,node in energy.reset_index().set_index(["COUNTY","NODE"]).index.unique():
         print(county,'->',node,end="...",flush=True)
@@ -191,23 +226,37 @@ def compile(
         return result
     else:
         result.to_csv(target,index=True,header=True,compression="gzip")
-    
-
-
 
 if __name__ == "__main__":
 
-    # pd.options.display.max_rows = None
+    refresh = False # force recompile of county-level DG data
+
+    pd.options.display.max_rows = None
     pd.options.display.max_columns = None
     pd.options.display.width = None
 
     output = "wecc/county_dg.csv.gz"
-    if not os.path.exists(output):
+    if not os.path.exists(output) or refresh:
         compile(target=output)
+
+    date_range = pd.date_range(
+        start=f"2018-01-01 00:00:00+0000",
+        end=f"2022-12-31 23:59:59+0000",
+        freq="1h")
+
+    def dump(x):
+        print(f"{x}{str(globals()[x])[len(x):]}")
+
+    dg_MW = DG("AZ","Apache",date_range)
+    dg_MWh = dg_MW.resample("MS").sum()
+    dump("dg_MWh")
+    dg_MWh = dg_MW.resample("YS").sum()
+    dump("dg_MWh")
+    
+    peak_MW = dg_MW.max().tolist()[0]
+    peak_dt = dg_MW[dg_MW.elec_dg_MW==peak_MW]
+    dump("peak_dt")
+
+
     # pd.read_csv(output,index_col=["timestamp"],parse_dates=["timestamp"]).resample("ME").sum()["San Diego CA"].plot(grid=True)
     # plt.show()
-    date_range = pd.date_range(
-        start=f"2018-01-01 07:00:00+0000",
-        end=f"2019-01-01 07:00:00+0000",
-        freq="1h")
-    print(DG("CA","San Diego",date_range))

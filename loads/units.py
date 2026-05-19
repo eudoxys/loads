@@ -117,10 +117,10 @@ class Units(float):
         else:
             year = type(data.columns[-1])(year)
         if year < min(data.columns):
-            _logger.warning(f"{year=} is prior to {min(data.columns)}, using year={min(data.columns)} instead")
+            _logger.warning(f"Units({state=},{county=},{year=}) is prior to {min(data.columns)}, using year={min(data.columns)} instead")
             year = min(data.columns)
         elif year > max(data.columns):
-            _logger.warning(f"{year=} is after to {max(data.columns)}, using year={max(data.columns)} instead")
+            _logger.warning(f"Units({state=},{county=},{year=}) is after to {max(data.columns)}, using year={max(data.columns)} instead")
             year = max(data.columns)
 
         if county is None:

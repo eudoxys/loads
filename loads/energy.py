@@ -27,6 +27,7 @@ which outputs the following:
 
 import datetime as dt
 from typing import Callable
+from warnings import warn
 
 import pandas as pd
 
@@ -42,6 +43,7 @@ class Energy(pd.DataFrame):
         counties:str|list[str]|None,
         year:int|tuple[int,int]|list[int,int],
         month:int=None,
+        *,
         groupby:str="1MS",
         datetime_format:str|None=None,
         progress:Callable|None=None,
@@ -81,6 +83,17 @@ class Energy(pd.DataFrame):
 
         cache = Cache(package="loads",version=0,path=[state,f"T_{min(year)}-{max(year)}_{month}_{groupby}.csv.gz"])
         energy = None
+        if isinstance(year,(list,tuple)):
+            assert month is None, f"month cannot be specified when multiple years are specified"
+            start = dt.datetime(year[0],1,1,0,0,0,0,dt.timezone.utc)
+            stop = dt.datetime(year[1]+1,1,1,0,0,0,0,dt.timezone.utc) - dt.timedelta(seconds=1)
+        else:
+            start = dt.datetime(year,1 if month is None else month,1,0,0,0,0,dt.timezone.utc)
+            stop = dt.datetime(
+                year+1 if month==12 or month is None else year,
+                1 if month==12 or month is None else month+1,
+                1,0,0,0,0,dt.timezone.utc) - dt.timedelta(seconds=1)
+        date_range = pd.date_range(start,stop,freq="1h")
         if cache.exists() and not refresh:
             try:
                 energy = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
@@ -91,30 +104,32 @@ class Energy(pd.DataFrame):
             for n,county in enumerate(counties):
                 if progress:
                     progress(state,county,n+1,len(counties))
-                if isinstance(year,(list,tuple)):
-                    assert month is None, f"month cannot be specified when multiple years are specified"
-                    start = dt.datetime(year[0],1,1,0,0,0,0,dt.timezone.utc)
-                    stop = dt.datetime(year[1]+1,1,1,0,0,0,0,dt.timezone.utc) - dt.timedelta(seconds=1)
-                else:
-                    start = dt.datetime(year,1 if month is None else month,1,0,0,0,0,dt.timezone.utc)
-                    stop = dt.datetime(
-                        year+1 if month==12 or month is None else year,
-                        1 if month==12 or month is None else month+1,
-                        1,0,0,0,0,dt.timezone.utc) - dt.timedelta(seconds=1)
 
-                total = Total(state,county,date_range=pd.date_range(start,stop,freq="1h"),samples=0)
-                energy = total.drop(Total.EXOGENOUS_VARIABLES["elec_total_MW"],axis=1).resample(groupby).sum()
-                energy.columns = [f"{county} {state}"]
+                try:
+                    total = Total(state,county,date_range=date_range,samples=0)
+                    energy = total.drop(Total.EXOGENOUS_VARIABLES["elec_total_MW"],axis=1).resample(groupby).sum()
+                    energy.columns = [f"{county} {state}"]
+                except Exception as err:
+                    warn(f"{county} {state}: no total load -- {err}")
+                    total = pd.DataFrame(
+                        data={f"{county} {state}": [0]*len(date_range)},
+                        index=date_range,
+                        )
                 result.append(energy)
             energy = pd.concat(result,axis=1)
             energy.to_csv(cache.pathname,index=True,header=True,compression="gzip" if cache.pathname.endswith(".gz") else None)
+
+        # apply datetime index format
         if datetime_format:
             energy.index = [x.strftime(datetime_format) for x in energy.index]
+
         super().__init__(energy)
 
 
 if __name__ == '__main__':
     
+    refresh = True
+
     # Calculate the energy contribution factors for each state from 2018 to 2022
     # Stores results in cache for <state>/CF_2018-2022.csv
     Total.cache = None
@@ -126,13 +141,16 @@ if __name__ == '__main__':
     pd.options.display.max_rows = None
     pd.options.display.width = None
 
+    from dgen import DG
+
     years = [2018,2022] # start and end years
-    refresh = False
 
     states = set(Counties(use_index=["SYSTEM"],selection=["WECC"],set_index=["ST"]).index)
+    mwh = []
+    cf = []
     for n,state in enumerate(sorted(states)):
 
-        cache = Cache(package="loads",version=0,path=[state,f"CF_{'-'.join(map(str,years))}.csv"])
+        cache = Cache(package="loads",version=0,path=[state,f"MWH_{'-'.join(map(str,years))}.csv"])
         if cache.exists() and not refresh:
             energy = pd.read_csv(cache.pathname,index_col=[0])
         else:
@@ -142,12 +160,25 @@ if __name__ == '__main__':
                 progress=lambda *x: print(f"  {x[1]} {x[0]} ({x[2]} of {x[3]} counties in {state})...",flush=True)
                 )
             energy.index.name = "month_year"
+            energy.round(3).to_csv(cache.pathname,index=True,header=True)
+
+        cache = Cache(package="loads",version=0,path=[state,f"CF_{'-'.join(map(str,years))}.csv"])
+        if cache.exists() and not refresh:
+            fraction = pd.read_csv(cache.pathname,index_col=[0])
+        else:
             total = energy.sum(axis=1)
-            for column in energy.columns:
-                energy[column] /= total
-            energy.round(6).to_csv(cache.pathname,index=True,header=True)
-        
-        print(energy,flush=True)
+            nz = total[total>0].index
+
+            fraction = energy.copy()
+            for column in fraction.columns:
+                fraction.loc[nz,column] /= total.loc[nz]
+            fraction.round(6).to_csv(cache.pathname,index=True,header=True)
+
+        mwh.append(energy.round(3))
+        cf.append(fraction.round(6))
+
+    pd.concat(mwh,axis=1).to_csv("wecc/county_mwh.csv")
+    pd.concat(cf,axis=1).to_csv("wecc/county_cf.csv")
 
         # animate monthly fractions
         # fig = plt.figure(figsize=(10,10))
