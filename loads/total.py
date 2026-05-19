@@ -192,8 +192,8 @@ class Total(pd.DataFrame):
             lags = list(range(1,36))
             ),
         solver_config=TsgamSolverConfig(
-            # solver='CLARABEL',
-            solver='HIGHS',
+            solver='CLARABEL',
+            # solver='HIGHS',
             verbose=False
         ),
         random_state=None,
@@ -408,14 +408,6 @@ class Total(pd.DataFrame):
                 data[f"{source}_{sector}_MW"] = loaddata[f"{source}_total_MW"]
                 if not nonelec:
                         data["elec_dg_MW"] += loaddata[f"{source}_dg_MW"]
-
-            # get alternate DG
-            if isinstance(cls.DG,pd.DataFrame):
-                date_range = pd.date_range(
-                    start=f"{cls.TRAINING_YEAR}-01-01 00:00:00+0000",
-                    end=f"{cls.TRAINING_YEAR}-12-31 23:59:59+0000",
-                    freq="1h")
-                data["elec_dg_MW"] = DG(state,county,date_range)
 
             # make flat loadshape for industry and agriculture
             loadshape = pd.DataFrame(
