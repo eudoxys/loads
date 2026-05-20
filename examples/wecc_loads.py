@@ -29,7 +29,6 @@ print("ok")
 # Step 2: get DG data
 print("Loading county DG",end="...",flush=True)
 wecc_dg = pd.read_csv("county_dg.csv.gz",index_col=[0],parse_dates=[0])
-# print(wecc_dg["Apache AZ"].to_frame("Apache AZ").max(),flush=True)
 print("ok")
 
 # Step 3: get county energy contribution factors to state energy
@@ -55,20 +54,25 @@ totals = []
 for state,county in wecc_counties.index:
     county_st = f"{county} {state}"
     print(f"Processing {county} {state}",end="...",flush=True)
+    messages = []
 
     cache = Cache(package="loads",version=0,path=[state,county,f"Total_{start[:4]}-{stop[:4]}.csv"])
     if cache.exists():
         load = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
     else:
-        load = Total(state,county,date_range=date_range,refresh=refresh,samples=0).round(3)
-        load.to_csv(cache.pathname,index=True)
+        try:
+            load = Total(state,county,date_range=date_range,refresh=refresh,samples=0).round(3)
+            load.to_csv(cache.pathname,index=True)
+        except Exception as err:
+            messages.append(str(err))
+
 
     # get county DG
     if county_st in wecc_dg.columns:
         dg = wecc_dg[county_st]
         load["elec_dg_MW"] = dg
     else:
-        print("WARNING: no DG data")
+        messages.append("no DG data")
         load["elec_dg_MW"] = 0.0
         dg = load["elec_dg_MW"]
 
@@ -93,12 +97,14 @@ for state,county in wecc_counties.index:
         load["new_MW"] = load["elec_total_MW"] * new_mwh / old_mwh
 
         totals.append(load["new_MW"].to_frame(county_st).round(3))
-        # print(load.dropna())
 
         result = pd.concat(totals,axis=1)
         result.index.name = "timestamp"
         result.to_csv("county_totals.csv",index=True)
     else:
-        print("WARNING: no CF data")
-    print("ok")
+        messages.append("no CF data")
+    if messages:
+        print("ERROR:",", ".join(messages))
+    else:
+        print("ok")
 
