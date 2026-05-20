@@ -235,27 +235,28 @@ if __name__ == "__main__":
     pd.options.display.max_columns = None
     pd.options.display.width = None
 
-    output = "wecc/county_dg.csv.gz"
+    # output = "wecc/county_dg.csv.gz"
+    output = "wecc/county_dg.csv"
     if not os.path.exists(output) or refresh:
         compile(target=output)
 
-    date_range = pd.date_range(
-        start=f"2018-01-01 00:00:00+0000",
-        end=f"2022-12-31 23:59:59+0000",
-        freq="1h")
+    # date_range = pd.date_range(
+    #     start=f"2018-01-01 00:00:00+0000",
+    #     end=f"2022-12-31 23:59:59+0000",
+    #     freq="1h")
 
-    def dump(x):
-        print(f"{x}{str(globals()[x])[len(x):]}")
+    # def dump(x):
+    #     print(f"{x}{str(globals()[x])[len(x):]}")
 
-    dg_MW = DG("AZ","Apache",date_range)
-    dg_MWh = dg_MW.resample("MS").sum()
-    dump("dg_MWh")
-    dg_MWh = dg_MW.resample("YS").sum()
-    dump("dg_MWh")
+    # dg_MW = DG("AZ","Apache",date_range)
+    # dg_MWh = dg_MW.resample("MS").sum()
+    # dump("dg_MWh")
+    # dg_MWh = dg_MW.resample("YS").sum()
+    # dump("dg_MWh")
     
-    peak_MW = dg_MW.max().tolist()[0]
-    peak_dt = dg_MW[dg_MW.elec_dg_MW==peak_MW]
-    dump("peak_dt")
+    # peak_MW = dg_MW.max().tolist()[0]
+    # peak_dt = dg_MW[dg_MW.elec_dg_MW==peak_MW]
+    # dump("peak_dt")
 
 
     # pd.read_csv(output,index_col=["timestamp"],parse_dates=["timestamp"]).resample("ME").sum()["San Diego CA"].plot(grid=True)
