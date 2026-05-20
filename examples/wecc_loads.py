@@ -16,6 +16,7 @@ refresh = False # flag is induce full refresh of cache
 # pd.options.display.max_rows = None 
 pd.options.display.max_columns = None
 pd.options.display.width = None
+Total.cache = None # disables estimator caching (saves memory)
 
 date_range = pd.date_range(start,stop,freq="1h")
 
@@ -97,7 +98,7 @@ for state,county in wecc_counties.index:
         result = pd.concat(totals,axis=1)
         result.index.name = "timestamp"
         result.to_csv("county_totals.csv",index=True)
-        print("ok")
     else:
         print("WARNING: no CF data")
+    print("ok")
 
