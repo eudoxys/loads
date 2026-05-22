@@ -248,6 +248,8 @@ from loads.cli import main
 from loads.cluster import Cluster
 from loads.commercial import Commercial
 from loads.comstock import COMstock
+from loads.dgen import DG
+from loads.energy import Energy
 from loads.floorarea import Floorarea
 from loads.industry import Industry
 from loads.residential import Residential

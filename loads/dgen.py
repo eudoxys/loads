@@ -4,6 +4,7 @@ This module processes county DG data.
 """
 
 import os
+from warnings import warn
 
 import numpy as np
 import pandas as pd
@@ -130,7 +131,7 @@ class DG(pd.DataFrame):
 def compile(
     source:str="wecc/dgen.csv.gz",
     target:str="wecc/county_dg.csv.gz",
-    county_file:str="https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/data/dgen.csv.gz",
+    county_file:str="https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/data/county_nodes.csv",
     system:str="WECC",
     ):
     """Compile DG data
@@ -147,6 +148,9 @@ def compile(
     - `system`: system for which counties will be compiled
 
     """
+
+    from loads.energy import Energy
+
     years = [2018,2022] # year start/stop
 
     # read the raw from NREL
@@ -193,13 +197,20 @@ def compile(
     system_nodes = set(energy.index.get_level_values(0).unique())
 
     # read WECC nodal DG
-    system_dg = pd.read_csv(county_file,index_col=[0],dtype=float,parse_dates=[0])\
+    system_dg = pd.read_csv(source,index_col=[0],dtype=float,parse_dates=[0])\
         .resample("MS").sum().unstack().to_frame("NODE_DG_MWH")
-    dg_nodes = set(system_dg.index.get_level_values(0).unique())
+    dg_nodes = set([x.split("_")[0] for x in system_dg.index.get_level_values(0).unique()])
+    # print(totals.loc["9qndpr"])
+    # print(energy.loc["9qndpr"])
+    # print("9qndpr" in system_nodes)
+    print("9myzug" in dg_nodes)
+    quit()
 
     # identify nodes to drop because they have no DG data
     dropset = system_nodes - dg_nodes
-    energy.drop([x for x in energy.index if x[0] in dropset],inplace=True)
+    if dropset:
+        warn(f"the following {len(dropset)} nodes have no DG: {', '.join(dropset)}")
+        energy.drop([x for x in energy.index if x[0] in dropset],inplace=True)
 
     # setup the result index
     energy.reset_index(inplace=True)
@@ -213,6 +224,8 @@ def compile(
         county_cf = energy.loc[(county,node),["COUNTY_CF"]]
         dg = dgen[[node]]
         dg["MONTH"] = pd.to_datetime(dg.index.to_period("M").astype(str),utc=True)
+        print(dg)
+        quit()
         df = pd.merge(dg,county_cf,how="left",left_on="MONTH",right_index=True).ffill()
         df[county] = df[node] * df["COUNTY_CF"]
         result.append(pd.DataFrame(
@@ -225,13 +238,17 @@ def compile(
     if target is None:
         return result
     else:
-        result.to_csv(target,index=True,header=True,compression="gzip")
+        result.to_csv(target,
+            index=True,
+            header=True,
+            compression="gzip" if target.endswith(".gz") else None,
+            )
 
 if __name__ == "__main__":
 
-    refresh = False # force recompile of county-level DG data
+    refresh = True # force recompile of county-level DG data
 
-    pd.options.display.max_rows = None
+    # pd.options.display.max_rows = None
     pd.options.display.max_columns = None
     pd.options.display.width = None
 
