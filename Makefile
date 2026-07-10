@@ -1,45 +1,18 @@
 # make documentation
 
-PACKAGE=loads
-
-# valid options are --debug and --refresh
-CACHE_OPTIONS=--debug
-AGGREGATE=elec_net_MW 2020
-
+PACKAGE=$(notdir $(PWD))
 LOGO="https://github.com/eudoxys/.github/blob/main/eudoxys_banner.png?raw=true"
 LINK="https://www.eudoxys.com/"
 
-docs: $(PACKAGE)/__init__.py
-	pip install --upgrade pdoc
-	pdoc $< -o $@ --logo $(LOGO) --mermaid --math --logo-link $(LINK)
+all: docs test
 
-$(PACKAGE)/__init__.py: $(filter-out $(PACKAGE)/__init__.py,$(wildcard $(PACKAGE)/*.py))
+docs: $(SOURCE)
+	test -d .venv || python3 -m venv .venv
+	(source .venv/bin/activate ; pip install --upgrade pip)
+	(source .venv/bin/activate ; pip install --upgrade pdoc . -r requirements.txt)
+	(source .venv/bin/activate ; pdoc $(PACKAGE)/__init__.py -o $@ --logo $(LOGO) --math --mermaid --logo-link $(LINK))
 
-aggregate: 
-	cd loads ; python3 aggregate.py $(AGGREGATE)
+test:
+	(cd ./test ; source test.sh)
 
-total: 
-	cd loads ; python3 total.py $(CACHE_OPTIONS)
-
-residential: 
-	cd loads ; python3 residential.py $(CACHE_OPTIONS)
-
-commercial: 
-	cd loads ; python3 commercial.py $(CACHE_OPTIONS)
-
-industry:
-	cd loads ; python3 industry.py $(CACHE_OPTIONS)
-
-agriculture:
-	cd loads ; python3 agriculture.py $(CACHE_OPTIONS)
-
-resstock:
-	cd loads ; python3 resstock.py $(CACHE_OPTIONS)
-
-comstock:
-	cd loads ; python3 comstock.py $(CACHE_OPTIONS)
-
-calibrate:
-	cd loads ; python3 calibrate.py $(CACHE_OPTIONS)
-
-cache: total residential commercial industry agriculture resstock comstock calibrate aggregate
+.PHONY: docs test # force test to rebuild always
