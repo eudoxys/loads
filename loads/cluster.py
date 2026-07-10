@@ -26,10 +26,10 @@ the optimal TSGAM configuration, which is found to be as follows:
 | -------------- | -------------- | -------------- | ------------- | ----- | ---------- | -------------------- | --------- |
 | King WA        |       2        |        3       |      12       |   3   |    10      |         >6           |    0.13   |
 | Los Angeles CA |       2        |        4       |      12       |   4   |     7      |          5           |    0.67   |
-| Maricopa AZ    |       2        |        3       |      12       |   7   |     3      |         >6           |    0.26   |
+| Maricopa AZ    |       2        |        3       |      12       |   7   |     3      |          5           |    0.26   |
 | Orange CA      |       4        |        4       |      12       |   5   |     6      |         >6           |    0.13   |
 | Riverside CA   |       2        |        2       |      12       |   7   |    10      |          2           |    0.18   |
-| Salt Lake UT   |       4        |        3       |      12       |   3   |     4      |          4           |    0.04   |
+| Salt Lake UT   |       4        |        3       |      12       |   3   |     4      |          5           |    0.04   |
 
 Each county's model is based on which county cluster medoid it is associated
 with, as provided in `clusters.csv`.
