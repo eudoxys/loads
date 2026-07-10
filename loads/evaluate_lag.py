@@ -46,7 +46,7 @@ def _(Total, configs, medoids, np, pd):
         for lag in lags:
             Total.TSGAM_CONFIG.exog_config[0].lags = list(range(-lag, lag + 1, 1))
             print(f"{state=} {county=} {lag=}", end="... ", flush=True)
-            print(Total.TSGAM_CONFIG)
+            # print(Total.TSGAM_CONFIG)
             try:
                 _result = Total.test(
                     state,
@@ -68,14 +68,23 @@ def _(Total, configs, medoids, np, pd):
 
 @app.cell
 def _(data, lags, mo, np):
-    _output = [f"| County | {' | '.join(map(lambda x:f'{x}h lag',lags))} | Optimal |",f"| {' | '.join(['----' for _ in range(len(lags)+2)])} |"]
-    for _county,_lags in ((x,data[x]) for x in sorted(data)):
+    _output = [
+        f"| County | {' | '.join(map(lambda x:f'{x}h lag',lags))} | Optimal | RMSE (%) |",
+        f"| {' | '.join(['----' for _ in range(len(lags)+3)])} |",
+    ]
+    for _county, _lags in ((x, data[x]) for x in sorted(data)):
         _rmse = []
-        for _lag,_result in _lags.items():
-            _rmse.append(np.sqrt(((_result["elec_total_MW"] - _result["median"] )**2).mean()))
+        for _lag, _result in _lags.items():
+            _rmse.append(
+                np.sqrt(
+                    ((_result["elec_total_MW"] - _result["median"]) ** 2).mean()
+                )
+            )
         _min = _rmse.index(min(_rmse))
-        _output.append(f"| {_county} | {' | '.join(('**' if n==_min else '') + f'{x/1e3:.2f}' + ('**' if n==_min else '') for n,x in enumerate(_rmse))} | {_min}h")
-    mo.md("RMSE (GW)\n---------\n\n"+"\n".join(_output))
+        _output.append(
+            f"| {_county} | {' | '.join(('**' if n==_min else '') + f'{x/1e3:.2f}' + ('**' if n==_min else '') for n,x in enumerate(_rmse))} | {_min}h | {_min/_result['elec_total_MW'].mean()*100:.2f}% |"
+        )
+    mo.md("RMSE (GW)\n---------\n\n" + "\n".join(_output))
     return
 
 
