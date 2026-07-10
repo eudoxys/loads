@@ -34,7 +34,7 @@ app = marimo.App(width="medium", app_title="County Loadshape Clustering")
 
 
 @app.cell
-def _(__doc__, mo):
+def _(mo):
     docs = __doc__.split("\n")
     mo.md(f"# {docs[0]}")
     return (docs,)
@@ -137,6 +137,13 @@ def _(cluster, mo, pd):
                              show_column_summaries=False,
                )
     return (members_ui,)
+
+
+@app.cell
+def _(cluster, pd):
+    clusters_df = pd.DataFrame(cluster.members,index=cluster.medoids).stack().reset_index().drop("level_1",axis=1).rename({"level_0":"medoid",0:"county_st"},axis=1).dropna().set_index("county_st")
+    clusters_df.to_csv("clusters.csv")
+    return
 
 
 @app.cell
@@ -276,13 +283,11 @@ def _():
     from urllib.request import urlopen
     import json
     import plotly.express as px
-    from cluster_review import __doc__
-
+    # from review_cluster import __doc__
     return (
         Cluster,
         Counties,
         Total,
-        __doc__,
         json,
         mo,
         np,

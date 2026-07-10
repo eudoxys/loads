@@ -178,18 +178,18 @@ class Total(pd.DataFrame):
 
     TSGAM_CONFIG = TsgamEstimatorConfig(
         multi_periodic_config=TsgamMultiPeriodicConfig(
-            num_harmonics=[6, 4, 3],
+            num_harmonics=[4,4,12],
             periods=[365.2425 * 24, 7 * 24, 24]
         ),
         exog_config=[TsgamSplineConfig(
                     knots=[],  # Empty list means knots will be auto-generated from data
-                    n_knots=10,  # Number of knots to generate
+                    n_knots=7,  # Number of knots to generate
                     lags=[-3, -2, -1, 0, 1, 2, 3],
                     reg_weight=1e-4,  # Regularization weight for coefficients
                     diff_reg_weight=1.0  # Regularization weight for differences between lags
                 )],
         ar_config=TsgamArConfig(
-            lags = list(range(1,36))
+            lags = list(range(1,7))
             ),
         solver_config=TsgamSolverConfig(
             solver='CLARABEL',
@@ -312,35 +312,46 @@ class Total(pd.DataFrame):
         if samples is None:
 
             # no sampling gets training data (also ignores date range)
-            return super().__init__(Total._get_training(state,county,X,Y,refresh))
+            data = Total._get_training(state,county,X,Y,refresh)
 
-        # set default exogenous variable(s)
-        if X is None:
-            X = self.EXOGENOUS_VARIABLES[Y]
+        else:
 
-        # sampling requires a valid date range
-        assert isinstance(date_range,pd.DatetimeIndex), f"{date_range=} must be Pandas DatetimeIndex"
-        if samples == 0:
+            # set default exogenous variable(s)
+            if X is None:
+                X = self.EXOGENOUS_VARIABLES[Y]
 
-            # zero samples gets prediction without sampling
-            return super().__init__(Total._get_predict(state,county,date_range,X,Y,refresh))
+            # sampling requires a valid date range
+            assert isinstance(date_range,pd.DatetimeIndex), f"{date_range=} must be Pandas DatetimeIndex"
+            if samples == 0:
 
-        if samples == 1:
+                # zero samples gets prediction without sampling
+                data = Total._get_predict(state,county,date_range,X,Y,refresh)
 
-            # one sample does not use percentile
-            return super().__init__(Total._get_sample(state,county,date_range,X,Y,refresh))
+            elif samples == 1:
 
-        if samples > 1:
+                # one sample does not use percentile
+                data = Total._get_sample(state,county,date_range,X,Y,refresh)
 
-            if percentile is None:
-                return super().__init__(Total._get_samples(state,county,date_range,X,Y,samples,refresh))
+            elif samples > 1:
 
-            assert 0<=percentile<=100, f"{percentile=} must be between 0 and 1"
+                if percentile is None:
+                    data = Total._get_samples(state,county,date_range,X,Y,samples,refresh)
 
-            # multiple samples uses percentile
-            return super().__init__(Total._get_percentile(state,county,date_range,X,Y,samples,percentile,refresh))
+                else:
+                    # multiple samples uses percentile
+                    assert 0<=percentile<=100, f"{percentile=} must be between 0 and 1"
+                    data = Total._get_percentile(state,county,date_range,X,Y,samples,percentile,refresh)
+            else:
+                raise ValueError(f"{samples=} must be a non-negative integer, infinity, or None")
 
-        raise ValueError(f"{samples=} must be a non-negative integer, infinity, or None")
+        # make index UTC
+        if not data.index.tz:
+            data.index = data.index.tz_localize("UTC")
+        elif not data.index.tz == "UTC":
+            data.index = data.index.tz_convert("UTC")
+
+        super().__init__(data.rename_axis("timestamp"))
+
 
     @classmethod
     def _preprocess(cls,data:np.ndarray,name:str):
@@ -650,6 +661,7 @@ class Total(pd.DataFrame):
         X:str=["temperature_degF"],
         Y:str="elec_total_MW",
         n_samples:int=0,
+        refresh:bool=False
         ) -> pd.DataFrame:
         """Perform a hold-out test on the training data
 
@@ -675,7 +687,7 @@ class Total(pd.DataFrame):
         """
 
         # get original data
-        data = cls._get_training(state,county,X,Y)[X+[Y]].copy()
+        data = cls._get_training(state,county,X,Y,refresh=refresh)[X+[Y]].copy()
         daterange = data.index
 
         # remove holdout data from training
@@ -696,12 +708,17 @@ class Total(pd.DataFrame):
         for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
             headlag = -min(min(config.lags),headlag)
             taillag = -max(max(config.lags),taillag)
-        # data.loc[:headlag]["predict"] = float('nan')
-        # data.loc[taillag:]["predict"] = float('nan')
+        prediction_column = list(data.columns).index("predict")
+        if headlag != 0:
+            data.iloc[:headlag,prediction_column] = float('nan')
+        if taillag != 0:
+            data.iloc[taillag:,prediction_column] = float('nan')
         if n_samples > 0:
             samples = cls._postprocess(estimator.sample(data[X],n_samples=n_samples),Y)
-            samples[:,:headlag] = float('nan')
-            samples[:,taillag:] = float('nan')
+            if headlag != 0:
+                samples[:,:headlag] = float('nan')
+            if taillag != 0:
+                samples[:,taillag:] = float('nan')
             if samples.shape[0] == 1:
                 data["sample"] = samples[0,:]
             else:
@@ -714,7 +731,6 @@ class Total(pd.DataFrame):
                                         index=data.index)],
                     axis=1)
         
-        # return data
         return data
 
     @classmethod

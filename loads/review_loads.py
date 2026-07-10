@@ -156,7 +156,7 @@ def _(Total, county_ui, date_ui, mo, pd, samples_ui, state_ui, training_ui):
             state_ui.value,
             county_ui.value,
             samples=None if training_ui.value else samples_ui.value,
-            date_range=pd.date_range(*date_ui.value,freq="1h")[:-1],
+            date_range=pd.date_range(*date_ui.value,freq="1h")[:-1].tz_localize("UTC"),
             refresh=True,
         ).round(3)
     return (data,)
@@ -164,10 +164,10 @@ def _(Total, county_ui, date_ui, mo, pd, samples_ui, state_ui, training_ui):
 
 @app.cell
 def _(county_ui, data, plt, state_ui):
-    _piedata = {x:data[f"elec_{x}_MW"].sum() for x in ["residential","commercial","industrial","agricultural","transportation"]}
+    _piedata = {x:data[x].sum() for x in data.columns if x.endswith("_MW")}
     _pie = plt.pie(
         x=[y for x,y in _piedata.items() if y > 0],
-        labels=[f"{x.title()} ({y/1000:.1f} GWh)" for x,y in _piedata.items() if y > 0],
+        labels=[f"{x.split("_")[1].title()} ({y/1000:.1f} GWh)" for x,y in _piedata.items() if y > 0],
         autopct="%.0f%%"
     )
     plt.title(f"{county_ui.value} {state_ui.value} Total Energy Consumption")

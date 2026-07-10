@@ -1,0 +1,7 @@
+county,nh_year,nh_week,nh_day,n_knots,lags_pm,lags_exog,rmse
+King WA,2,3,12,3,10,,124.36
+Los Angeles CA,2,4,12,4,7,,616.69
+Maricopa AZ,2,3,12,7,3,,230.71
+Orange CA,4,4,12,5,6,,106.71
+Riverside CA,2,2,12,7,10,,162.52
+Salt Lake UT,4,3,12,3,4,,40.09
