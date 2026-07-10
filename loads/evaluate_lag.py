@@ -69,12 +69,12 @@ def _(Total, configs, medoids, np, pd):
 @app.cell
 def _(data, lags, mo, np):
     _output = [f"| County | {' | '.join(map(lambda x:f'{x}h lag',lags))} | Optimal |",f"| {' | '.join(['----' for _ in range(len(lags)+2)])} |"]
-    for _county,_lags in data.items():
+    for _county,_lags in ((x,data[x]) for x in sorted(data)):
         _rmse = []
         for _lag,_result in _lags.items():
             _rmse.append(np.sqrt(((_result["elec_total_MW"] - _result["median"] )**2).mean()))
         _min = _rmse.index(min(_rmse))
-        _output.append(f"| {_county} | {' | '.join(f'{x/1e3:.2f}' for x in _rmse)} | {_min}h")
+        _output.append(f"| {_county} | {' | '.join(('**' if n==_min else '') + f'{x/1e3:.2f}' + ('**' if n==_min else '') for n,x in enumerate(_rmse))} | {_min}h")
     mo.md("RMSE (GW)\n---------\n\n"+"\n".join(_output))
     return
 
