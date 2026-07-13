@@ -189,7 +189,7 @@ class Total(pd.DataFrame):
                     diff_reg_weight=1.0  # Regularization weight for differences between lags
                 )],
         ar_config=TsgamArConfig(
-            lags = list(range(1,7))
+            lags = list(range(1,10))
             ),
         solver_config=TsgamSolverConfig(
             solver='CLARABEL',

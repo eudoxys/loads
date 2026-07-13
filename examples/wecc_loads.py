@@ -2,6 +2,8 @@
 
 """
 
+import os
+
 import pandas as pd
 
 from fips import Counties
@@ -12,11 +14,12 @@ from cache import Cache
 # Step 0: setup and configuration
 start = "2018-01-01 00:00:00+0000"
 stop = "2022-12-31 23:59:59+0000"
-refresh = False # flag is induce full refresh of cache
+refresh = False # flag to induce full refresh of cache
 # pd.options.display.max_rows = None 
 pd.options.display.max_columns = None
 pd.options.display.width = None
 Total.cache = None # disables estimator caching (saves memory)
+# Cache.CACHEDIR = Cache.CACHEDIR.replace(os.getcwd(),"..") # force use of parent folder's cache
 
 date_range = pd.date_range(start,stop,freq="1h")
 
