@@ -60,7 +60,7 @@ class Agriculture(pd.DataFrame):
     CACHEDIR = None
     """Cache folder path (`None` is package source folder)"""
 
-    SOURCE = "https://data.nrel.gov/system/files/97/agriculture_EndUse.gz"
+    SOURCE = "https://data.nlr.gov/system/files/97/agriculture_EndUse.gz"
     """Source of agriculture energy use data"""
 
     COLUMNS = {

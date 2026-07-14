@@ -36,7 +36,7 @@ which outputs the following
 References
 ----------
 
-  - https://resstock.nrel.gov/
+  - https://resstock.nlr.gov/
 """
 
 import os

@@ -145,7 +145,7 @@ class Industry(pd.DataFrame):
     CACHEDIR = None
     """Cache folder path (`None` is package source folder)"""
 
-    SOURCE = "https://data.nrel.gov/system/files/97/County_industry_energy_use.gz"
+    SOURCE = "https://data.nlr.gov/system/files/97/County_industry_energy_use.gz"
     """Source of industry energy use data"""
 
     COLUMNS = {
