@@ -1,5 +1,37 @@
 """This script generates the WECC total loads for the years 2018 through 2022
 
+Inputs
+------
+
+- `fips.Counties()`
+- `county_dg.csv.gz`
+- `county_cf.csv`
+- `eia.HS861m()`
+- `loads.Total()`
+
+Outputs
+-------
+
+- `county_totals.csv`
+
+Data Flow
+---------
+
+```mermaid
+flowchart LR
+    
+    county_cf.csv --> cf
+    eia.HS861m --> state_mwh
+    loads.Total -->|Σ
+months| model_mwh
+    loads.Total --> mw
+
+    cf --> mul1
+    state_mwh --> mul1
+    mw --> mul1
+    model_mwh -->|1/| mul1
+    mul1((x)) --> load --> county_totals.csv
+```
 """
 
 import os
@@ -60,7 +92,7 @@ for state,county in wecc_counties.index:
     messages = []
 
     cache = Cache(package="loads",version=0,path=[state,county,f"Total_{start[:4]}-{stop[:4]}.csv"])
-    if cache.exists():
+    if cache.exists() and not refresh:
         load = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
     else:
         try:
@@ -103,7 +135,7 @@ for state,county in wecc_counties.index:
 
         result = pd.concat(totals,axis=1)
         result.index.name = "timestamp"
-        result.to_csv("county_totals.csv",index=True)
+        result.to_csv("county_totals.csv.gz",index=True,compression="gzip")
     else:
         messages.append("no CF data")
     if messages:

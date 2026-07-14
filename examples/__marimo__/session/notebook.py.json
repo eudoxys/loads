@@ -1,0 +1,159 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.23.6",
+    "script_metadata_hash": null
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "5ded2ba5282fab72121eb20f46eedd7d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">This notebook generates the county_totals.csv file as follows:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "dmNL",
+      "code_hash": "6c7f3bd3d454cffde09d14f95cda00d2",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-mermaid data-diagram='&quot;&#92;nflowchart LR&#92;n    &#92;n    county_cf.csv --&gt; cf&#92;n    eia.HS861m --&gt; state_mwh&#92;n    loads.Total --&gt;|\u03a3&#92;nmonths| model_mwh&#92;n    loads.Total --&gt; mw&#92;n&#92;n    cf --&gt; mul1&#92;n    state_mwh --&gt; mul1&#92;n    mw --&gt; mul1&#92;n    model_mwh --&gt;|1/| mul1&#92;n    mul1((x)) --&gt; load --&gt; county_totals.csv&#92;n&quot;'></marimo-mermaid>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "UgkC",
+      "code_hash": "006eed42902fb130351cd4e47623b5bf",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PftV",
+      "code_hash": "c068988876a26ab50d1cb4807e060c6d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "pwtj",
+      "code_hash": "438f0a369f9c318609bcdcdcc539c034",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "wnoV",
+      "code_hash": "8c4ee40a612c3677dec0e9dab6ac332b",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "FdRn",
+      "code_hash": "39fef6bce6d75bb4072c6fb45e47c943",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "pmDx",
+      "code_hash": "671f6a6fbc8bcce6db55cc6ff815ad82",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "ERROR: La Paz AZ no DG data\nERROR: Santa Cruz AZ no CF data\nERROR: Inyo CA no DG data\nERROR: Kern CA no DG data\nERROR: Mono CA no DG data\nERROR: San Bernardino CA no DG data\nERROR: Trinity CA no DG data\nERROR: Ada ID no DG data\nERROR: Adams ID no DG data\nERROR: Blaine ID no DG data\nERROR: Boise ID no DG data\nERROR: Camas ID no DG data\nERROR: Canyon ID no DG data\nERROR: Custer ID no DG data\nERROR: Elmore ID no DG data\nERROR: Gem ID no DG data\nERROR: Gooding ID no DG data\nERROR: Jerome ID no DG data\nERROR: Lincoln ID no DG data\nERROR: Owyhee ID no DG data\nERROR: Payette ID no DG data\nERROR: Twin Falls ID no DG data\nERROR: Valley ID no DG data\nERROR: Washington ID no DG data\nERROR: Bernalillo NM no DG data\nERROR: McKinley NM no DG data\nERROR: San Juan NM no DG data\nERROR: Torrance NM no DG data\nERROR: Esmeralda NV no DG data\nERROR: Baker OR no DG data\nERROR: Clackamas OR no DG data\nERROR: Grant OR no DG data\nERROR: Harney OR no DG data\nERROR: Hood River OR no DG data\nERROR: Malheur OR no DG data\nERROR: Union OR no DG data\nERROR: Wasco OR no DG data\nERROR: Juab UT no DG data\nERROR: Millard UT no DG data\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "dDcB",
+      "code_hash": "86abb494311921a59a9b7da2369de40d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='dDcB-0' random-id='4b8e05d9-7764-9962-aad4-f1eba879a106'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 00:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:0,&#92;&quot;temperature_degF&#92;&quot;:0.5,&#92;&quot;humidity_pc&#92;&quot;:72.9,&#92;&quot;elec_total_MW&#92;&quot;:NaN,&#92;&quot;elec_dg_MW&#92;&quot;:NaN,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:NaN},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 01:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:1,&#92;&quot;temperature_degF&#92;&quot;:-0.9,&#92;&quot;humidity_pc&#92;&quot;:74.1,&#92;&quot;elec_total_MW&#92;&quot;:NaN,&#92;&quot;elec_dg_MW&#92;&quot;:NaN,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:NaN},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 02:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:2,&#92;&quot;temperature_degF&#92;&quot;:-1.8,&#92;&quot;humidity_pc&#92;&quot;:75.1,&#92;&quot;elec_total_MW&#92;&quot;:NaN,&#92;&quot;elec_dg_MW&#92;&quot;:NaN,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:NaN},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 03:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:3,&#92;&quot;temperature_degF&#92;&quot;:-2.0,&#92;&quot;humidity_pc&#92;&quot;:73.8,&#92;&quot;elec_total_MW&#92;&quot;:33.276,&#92;&quot;elec_dg_MW&#92;&quot;:NaN,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:47.065146665485955},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 04:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:4,&#92;&quot;temperature_degF&#92;&quot;:-2.0,&#92;&quot;humidity_pc&#92;&quot;:73.0,&#92;&quot;elec_total_MW&#92;&quot;:33.032,&#92;&quot;elec_dg_MW&#92;&quot;:NaN,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:46.720036201897216},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 05:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:5,&#92;&quot;temperature_degF&#92;&quot;:-2.0,&#92;&quot;humidity_pc&#92;&quot;:73.3,&#92;&quot;elec_total_MW&#92;&quot;:32.477,&#92;&quot;elec_dg_MW&#92;&quot;:NaN,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:45.93505133594744},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 06:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:6,&#92;&quot;temperature_degF&#92;&quot;:-2.0,&#92;&quot;humidity_pc&#92;&quot;:73.6,&#92;&quot;elec_total_MW&#92;&quot;:31.894,&#92;&quot;elec_dg_MW&#92;&quot;:NaN,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:45.11046362991372},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 07:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:7,&#92;&quot;temperature_degF&#92;&quot;:-2.2,&#92;&quot;humidity_pc&#92;&quot;:74.0,&#92;&quot;elec_total_MW&#92;&quot;:31.209,&#92;&quot;elec_dg_MW&#92;&quot;:0.0,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:44.14160843500274},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 08:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:8,&#92;&quot;temperature_degF&#92;&quot;:-2.4,&#92;&quot;humidity_pc&#92;&quot;:75.0,&#92;&quot;elec_total_MW&#92;&quot;:31.133,&#92;&quot;elec_dg_MW&#92;&quot;:0.0,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:44.03411501191772},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 09:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:9,&#92;&quot;temperature_degF&#92;&quot;:-2.4,&#92;&quot;humidity_pc&#92;&quot;:75.6,&#92;&quot;elec_total_MW&#92;&quot;:30.924,&#92;&quot;elec_dg_MW&#92;&quot;:0.0,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:43.73850809843393},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 10:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:10,&#92;&quot;temperature_degF&#92;&quot;:-2.2,&#92;&quot;humidity_pc&#92;&quot;:75.6,&#92;&quot;elec_total_MW&#92;&quot;:30.809,&#92;&quot;elec_dg_MW&#92;&quot;:0.0,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:43.575853576660556},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 11:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:11,&#92;&quot;temperature_degF&#92;&quot;:-1.5,&#92;&quot;humidity_pc&#92;&quot;:75.1,&#92;&quot;elec_total_MW&#92;&quot;:31.092,&#92;&quot;elec_dg_MW&#92;&quot;:0.0,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:43.97612513893765},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 12:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:12,&#92;&quot;temperature_degF&#92;&quot;:-0.6,&#92;&quot;humidity_pc&#92;&quot;:75.0,&#92;&quot;elec_total_MW&#92;&quot;:31.103,&#92;&quot;elec_dg_MW&#92;&quot;:0.0,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:43.99168339754206},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 13:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:13,&#92;&quot;temperature_degF&#92;&quot;:0.3,&#92;&quot;humidity_pc&#92;&quot;:75.0,&#92;&quot;elec_total_MW&#92;&quot;:31.17,&#92;&quot;elec_dg_MW&#92;&quot;:0.0,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:44.08644733631438},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 14:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:14,&#92;&quot;temperature_degF&#92;&quot;:1.8,&#92;&quot;humidity_pc&#92;&quot;:73.5,&#92;&quot;elec_total_MW&#92;&quot;:30.391,&#92;&quot;elec_dg_MW&#92;&quot;:0.0,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:42.984639749692974},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 15:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:15,&#92;&quot;temperature_degF&#92;&quot;:4.3,&#92;&quot;humidity_pc&#92;&quot;:71.3,&#92;&quot;elec_total_MW&#92;&quot;:30.067,&#92;&quot;elec_dg_MW&#92;&quot;:0.005,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:42.52637831443581},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 16:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:16,&#92;&quot;temperature_degF&#92;&quot;:7.2,&#92;&quot;humidity_pc&#92;&quot;:69.8,&#92;&quot;elec_total_MW&#92;&quot;:30.315,&#92;&quot;elec_dg_MW&#92;&quot;:0.014,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:42.87714632660797},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 17:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:17,&#92;&quot;temperature_degF&#92;&quot;:10.4,&#92;&quot;humidity_pc&#92;&quot;:67.6,&#92;&quot;elec_total_MW&#92;&quot;:28.964,&#92;&quot;elec_dg_MW&#92;&quot;:0.021,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:40.96630929255725},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 18:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:18,&#92;&quot;temperature_degF&#92;&quot;:13.5,&#92;&quot;humidity_pc&#92;&quot;:66.1,&#92;&quot;elec_total_MW&#92;&quot;:27.308,&#92;&quot;elec_dg_MW&#92;&quot;:0.025,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:38.62408417902063},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 19:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:19,&#92;&quot;temperature_degF&#92;&quot;:15.6,&#92;&quot;humidity_pc&#92;&quot;:65.3,&#92;&quot;elec_total_MW&#92;&quot;:26.734,&#92;&quot;elec_dg_MW&#92;&quot;:0.026,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:37.8122259572996},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 20:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:20,&#92;&quot;temperature_degF&#92;&quot;:16.3,&#92;&quot;humidity_pc&#92;&quot;:66.4,&#92;&quot;elec_total_MW&#92;&quot;:26.441,&#92;&quot;elec_dg_MW&#92;&quot;:0.025,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:37.397810523563955},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 21:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:21,&#92;&quot;temperature_degF&#92;&quot;:15.3,&#92;&quot;humidity_pc&#92;&quot;:71.4,&#92;&quot;elec_total_MW&#92;&quot;:27.395,&#92;&quot;elec_dg_MW&#92;&quot;:0.019,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:38.74713586071005},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 22:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:22,&#92;&quot;temperature_degF&#92;&quot;:11.3,&#92;&quot;humidity_pc&#92;&quot;:80.4,&#92;&quot;elec_total_MW&#92;&quot;:27.908,&#92;&quot;elec_dg_MW&#92;&quot;:0.012,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:39.4727164665339},{&#92;&quot;timestamp&#92;&quot;:&#92;&quot;2018-01-01 23:00:00+00:00&#92;&quot;,&#92;&quot;_marimo_row_id&#92;&quot;:23,&#92;&quot;temperature_degF&#92;&quot;:7.3,&#92;&quot;humidity_pc&#92;&quot;:83.4,&#92;&quot;elec_total_MW&#92;&quot;:30.283,&#92;&quot;elec_dg_MW&#92;&quot;:0.003,&#92;&quot;state_mwh&#92;&quot;:1531784.4,&#92;&quot;county_cf&#92;&quot;:0.020459,&#92;&quot;old_mwh&#92;&quot;:22159.172,&#92;&quot;new_mwh&#92;&quot;:31341.6480396,&#92;&quot;new_MW&#92;&quot;:42.83188593794059}]&quot;' data-total-rows='43824' data-total-columns='9' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='true' data-page-size='24' data-field-types='[[&quot;temperature_degF&quot;,[&quot;number&quot;,&quot;float64&quot;]],[&quot;humidity_pc&quot;,[&quot;number&quot;,&quot;float64&quot;]],[&quot;elec_total_MW&quot;,[&quot;number&quot;,&quot;float64&quot;]],[&quot;elec_dg_MW&quot;,[&quot;number&quot;,&quot;float64&quot;]],[&quot;state_mwh&quot;,[&quot;number&quot;,&quot;float64&quot;]],[&quot;county_cf&quot;,[&quot;number&quot;,&quot;float64&quot;]],[&quot;old_mwh&quot;,[&quot;number&quot;,&quot;float64&quot;]],[&quot;new_mwh&quot;,[&quot;number&quot;,&quot;float64&quot;]],[&quot;new_MW&quot;,[&quot;number&quot;,&quot;float64&quot;]]]' data-selection='&quot;multi&quot;' data-show-filters='true' data-show-download='true' data-show-column-summaries='true' data-show-data-types='true' data-show-page-size-selector='true' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[[&quot;timestamp&quot;,[&quot;datetime&quot;,&quot;datetime64[us, UTC]&quot;]]]' data-has-stable-row-id='true' data-lazy='false' data-preload='false'></marimo-table></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "EiHx",
+      "code_hash": "40225ba05358889c63c681457ca5eb1e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "YtQt",
+      "code_hash": "3c131681a88d281f1c68081f990e42c6",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}
