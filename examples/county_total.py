@@ -7,7 +7,7 @@ app = marimo.App(width="medium")
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    This notebook generates the county_totals.csv file as follows:
+    This notebook generates the county_total.csv file as follows:
     """)
     return
 
