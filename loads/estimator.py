@@ -19,21 +19,21 @@ that is outside the 95th percentile of the training data.
 When `EstimatorConfig.keep_actual` is `True`, then the reference data is kept
 instead of predicted data for the reference year. This is the default. 
 
-When `EstimatorConfig.holdout` is positive, holdouts are performed for the
-specified fraction of days and drawn for the end of each month, i.e., a
-holdout of `0.15` (the default) will withhold about 4-5 days of at the end of each
-month.
-
-If `EstimatorConfig.holdout` or `EstimatorConfig.keep_actuals` are specified,
-then an additional column `Estimator.status` is created with the following
-values. 
-
-- `A`: training/actual data
-- `P`: predicted data
+If no years are specified, then holdout data is witheld from training and an
+additional column `Estimator.status` is created with the following values to
+indicated whether data is used for training or holdout testing.
+- `T`: training data
 - `H`: holdout data
 
-Example
--------
+The columns "Estimator.actual" and "Estimator.prediction" then contain the
+reference and predictions, respectively. The `EstimatorConfig.holdout` value
+must be positive. Holdouts are selected for the specified fraction of days
+and drawn from the end of each month, i.e., a holdout of `0.15` (the default)
+will select holdout data from the last 100 to 112 hours of each month,
+depending on the number of days in the month.
+
+Examples
+--------
 
 The following estimates the 2025 total load for Alameda county in California
 
@@ -47,14 +47,14 @@ which returns the data frame
     2025-01-01 00:00:00+00:00              48.2         79.7            NaN
     2025-01-01 01:00:00+00:00              45.7         80.4            NaN
     2025-01-01 02:00:00+00:00              43.9         85.2            NaN
-    2025-01-01 03:00:00+00:00              43.9         87.2     302.067159
-    2025-01-01 04:00:00+00:00              44.6         87.1     299.100221
+    2025-01-01 03:00:00+00:00              43.9         87.2     304.871177
+    2025-01-01 04:00:00+00:00              44.6         87.1     301.929806
     ...                                     ...          ...            ...
-    2025-12-31 19:00:00+00:00              50.9         92.1     288.975596
-    2025-12-31 20:00:00+00:00              51.4         93.8     287.450019
-    2025-12-31 21:00:00+00:00              51.6         95.6     284.361609
-    2025-12-31 22:00:00+00:00              51.1         98.1     281.724014
-    2025-12-31 23:00:00+00:00              50.7         98.3     282.853248
+    2025-12-31 19:00:00+00:00              50.9         92.1     291.173366
+    2025-12-31 20:00:00+00:00              51.4         93.8     289.704876
+    2025-12-31 21:00:00+00:00              51.6         95.6     286.522042
+    2025-12-31 22:00:00+00:00              51.1         98.1     283.721379
+    2025-12-31 23:00:00+00:00              50.7         98.3     284.602747
 
 The following obtains only the residential and commercial building loads
 
@@ -69,14 +69,46 @@ which returns the data frame
     2025-01-01 00:00:00+00:00              48.2         79.7            NaN
     2025-01-01 01:00:00+00:00              45.7         80.4            NaN
     2025-01-01 02:00:00+00:00              43.9         85.2            NaN
-    2025-01-01 03:00:00+00:00              43.9         87.2      71.547790
-    2025-01-01 04:00:00+00:00              44.6         87.1      68.580852
+    2025-01-01 03:00:00+00:00              43.9         87.2      74.260048
+    2025-01-01 04:00:00+00:00              44.6         87.1      71.399854
     ...                                     ...          ...            ...
-    2025-12-31 19:00:00+00:00              50.9         92.1      58.456227
-    2025-12-31 20:00:00+00:00              51.4         93.8      56.930650
-    2025-12-31 21:00:00+00:00              51.6         95.6      53.842240
-    2025-12-31 22:00:00+00:00              51.1         98.1      51.204645
-    2025-12-31 23:00:00+00:00              50.7         98.3      52.333879
+    2025-12-31 19:00:00+00:00              50.9         92.1      60.380677
+    2025-12-31 20:00:00+00:00              51.4         93.8      58.817573
+    2025-12-31 21:00:00+00:00              51.6         95.6      55.486745
+    2025-12-31 22:00:00+00:00              51.1         98.1      52.810050
+    2025-12-31 23:00:00+00:00              50.7         98.3      53.879351
+
+The following generates a 15% holdout test
+
+    from loads.estimator import Estimator
+    Estimator("Alameda CA")
+
+which outputs the data frame
+
+                               temperature_degF  humidity_pc      actual  prediction status
+    timestamp                                                                              
+    2018-01-01 00:00:00+00:00              52.2         85.8  286.465969         NaN      T
+    2018-01-01 01:00:00+00:00              50.5         88.0  294.474469         NaN      T
+    2018-01-01 02:00:00+00:00              50.0         90.1  299.947769         NaN      T
+    2018-01-01 03:00:00+00:00              49.5         91.6  299.941369  305.605058      T
+    2018-01-01 04:00:00+00:00              48.2         96.5  299.574469  302.497580      T
+    ...                                     ...          ...         ...         ...    ...
+    2018-12-31 19:00:00+00:00              50.5         41.9  285.730769  294.813055      H
+    2018-12-31 20:00:00+00:00              51.6         38.3  284.995369  291.521423      H
+    2018-12-31 21:00:00+00:00              51.8         37.3  281.957169  288.019044      H
+    2018-12-31 22:00:00+00:00              51.3         38.0  279.834569  285.121556      H
+    2018-12-31 23:00:00+00:00              48.7         43.1  281.052169  286.819504      H
+
+Caveats
+-------
+
+1. Future years cannot be specified.
+
+2. Load growth is not considered for commercial buildings based on floor area
+changes over the years. However, load growth is considered for residential,
+industrial, and agricultural loads based the number of residential units, and
+industrial and agricultural estimates from NLR. See the respective `loads`
+modules for details.
 
 See also
 --------
@@ -216,7 +248,7 @@ class Estimator(pd.DataFrame):
     """Load estimator results"""
     def __init__(self,
         county_st:str,
-        years:list[int],
+        years:list[int]=None,
         *,
         config:EstimatorConfig=None,
         ):
@@ -225,8 +257,9 @@ class Estimator(pd.DataFrame):
         Arguments
         ---------
         - `county_st`: county and state abbreviation
-        - `years`: list of years
-        - `config`: estimator configuration
+        - `years`: list of years (default None for holdout test)
+        - `config`: estimator configuration (default None for default
+          configuration)
         """
         assert isinstance(county_st,str), f"{county_st=} must be valid county name"
 
@@ -282,7 +315,8 @@ class Estimator(pd.DataFrame):
 
         else: # predict for specified 
 
-            assert isinstance(years,list), f"{years=} must be a list of integers"
+            assert hasattr(years,"__iter__"), f"{years=} must be iterable"
+            years = sorted(set(years)) # make sure years are unique and ordered
             
             estimator = self._get_model(
                 X=reference[config.weather],
@@ -290,8 +324,8 @@ class Estimator(pd.DataFrame):
                 config=_config)
 
             # assemble inputs
-            X = [reference[config.weather]] if REFERENCE_YEAR in years else []
-            for year in [x for x in years if x != REFERENCE_YEAR]:
+            X = []
+            for year in range(min(years),max(years)+1): # don't leave gaps in X
                 try:
                     X.append(Weather(
                             state=state,
@@ -309,11 +343,16 @@ class Estimator(pd.DataFrame):
                 index=X.index
                 ).sort_index()
 
+            # remove unwanted years
+            unwanted = X[~X.index.year.isin(years)].index
+            X.drop(unwanted,inplace=True)
+            Y.drop(unwanted,inplace=True)
+
             # replace with actuals
             if REFERENCE_YEAR in years and config.keep_actuals:
                 Y.loc[reference.index,config.enduse] = backward(reference[config.enduse])
 
-            # compile file dataframe
+            # compile final dataframe
             data = pd.concat([X,Y],axis=1)
 
         # construct dataframe
@@ -443,6 +482,16 @@ if __name__ == '__main__':
     
     VERBOSE = True
     pd.options.display.width = None
-    # config = EstimatorConfig(sectors=["residential","commercial"])
-    data = Estimator("Alameda CA",[2018,2019],config=None)
-    print(data)
+
+    print("Example 1")
+    print("---------")
+    print(Estimator("Alameda CA",[2025]))
+
+    print("Example 2")
+    print("---------")
+    config = EstimatorConfig(sectors=["residential","commercial"])
+    print(Estimator("Alameda CA",[2025],config=config))
+
+    print("Example 3")
+    print("---------")
+    print(Estimator("Alameda CA"))
