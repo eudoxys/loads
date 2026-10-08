@@ -17,4 +17,3 @@ by a search the most parsimonious harmonics that are within 1% of the best harmo
 
 The marimo notebook `explore_estimator_marimo.py` is used to visualize the
 results of the exploration script.
-
