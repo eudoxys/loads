@@ -1,19 +1,19 @@
-metric,county,yearly,weekly,daily,value,cutoff,min
-mae,King WA,2.0,2.0,5.0,6.135,6.252,5.954
-mae,Los Angeles CA,2.0,2.0,2.0,36.04,36.534,34.794
-mae,Maricopa AZ,2.0,2.0,4.0,19.875,20.134,19.175
-mae,Orange CA,2.0,2.0,3.0,6.84,6.88,6.552
-mae,Riverside CA,4.0,2.0,2.0,8.705,8.848,8.427
-mae,Salt Lake UT,6.0,3.0,4.0,2.339,2.348,2.236
-mape,King WA,2.0,2.0,5.0,1.108,1.126,1.072
-mape,Los Angeles CA,2.0,2.0,2.0,1.974,1.998,1.903
-mape,Maricopa AZ,2.0,2.0,4.0,1.795,1.802,1.716
-mape,Orange CA,2.0,2.0,3.0,0.587,0.589,0.561
-mape,Riverside CA,4.0,2.0,2.0,1.682,1.706,1.625
-mape,Salt Lake UT,6.0,3.0,4.0,0.59,0.592,0.564
-rmse,King WA,3.0,2.0,3.0,9.546,9.567,9.111
-rmse,Los Angeles CA,2.0,2.0,2.0,47.31,48.521,46.21
-rmse,Maricopa AZ,2.0,2.0,2.0,29.665,29.785,28.367
-rmse,Orange CA,2.0,2.0,2.0,9.643,9.653,9.193
-rmse,Riverside CA,4.0,2.0,2.0,13.178,13.407,12.769
-rmse,Salt Lake UT,7.0,2.0,4.0,3.127,3.129,2.98
+metric,county,yearly,weekly,daily,holdout,value,cutoff,min
+mae,King WA,2,7,4,5w,7.297,7.407,7.054
+mae,Los Angeles CA,2,2,2,3m,37.776,38.833,36.984
+mae,Maricopa AZ,2,2,4,5d,16.341,16.399,15.618
+mae,Orange CA,2,2,3,5d,6.683,6.782,6.459
+mae,Riverside CA,4,2,2,5d,8.228,8.371,7.972
+mae,Salt Lake UT,4,2,4,5w,2.242,2.26,2.152
+mape,King WA,2,2,5,4w,1.321,1.325,1.262
+mape,Los Angeles CA,2,2,2,3m,2.099,2.156,2.053
+mape,Maricopa AZ,3,2,4,5d,1.49,1.496,1.425
+mape,Orange CA,2,2,3,5d,0.573,0.58,0.552
+mape,Riverside CA,4,2,2,5d,1.582,1.608,1.531
+mape,Salt Lake UT,4,2,4,5w,0.569,0.573,0.546
+rmse,King WA,2,2,2,5w,11.013,11.13,10.6
+rmse,Los Angeles CA,2,2,2,3m,51.627,53.397,50.854
+rmse,Maricopa AZ,2,2,3,5d,22.488,22.612,21.535
+rmse,Orange CA,2,2,3,5d,9.219,9.437,8.988
+rmse,Riverside CA,4,2,2,3m,12.901,13.308,12.674
+rmse,Salt Lake UT,2,2,4,5w,2.962,2.964,2.823

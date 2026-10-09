@@ -27,10 +27,10 @@ indicated whether data is used for training or holdout testing.
 
 The columns "Estimator.actual" and "Estimator.prediction" then contain the
 reference and predictions, respectively. The `EstimatorConfig.holdout` value
-must be positive. Holdouts are selected for the specified fraction of days
-and drawn from the end of each month, i.e., a holdout of `0.15` (the default)
-will select holdout data from the last 100 to 112 hours of each month,
-depending on the number of days in the month.
+must identify a frequency, e.g., `6h` for every 6th hour, `5d` for every 5
+days, `4w` for every 4 weeks, `3m` for every 3 months. Any positive value is
+permitted for the number, and one of `h`, `d`, `w`, and `m` are allowed for
+the frequency.
 
 Examples
 --------
@@ -78,26 +78,27 @@ which returns the data frame
     2025-12-31 22:00:00+00:00              51.1         98.1      52.810050
     2025-12-31 23:00:00+00:00              50.7         98.3      53.879351
 
-The following generates a 15% holdout test
+The following generates the default 5-day holdout test
 
     from loads.estimator import Estimator
-    Estimator("Alameda CA")
+    df = Estimator("Alameda CA")
+    df[df.status=="H"]
 
 which outputs the data frame
 
                                temperature_degF  humidity_pc      actual  prediction status
     timestamp                                                                              
-    2018-01-01 00:00:00+00:00              52.2         85.8  286.465969         NaN      T
-    2018-01-01 01:00:00+00:00              50.5         88.0  294.474469         NaN      T
-    2018-01-01 02:00:00+00:00              50.0         90.1  299.947769         NaN      T
-    2018-01-01 03:00:00+00:00              49.5         91.6  299.941369  305.605058      T
-    2018-01-01 04:00:00+00:00              48.2         96.5  299.574469  302.497580      T
+    2018-01-04 00:00:00+00:00              50.9         88.1  297.196569  288.690881      H
+    2018-01-04 01:00:00+00:00              51.1         84.5  304.703669  295.331078      H
+    2018-01-04 02:00:00+00:00              52.0         83.5  309.154469  300.106376      H
+    2018-01-04 03:00:00+00:00              50.9         90.0  307.530969  301.964979      H
+    2018-01-04 04:00:00+00:00              49.6         95.5  302.760669  298.019750      H
     ...                                     ...          ...         ...         ...    ...
-    2018-12-31 19:00:00+00:00              50.5         41.9  285.730769  294.813055      H
-    2018-12-31 20:00:00+00:00              51.6         38.3  284.995369  291.521423      H
-    2018-12-31 21:00:00+00:00              51.8         37.3  281.957169  288.019044      H
-    2018-12-31 22:00:00+00:00              51.3         38.0  279.834569  285.121556      H
-    2018-12-31 23:00:00+00:00              48.7         43.1  281.052169  286.819504      H
+    2018-12-30 19:00:00+00:00              50.0         77.3  291.664369  297.301426      H
+    2018-12-30 20:00:00+00:00              53.1         71.3  289.589169  294.544812      H
+    2018-12-30 21:00:00+00:00              54.5         68.8  283.976469  291.046255      H
+    2018-12-30 22:00:00+00:00              54.5         70.5  282.688469  287.443945      H
+    2018-12-30 23:00:00+00:00              51.4         84.2  284.631369  289.012841      H
 
 Caveats
 -------
@@ -125,6 +126,7 @@ import sys
 from typing import NamedTuple, Callable
 from collections import namedtuple
 import requests
+import re
 
 # third-party imports
 import pandas as pd
@@ -229,8 +231,8 @@ class EstimatorConfig(NamedTuple):
     keep_actuals:bool = True
     """Flag to keep actual data in reference year"""
 
-    holdout:float = 0.15
-    """Fraction of training data to hold out for testing"""
+    holdout:str|Callable = "5d"
+    """Holdout frequency for testing, e.g., '6h', 5d','4w', '3m'"""
 
 def _verbose(*args,**kwargs):
     """Verbose output"""
@@ -243,6 +245,51 @@ def _verbose(*args,**kwargs):
 
 class EstimatorError(Exception):
     """Estimator exception"""
+
+def _get_holdout(
+        df:pd.DataFrame,
+        freq:str,
+        ) -> pd.DatetimeIndex:
+    """Holdout index function
+
+    Arguments
+    ---------
+    - `df`: data frame to collect holdout from
+    - `freq`: holdout frequency
+
+    Returns
+    -------
+    - `pd.DatetimeIndex`: index of holdout date/times
+
+    Holdout frequencies are of the form `<N><F>`. Valid interval frequencies
+    `<F>` are over one year, i.e., `h` for hourly, `d` for daily, `w` for
+    weekly, and `m` for monthly.  The resulting holdout will extract every
+    $N$th interval.
+    """
+    try:
+        n,m = re.match("([0-9]+)([mwdh])",freq).groups()
+    except Exception as err:
+        raise EstimatorError(f"{freq=} is not valid") from err
+    count = int(n)
+    assert count > 0, f"{county=} must be positive"
+
+    training = df.dropna()
+    
+    match m:
+        case "m": # every `count` months of the year
+            ndx = training.index.month
+        case "w": # week `count` weeks of the year (starting on the first day of year)
+            ndx = training.index.day_of_year // 7
+        case "d": # every `count` days of the year
+            ndx = training.index.day_of_year
+        case "h": # every count` hours of the year
+            ndx = training.index.day_of_year * 24 + training.index.hour
+        case _:
+            raise EstimatorError(f"{freq=} '{m}' is invalid")
+
+    holdout = ndx % count == count-1
+
+    return training.index[holdout]
 
 class Estimator(pd.DataFrame):
     """Load estimator results"""
@@ -290,14 +337,15 @@ class Estimator(pd.DataFrame):
 
         # isolate valid training data
         reference = pd.concat([X,Y],axis=1) 
+        training = reference.dropna()
         if years is None: # perform holdout test
 
-            assert 0 < config.holdout < 1, f"{config.holdout=} must be between 0 and 1"
-            
-            training = reference.dropna()
-            nmonths = training.index[-1].month - training.index[0].month
-            ndays = int(len(training) * config.holdout / nmonths / 24) + 1
-            holdout = training.index[training.index.days_in_month - training.index.day < ndays]
+            if isinstance(config.holdout,str):
+                holdout = _get_holdout(training,config.holdout)
+            elif callable(config.holdout):
+                holdout = config.holdout(training)
+            else:
+                raise ValueError(f"{holdout=} is not valid")
             training.drop(holdout,inplace=True)
 
             # get estimator
@@ -494,4 +542,5 @@ if __name__ == '__main__':
 
     print("Example 3")
     print("---------")
-    print(Estimator("Alameda CA"))
+    df = Estimator("Alameda CA")
+    print(df[df.status=="H"])

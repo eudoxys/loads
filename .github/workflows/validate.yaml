@@ -22,7 +22,7 @@ jobs:
     - name: Install packages
       run: |
         pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install .
 
     - name: Analyse code
       run: |
@@ -36,5 +36,5 @@ jobs:
       run: |
         mkdir $HOME/.nsrdb
         echo "$NSRDB_CREDENTIALS" > $HOME/.nsrdb/credentials.json
-        pip install . pytest
+        pip install pytest
         pytest
