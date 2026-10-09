@@ -12,8 +12,7 @@ Run the marimo notebook
 | Method | Spatial unit | Test design | MAPE (%) |
 | ------ | ------------ | ----------- | -------- |
 | Linear regression benchmark [1,2] | System; zones | Next year, actual weather | 5.22; 7.00 [a] |
-| Regression with recency effect [2] | System; zones | Next year,
-actual weather | 4.27; 6.13 [a] |
+| Regression with recency effect [2] | System; zones | Next year, actual weather | 4.27; 6.13 [a] |
 | Operator adequacy method [3] | National | Next year, actual weather | 4.8 |
 | Dense neural network [3] | National Next year, actual weather | 2.8 |
 | Per-area perceptron meta-model [4, 5] | 54 balancing areas | Next year, simulated weather | < 5 for 9 of 10 largest |
