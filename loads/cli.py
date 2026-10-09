@@ -192,10 +192,6 @@ def main(*args:list[str],**kwargs:dict[str,str]) -> int:
 
                 return os.system(f"python3 {os.path.join(os.path.dirname(__file__),'tests.py')}")
 
-            case "_":
-
-                raise RuntimeError(f"command={args.command} is invalid")
-
             case "viewer":
 
                 return os.system(f"marimo run {os.path.dirname(__file__)}/viewer.py")
@@ -207,6 +203,10 @@ def main(*args:list[str],**kwargs:dict[str,str]) -> int:
             case "info":
                 print(*[f"{x}: {y}" for x,y in _URLS.items()],sep="\n")
                 return E_OK
+
+            case _:
+
+                raise RuntimeError(f"command={args.command} is invalid")
 
         return E_FAILED
 

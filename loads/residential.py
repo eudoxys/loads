@@ -357,7 +357,7 @@ class Residential(pd.DataFrame):
             data *= calibrate
         elif isinstance(calibrate,dict):
             if "load" in calibrate:
-                columns = list(set(data.columns) - set("elec_dg_MW"))
+                columns = list(set(data.columns) - set(["elec_dg_MW"]))
                 data[columns] *= calibrate["load"]
             if "solar" in calibrate:
                 data["elec_dg_MW"] *= calibrate["solar"]

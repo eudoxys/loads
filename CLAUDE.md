@@ -150,12 +150,10 @@ make docs                           # pdoc → ./docs (creates its own .venv)
 
 - `Makefile` `test` target runs `./test/test.sh`, which doesn't exist; tests
   live in `loads/_test/`. The README's `make cache` target also doesn't exist.
-- `cli.py`: `case "_":` matches the literal string `"_"`, not a wildcard;
-  `help`/`info` reference undefined `webbrowser` and `_URLS`; `viewer`/`test`
+- `help`/`info` reference undefined `webbrowser` and `_URLS`; `viewer`/`test`
   point at `viewer.py`/`tests.py`, which aren't in the package; there's a
   duplicate `viewer` case.
 - `dgen.SolarModel` has a stray `print(len(weather.index))`.
-- `Residential` calibration uses `set("elec_dg_MW")` (a set of characters).
 - Several docstrings refer to `tests/` (`tests/clusters.csv`), but the
   checked-in files are `loads/clusters.csv` and `loads/configs.csv`; `tests/`
   is a gitignored scratch output folder.
