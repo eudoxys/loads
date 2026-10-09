@@ -4,6 +4,14 @@ __generated_with = "0.25.1"
 app = marimo.App(width="medium")
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    This notebook is used to validate the choice of holdout and harmonics on individual counties.
+    """)
+    return
+
+
 @app.cell
 def _(Counties):
     counties = Counties()
@@ -27,8 +35,19 @@ def _(mo, state_counties, state_ui):
 
 
 @app.cell
-def _(county_ui, mo, state_ui):
-    mo.hstack([state_ui,county_ui],justify='start')
+def _(mo):
+    holdout_ui = mo.ui.array(
+        [
+            mo.ui.slider(start=3, stop=10,label="Holdout every",show_value=True,debounce=True,value=6),
+            mo.ui.radio(options={"Days": "d", "Weeks": "w", "Months": "m"},inline=True,value="Days"),
+        ]
+    )
+    return (holdout_ui,)
+
+
+@app.cell
+def _(county_ui, holdout_ui, mo, state_ui):
+    mo.hstack([state_ui,county_ui,mo.hstack(holdout_ui,justify='end')],justify='start')
     return
 
 
@@ -41,18 +60,19 @@ def _(county_ui, state_ui):
 
 
 @app.cell
-def _(Estimator, county_st, mo):
+def _(Estimator, EstimatorConfig, county_st, holdout_ui, mo):
+    config = EstimatorConfig(holdout=f"{holdout_ui[0].value}{holdout_ui[1].value}")
     with mo.status.spinner("Running load estimator"):
-        model = Estimator(county_st)
+        model = Estimator(county_st,config=config)
     status = model.reset_index().set_index(["status","timestamp"])
     model["holdout"] = float('nan')
     _prediction = status.loc["H"]
     model.loc[_prediction.index,"holdout"] = _prediction["prediction"]
-    return model, status
+    return config, model, status
 
 
 @app.cell
-def _(county_st, plt, status):
+def _(config, county_st, plt, status):
     # create scatter plot
     _fig = plt.figure(figsize=(10,6))
     _ax = _fig.gca()
@@ -60,7 +80,7 @@ def _(county_st, plt, status):
     _ax = status.loc["H"].plot(x="actual",y="prediction",marker="x",linestyle="",markersize="1",ax=_ax)
     _min,_max = min(status.actual),max(status.actual)
     _ax = plt.plot([_min,_max],[_min,_max],"k",label="Perfect prediction")
-    plt.legend(["Training","Holdout","Perfection"])
+    plt.legend(["Training",f"Holdout ({config.holdout})","Perfection"])
     plt.grid()
     plt.xlabel("Actual power (MW)")
     plt.ylabel("Predicted power (MW)")
@@ -131,13 +151,63 @@ def _(humidity_plot, mo, scatter_plot, temperature_plot, timeseries_plot):
 
 @app.cell
 def _():
+    return
+
+
+@app.cell
+def _(config, get_mae, get_mape, get_r2, get_rmse, mo, model):
+    _holdout = model[model.status=="H"][["actual","prediction"]]
+    _peak = model.actual.max()
+    _mean = model.actual.mean()
+    _mae = get_mae(_holdout)
+    _mape = get_mape(_holdout)
+    _rmse = get_rmse(_holdout)
+    _r2 = get_r2(_holdout)
+    mo.md(f"""
+    | Holdout | MAPE | MAE | RMSE | R$^2$ |
+    | ------- | ---- | --- | ---- | ----- |
+    | {config.holdout} | {_mape:.2f}% | {_mae:.2f} MW | {_rmse:.2f} MW | {_r2:.2f} |
+    | % of mean: | | {_mae/_mean*100:.2f}% | {_rmse/_mean*100:.2f}%
+    | % of peak: | | {_mae/_peak*100:.2f}% | {_rmse/_peak*100:.2f}%""")
+    return
+
+
+@app.cell
+def _(np):
+    def get_mae(df):
+        """Calculate the mean absolute error"""
+        return np.mean(np.abs(df.actual - df.prediction))
+
+    def get_rmse(df):
+        """Calculate the holdout root mean squared error"""
+        return np.sqrt(np.mean((df.actual - df.prediction) ** 2))
+
+    def get_mape(df):
+        """Calculate mean absolute percent error"""
+        return (
+            np.mean(np.abs((df.prediction - df.actual) / (df.actual + 1e-6)))
+            * 100
+        )
+
+    def get_r2(df):
+        """Calculate r-squared"""
+        ss_res = np.sum((df.actual - df.prediction) ** 2)
+        ss_tot = np.sum((df.actual - np.mean(df.actual)) ** 2)
+        return 1 - (ss_res / ss_tot)
+
+    return get_mae, get_mape, get_r2, get_rmse
+
+
+@app.cell
+def _():
     import marimo as mo
     import matplotlib.pyplot as plt
+    import numpy as np
 
     from fips.counties import Counties
-    from loads.estimator import Estimator
+    from loads.estimator import Estimator, EstimatorConfig
 
-    return Counties, Estimator, mo, plt
+    return Counties, Estimator, EstimatorConfig, mo, np, plt
 
 
 if __name__ == "__main__":
