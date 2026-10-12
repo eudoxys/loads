@@ -181,16 +181,23 @@ class Commercial(pd.DataFrame):
 
             # collect building type data
             data = {}
+            total_area is None
             for btype in COMstock.BUILDING_TYPES:
                 bdata = COMstock(
                     state=state,
                     county=county,
                     building_type=btype,
                     )
-                floorarea[btype] = bdata["floor_area"].max()
-                total_area += floorarea[btype]
+
+                # collect time-series of total areas
+                if total_area is None:
+                    total_area = bdata["floor_area"]
+                else:
+                    total_area += bdata["floor_area"]
                 for aggr,columns in collect.items():
-                    data[f"{btype}_{aggr}_MW"] = bdata[columns].sum(axis=1) / 1e6
+
+                    # convert from W/sf to MW
+                    data[f"{btype}_{aggr}_MW"] = bdata[columns].sum(axis=1) / 1e6 * bdata["floor_area"]
             data = pd.DataFrame(data)
 
             # prepare consolidation columns
@@ -204,7 +211,7 @@ class Commercial(pd.DataFrame):
                 if btype in split_areas.index:
                     for ctype in {x.split("_",1)[0] for x in collect.keys()}:
                         for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
-                            data[kwname] *= floorarea[btype] / total_area * split_areas.loc[btype].FLOORAREA
+                            data[kwname] *= split_areas.loc[btype].FLOORAREA / total_area
                 else:
                     for ctype in {x.split("_",1)[0] for x in collect.keys()}:
                         for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
@@ -260,8 +267,9 @@ if __name__ == "__main__":
 
     The main script refreshes the cache with debugging enabled.
     """
+
     import sys
-    refresh = "--refresh" in sys.argv
+    refresh = True # "--refresh" in sys.argv
     debug = "--debug" in sys.argv
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
 
