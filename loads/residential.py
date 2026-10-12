@@ -314,10 +314,10 @@ class Residential(pd.DataFrame):
                     county=county,
                     building_type=btype,
                     )
+                units[btype] = bdata["units"].max()
+                total_units += units[btype]
                 for aggr,columns in collect.items():
                     data[f"{btype}_{aggr}_MW"] = bdata[columns].sum(axis=1) / 1e6
-                    units[btype] = bdata["units"].max()
-                    total_units += units[btype]
             data = pd.DataFrame(data)
 
             # prepare consolidation columns
