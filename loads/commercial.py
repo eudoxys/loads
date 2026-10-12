@@ -187,10 +187,10 @@ class Commercial(pd.DataFrame):
                     county=county,
                     building_type=btype,
                     )
+                floorarea[btype] = bdata["floor_area"].max()
+                total_area += floorarea[btype]
                 for aggr,columns in collect.items():
                     data[f"{btype}_{aggr}_MW"] = bdata[columns].sum(axis=1) / 1e6
-                    floorarea[btype] = bdata["floor_area"].max()
-                    total_area += floorarea[btype]
             data = pd.DataFrame(data)
 
             # prepare consolidation columns
