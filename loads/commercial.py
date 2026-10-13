@@ -168,6 +168,7 @@ class Commercial(pd.DataFrame):
                 .sort_index()
             total_actual_area = actual_areas.FLOORAREA.sum()
 
+            # read commercial building type data
             data = None
             total_stock_area = 0.0
             for btype in COMstock.BUILDING_TYPES:
@@ -182,6 +183,7 @@ class Commercial(pd.DataFrame):
                 total_stock_area += stock_area
                 bdata.drop("floor_area",inplace=True,axis=1)
 
+                # convert from W/sf to MW
                 bdata = bdata.mul(stock_area,axis=0) / 1e6
                 if data is None:
                     data = bdata
@@ -214,6 +216,7 @@ class Commercial(pd.DataFrame):
             data.sort_index(inplace=True)
             data = data.round(4)
 
+            # save to cache
             data.to_csv(cache.pathname,
                 index=True,
                 header=True,
