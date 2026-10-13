@@ -15,25 +15,28 @@ To get the commercial building load data for Alameda County CA, use the followin
 which outputs the following
 
                                elec_baseload_MW  ...  nonelec_total_MW
-    2018-01-01 00:00:00+00:00          6.288318  ...          1.970713
-    2018-01-01 01:00:00+00:00          6.690304  ...          2.775018
-    2018-01-01 02:00:00+00:00          6.362257  ...          3.586859
-    2018-01-01 03:00:00+00:00          6.157291  ...          4.237439
-    2018-01-01 04:00:00+00:00          6.043443  ...          4.681834
+    timestamp                                    ...                  
+    2018-01-01 00:00:00+00:00         1302.4337  ...          530.8230
+    2018-01-01 01:00:00+00:00         1278.7185  ...          601.4498
+    2018-01-01 02:00:00+00:00         1187.3559  ...          676.6662
+    2018-01-01 03:00:00+00:00         1098.1876  ...          677.1097
+    2018-01-01 04:00:00+00:00         1021.7827  ...          621.0280
     ...                                     ...  ...               ...
-    2018-12-31 19:00:00+00:00          7.498333  ...          2.924475
-    2018-12-31 20:00:00+00:00          7.660632  ...          2.249275
-    2018-12-31 21:00:00+00:00          7.640507  ...          1.753567
-    2018-12-31 22:00:00+00:00          7.358111  ...          1.600068
-    2018-12-31 23:00:00+00:00          6.819952  ...          1.606544
+    2018-12-31 19:00:00+00:00         1610.1920  ...          849.0425
+    2018-12-31 20:00:00+00:00         1619.8298  ...          753.1261
+    2018-12-31 21:00:00+00:00         1589.6403  ...          664.3381
+    2018-12-31 22:00:00+00:00         1513.8585  ...          584.5360
+    2018-12-31 23:00:00+00:00         1379.7961  ...          507.9539
 
     [8760 rows x 10 columns]
 """
 
 import os
-import pandas as pd
+import calendar
 import logging
 from typing import Callable
+
+import pandas as pd
 
 from fips import States, Counties
 from loads.floorarea import Floorarea
@@ -41,6 +44,12 @@ from loads.comstock import COMstock
 from cache import Cache
 
 _logger = logging.getLogger(__file__)
+
+states = States()
+"""State database"""
+
+counties = Counties()
+"""Counties database"""
 
 class Commercial(pd.DataFrame):
     """Commercial building data frame class
@@ -75,7 +84,6 @@ class Commercial(pd.DataFrame):
                 ],
             "nonelec_baseload": [
                 "district_hotwater",
-                "gas_heating",
                 "gas_equipment",
                 "gas_watersystems",
                 "other_watersystems",
@@ -85,6 +93,7 @@ class Commercial(pd.DataFrame):
                 ],
             "nonelec_heating": [
                 "other_heating",
+                "gas_heating",
                 "district_heating",
                 ],
             "nonelec_dg": [
@@ -105,11 +114,10 @@ class Commercial(pd.DataFrame):
         # pylint: disable=too-many-arguments,too-many-positional-arguments
         state:str,
         county:str,
-        year:int=None,
+        year:int=2018,
         *,
-        collect=None,
+        collect:dict[str,list[str]]=None,
         refresh:bool=False,
-        calibrate:float|dict[str,float]|Callable|None=None,
         ):
         """Construct building types data frame
 
@@ -137,33 +145,35 @@ class Commercial(pd.DataFrame):
         computing total electric and non-electric loads in MW.
         """
         # pylint: disable=too-many-locals
-        assert state in States()["ST"].values, f"{state=} is not valid"
-        assert county in Counties().set_index(["ST","COUNTY"]).loc[state].index, \
+        assert state in states["ST"].values, f"{state=} is not valid"
+        assert county in counties.set_index(["ST","COUNTY"]).loc[state].index, \
             f"{state=} {county=} is not valid"
 
+        data = None
+        cache = None
         if collect is None:
             collect = self.COLLECT
 
-        data = None
-        if self.CACHEDIR:
-            Cache.CACHEDIR = self.CACHEDIR
-        cache = Cache(package="loads",version=0,path=[state,county,"C.csv.gz"])
-        if cache.exists() and not refresh:
-            try:
-                data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
-                _logger.debug(f"{cache=} ok")
-            except Exception as err:
+            # only use caching for default collection
+            if self.CACHEDIR:
+                Cache.CACHEDIR = self.CACHEDIR
+            cache = Cache(package="loads",version=0,path=[state,county,"C.csv.gz"])
+            if cache.exists() and not refresh:
+                try:
+                    data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
+                    _logger.debug(f"{cache=} ok")
+                except Exception as err:
+                    data = None
+                    cache.delete()
+                    _logger.debug(f"{cache=} {err}")
+            else:
                 data = None
-                cache.delete()
-                _logger.debug(f"{cache=} {err}")
-        else:
-            data = None
-            _logger.debug(f"{cache=} (re)generation required")
+                _logger.debug(f"{cache=} (re)generation required")
 
         if data is None:
 
             # split floor areas by building type
-            actual_areas = Floorarea(state=state,county=county,year=year)\
+            actual_areas = Floorarea(state=state,county=county)\
                 .set_index("BUILDING_TYPE")\
                 .sort_index()
             total_actual_area = actual_areas.FLOORAREA.sum()
@@ -188,10 +198,10 @@ class Commercial(pd.DataFrame):
                 if data is None:
                     data = bdata
                 else:
-                    data += bdata
+                    data = data.add(bdata,fill_value=0.0)
 
             # construct the reverse mapping of collections
-            rmap = {item: key for key, items in self.COLLECT.items() for item in items}
+            rmap = {item: key for key, items in collect.items() for item in items}
             
             # group columns to collections
             data.drop([x for x in data.columns if x not in rmap],axis=1,inplace=True)
@@ -199,44 +209,49 @@ class Commercial(pd.DataFrame):
             data = data.T.groupby(level=0).sum().T
 
             # append empty collections
-            data[[f"{x}_MW" for x,y in self.COLLECT.items() if not y]] = 0.0
+            data[[f"{x}_MW" for x,y in collect.items() if not y]] = 0.0
 
             # rescale from stock total area to actual total area
             data = data.div(total_stock_area,axis=0) * total_actual_area
 
             # update totals
-            data["elec_total_MW"] = sum(data[f"elec_{x}_MW"] for x in ["baseload","cooling","heating"])
+            data["elec_total_MW"] = sum(data[f"elec_{x}_MW"] for x in ["baseload","cooling","heating"] if f"elec_{x}_MW" in data.columns)
             data["elec_net_MW"] = data["elec_total_MW"] + data["elec_dg_MW"]
-            data["nonelec_total_MW"] = sum(data[f"nonelec_{x}_MW"] for x in ["baseload","cooling","heating"])
+            data["nonelec_total_MW"] = sum(data[f"nonelec_{x}_MW"] for x in ["baseload","cooling","heating"] if f"nonelec_{x}_MW" in data.columns)
             data.drop("nonelec_dg_MW",axis=1,inplace=True)
-
-            # move year-end data to beginning
-            data.index = pd.DatetimeIndex([str(x).replace("2019","2018") for x in data.index])
-            data.index.name = "timestamp"
-            data.sort_index(inplace=True)
             data = data.round(4)
 
             # save to cache
-            data.to_csv(cache.pathname,
-                index=True,
-                header=True,
-                compression="gzip" if cache.pathname.endswith(".gz") else None,
-                )
+            if not cache is None:
+                data.to_csv(cache.pathname,
+                    index=True,
+                    header=True,
+                    compression="gzip" if cache.pathname.endswith(".gz") else None,
+                    )
 
-        # calibrate load is requested
-        if isinstance(calibrate,float):
-            data *= calibrate
-        elif isinstance(calibrate,dict):
-            if "load" in calibrate:
-                columns = list(set(data.columns) - {"elec_dg_MW"})
-                data[columns] *= calibrate["load"]
-            if "solar" in calibrate:
-                data["elec_dg_MW"] *= calibrate["solar"]
-        elif callable(calibrate):
-            data = calibrate(data)
-        else:
-            assert calibrate is None, f"{calibrate=} is not valid"
+        # reindex to target year
+        if year != 2018:
+
+            # change dates only by whole weeks
+            weeks = int((year - 2018)*365.2425/7)
+            data.index += pd.Timedelta(weeks,"W")
+
+            # add first day to last day on leap years
+            if calendar.isleap(year):
+                extra = data[:24]
+                extra.index += pd.Timedelta(1,"D")
+                data = pd.concat([data,extra])
+
+            # correct the years of the index
+            data.index = data.index.map(lambda t: t.replace(year=year) if t.year != year else t)
+
+            # resort records to new year's data order
+            data.sort_index(inplace=True)
+
+        # name the date/time index 
+        data.index.name = "timestamp"
             
+        # all done
         super().__init__(data[sorted(data.columns)])
 
     @classmethod
