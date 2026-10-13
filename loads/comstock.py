@@ -241,7 +241,9 @@ class COMstock(pd.DataFrame):
         data["floor_area"] = floor_area
 
         # resample to hourly frequency
-        data = data.resample("1h").sum()
+        rules = {x:"sum" for x in data.columns if x != "floor_area"}
+        rules["floor_area"] = "mean"
+        data = data.resample("1h").agg(rules)
 
         # move year-end data to beginning
         data.index = pd.DatetimeIndex([str(x).replace("2019","2018") for x in data.index])

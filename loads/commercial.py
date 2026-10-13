@@ -31,19 +31,19 @@ which outputs the following
     [8760 rows x 10 columns]
 """
 
-import os
 import calendar
 import logging
 from typing import Callable
 
 import pandas as pd
+import numpy as np
 
 from fips import States, Counties
 from loads.floorarea import Floorarea
 from loads.comstock import COMstock
 from cache import Cache
 
-_logger = logging.getLogger(__file__)
+_logger = logging.getLogger(__name__)
 
 states = States()
 """State database"""
@@ -57,7 +57,7 @@ class Commercial(pd.DataFrame):
     The `Commercial` class is a data frame that contains the collected
     building loads for each commercial building types, aggregated by load
     category, i.e., `baseload`,`cooling`, `heating`, `dg`, and `total` for
-    both electric and non-electric loads.  Values are delivered both in MW.
+    both electric and non-electric loads.  Values are delivered in MW.
     """
     COLLECT = {
             "elec_baseload": [
@@ -128,26 +128,25 @@ class Commercial(pd.DataFrame):
 
           - `county`: specify the county name (required)
 
+          - `year`: specify the year for which the building data is provided
+
           - `collect`: specify how COMstock columns are collected (default is `COLLECT`)
 
-          - `year`: specify the year on which the floor area is based
-            (default most recent in `Floorarea()`)
-
           - `refresh`: force cache refresh from source data
-
-          - `calibrate`: set load calibration
 
         Description
         -----------
 
         This class compiles the building type data for a county by collecting
-        COMstock columns, scaling by the floor area in that year, and finally
-        computing total electric and non-electric loads in MW.
+        COMstock columns, scaling by the floor area, realigning the days for
+        the target year, and computing total electric and non-electric loads
+        in MW.
         """
         # pylint: disable=too-many-locals
-        assert state in states["ST"].values, f"{state=} is not valid"
-        assert county in counties.set_index(["ST","COUNTY"]).loc[state].index, \
-            f"{state=} {county=} is not valid"
+        if not state in states["ST"].values:
+            raise ValueError(f"{state=} is not valid")
+        if not county in counties.set_index(["ST","COUNTY"]).loc[state].index:
+            raise ValueError(f"{state=} {county=} is not valid")
 
         data = None
         cache = None
@@ -156,8 +155,12 @@ class Commercial(pd.DataFrame):
 
             # only use caching for default collection
             if self.CACHEDIR:
+
+                # Note: this update to cachedir needs to be done through
+                #       a future change to Cache that cannot be overwritten
+                #       by similar actions in other classes that use Cache
                 Cache.CACHEDIR = self.CACHEDIR
-            cache = Cache(package="loads",version=0,path=[state,county,"C.csv.gz"])
+            cache = Cache(package="loads",version=1,path=[state,county,"C.csv.gz"])
             if cache.exists() and not refresh:
                 try:
                     data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
@@ -200,6 +203,9 @@ class Commercial(pd.DataFrame):
                 else:
                     data = data.add(bdata,fill_value=0.0)
 
+            # Note: per-building-type areas are not used for now
+            #       this will be addressed in a future update
+
             # construct the reverse mapping of collections
             rmap = {item: key for key, items in collect.items() for item in items}
             
@@ -207,6 +213,7 @@ class Commercial(pd.DataFrame):
             data.drop([x for x in data.columns if x not in rmap],axis=1,inplace=True)
             data.columns = pd.MultiIndex.from_tuples([(f"{rmap[x]}_MW",x) for x in data.columns])
             data = data.T.groupby(level=0).sum().T
+            data = data.reindex(columns=[f"{k}_MW" for k in collect], fill_value=0.0)
 
             # append empty collections
             data[[f"{x}_MW" for x,y in collect.items() if not y]] = 0.0
@@ -214,15 +221,22 @@ class Commercial(pd.DataFrame):
             # rescale from stock total area to actual total area
             data = data.div(total_stock_area,axis=0) * total_actual_area
 
-            # update totals
+            # update totals (overwrite old values to guarantee consistency)
             data["elec_total_MW"] = sum(data[f"elec_{x}_MW"] for x in ["baseload","cooling","heating"] if f"elec_{x}_MW" in data.columns)
             data["elec_net_MW"] = data["elec_total_MW"] + data["elec_dg_MW"]
             data["nonelec_total_MW"] = sum(data[f"nonelec_{x}_MW"] for x in ["baseload","cooling","heating"] if f"nonelec_{x}_MW" in data.columns)
+            
+            # no such thing as non-electric DG
             data.drop("nonelec_dg_MW",axis=1,inplace=True)
+
+            # truncate non-significant digits
             data = data.round(4)
 
             # save to cache
             if not cache is None:
+
+                # Note: this write is not atomic, this will
+                #       be fixed in a future update
                 data.to_csv(cache.pathname,
                     index=True,
                     header=True,
@@ -232,18 +246,15 @@ class Commercial(pd.DataFrame):
         # reindex to target year
         if year != 2018:
 
-            # change dates only by whole weeks
-            weeks = int((year - 2018)*365.2425/7)
-            data.index += pd.Timedelta(weeks,"W")
-
-            # add first day to last day on leap years
-            if calendar.isleap(year):
-                extra = data[:24]
-                extra.index += pd.Timedelta(1,"D")
-                data = pd.concat([data,extra])
-
-            # correct the years of the index
-            data.index = data.index.map(lambda t: t.replace(year=year) if t.year != year else t)
+            t0 = pd.Timestamp("2018-01-01", tz="UTC")
+            target = pd.date_range(f"{year}-01-01", f"{year+1}-01-01", 
+                freq="h", tz="UTC", inclusive="left")
+            
+            # nearest whole-week shift keeps weekdays
+            days = round((target[0] - t0).days / 7) * 7          
+            hours = ((target - pd.Timedelta(days=days)) - t0) // pd.Timedelta("1h")
+            data = data.iloc[np.mod(hours, len(data))]
+            data.index = target
 
             # resort records to new year's data order
             data.sort_index(inplace=True)
@@ -282,4 +293,3 @@ if __name__ == "__main__":
             _logger.info(f"{state} {county} ok")
         except Exception as err:
             (_logger.exception if debug else _logger.error)(f"{state} {county} {err}")
-            raise
