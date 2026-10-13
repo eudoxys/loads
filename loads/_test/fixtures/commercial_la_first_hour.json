@@ -1,0 +1,189 @@
+{
+  "description": "First LA hour, all 14 COMstock types; electric baseload + heating + cooling end uses. Raw quarter-hour kWh and raw represented ft2. Hourly loader metadata is four times raw area; this common factor cancels in stock shares.",
+  "source_url_pattern": "https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2021/comstock_amy2018_release_1/timeseries_aggregates/by_county/state=CA/g0600370-{stock_type}.csv",
+  "inventory_source": "https://data.openei.org/submissions/906",
+  "inventory_year": 2019,
+  "stock_year": 2018,
+  "hour_UTC": "2018-01-01T05:00:00+00:00",
+  "source_interval_labels": [
+    "2018-01-01 00:15:00",
+    "2018-01-01 00:30:00",
+    "2018-01-01 00:45:00",
+    "2018-01-01 01:00:00"
+  ],
+  "county_inventory_area_ft2": 3450595800.0,
+  "expected_elec_total_MW": 7220.4377,
+  "records": [
+    {
+      "type": "CLF",
+      "stock_type": "fullservicerestaurant",
+      "represented_area_ft2": 67700060.04972762,
+      "quarter_hour_electricity_kWh": [
+        120338.89000000001,
+        117281.05,
+        114130.1,
+        109886.75
+      ]
+    },
+    {
+      "type": "CLH",
+      "stock_type": "hospital",
+      "represented_area_ft2": 52096944.43825579,
+      "quarter_hour_electricity_kWh": [
+        19657.24,
+        19637.16,
+        19640.800000000003,
+        19679.770000000004
+      ]
+    },
+    {
+      "type": "CLL",
+      "stock_type": "largehotel",
+      "represented_area_ft2": 67788638.28317259,
+      "quarter_hour_electricity_kWh": [
+        21950.97,
+        22215.57,
+        23199.860000000004,
+        23326.43
+      ]
+    },
+    {
+      "type": "CLO",
+      "stock_type": "largeoffice",
+      "represented_area_ft2": 172877797.73397425,
+      "quarter_hour_electricity_kWh": [
+        62418.63,
+        61472.83,
+        60531.200000000004,
+        60037.93000000001
+      ]
+    },
+    {
+      "type": "CSH",
+      "stock_type": "outpatient",
+      "represented_area_ft2": 89434710.647657,
+      "quarter_hour_electricity_kWh": [
+        32711.409999999996,
+        32620.25,
+        32682.51,
+        32777.75
+      ]
+    },
+    {
+      "type": "CMO",
+      "stock_type": "mediumoffice",
+      "represented_area_ft2": 97585558.12548624,
+      "quarter_hour_electricity_kWh": [
+        37011.11000000001,
+        36891.34,
+        36792.409999999996,
+        36710.509999999995
+      ]
+    },
+    {
+      "type": "CSE",
+      "stock_type": "primaryschool",
+      "represented_area_ft2": 180724328.75064936,
+      "quarter_hour_electricity_kWh": [
+        127358.46000000002,
+        128111.57,
+        129016.87000000001,
+        130086.89000000001
+      ]
+    },
+    {
+      "type": "CSF",
+      "stock_type": "quickservicerestaurant",
+      "represented_area_ft2": 8140684.177474159,
+      "quarter_hour_electricity_kWh": [
+        20615.760000000002,
+        19481.710000000003,
+        18487.499999999996,
+        17611.62
+      ]
+    },
+    {
+      "type": "CSR",
+      "stock_type": "retailstandalone",
+      "represented_area_ft2": 98430119.40612511,
+      "quarter_hour_electricity_kWh": [
+        48183.08,
+        48016.439999999995,
+        48070.67999999999,
+        48152.340000000004
+      ]
+    },
+    {
+      "type": "CMR",
+      "stock_type": "retailstripmall",
+      "represented_area_ft2": 173719112.42418316,
+      "quarter_hour_electricity_kWh": [
+        131065.2,
+        129964.85,
+        129029.28,
+        128341.52000000002
+      ]
+    },
+    {
+      "type": "CME",
+      "stock_type": "secondaryschool",
+      "represented_area_ft2": 81714004.7177608,
+      "quarter_hour_electricity_kWh": [
+        49617.55,
+        49881.01,
+        50235.579999999994,
+        50603.3
+      ]
+    },
+    {
+      "type": "CSL",
+      "stock_type": "smallhotel",
+      "represented_area_ft2": 10459391.11840736,
+      "quarter_hour_electricity_kWh": [
+        2888.6299999999997,
+        2898.1,
+        2904.39,
+        2921.9400000000005
+      ]
+    },
+    {
+      "type": "CSO",
+      "stock_type": "smalloffice",
+      "represented_area_ft2": 103326982.45013338,
+      "quarter_hour_electricity_kWh": [
+        38457.51,
+        38150.3,
+        37921.049999999996,
+        37778.42
+      ]
+    },
+    {
+      "type": "CMW",
+      "stock_type": "warehouse",
+      "represented_area_ft2": 417085780.00569624,
+      "quarter_hour_electricity_kWh": [
+        139635.80000000002,
+        142133.55,
+        144448.21999999997,
+        146477.89999999997
+      ]
+    }
+  ],
+  "source_sha256": {
+    "floorarea_2019.csv.gz": "eeb446b6ef4cf2ea6da19c20751a7d9180a746a85d22f45d5355d2822173ac73",
+    "CLF.csv.gz": "f0d1e1fd8b03138ce727b3c4623d37df1647f051ac1e9d535ce7a8800c43e3b7",
+    "CLH.csv.gz": "3a58d0885cfcbfdb0ebe5a2f0c9941e137fd540fc184ba89fa277c9c4be24741",
+    "CLL.csv.gz": "99004d554d46dfb1608cfd2c934547890ad49da2da8da66f47343d4af0805629",
+    "CLO.csv.gz": "dc95c54aed9b005b28ac7c34d1449fbef6784e13d4e0b95cafa27d0c375f6124",
+    "CSH.csv.gz": "6547cc99c56b69b73698bf5cd260e2723119585970bf784684ac6c7ec1fb92d5",
+    "CMO.csv.gz": "96362c0151898939f26cce9b86e22e1241a865dec55e9550c7456f2138db4b19",
+    "CSE.csv.gz": "9e6791acd4b0772fc8dcc2a1ea2abcd4f11a5c7a256ecf9c71950f126492e7a7",
+    "CSF.csv.gz": "97a9e3c23d0cde1190cf57d9aaf1967b60dff5c90f044c2b89c6d1270c667c50",
+    "CSR.csv.gz": "a1590fef45b4f14452b3a0f6ead0945997f8a640e34131616b0a845a2a9c734e",
+    "CMR.csv.gz": "6e7fd6d12d13632f2b165950dd3dd10f2aab2dc46447acf9b5fd5aea9bec04a9",
+    "CME.csv.gz": "441edfb63a8c1e90f0ebfe9525f0aca80a63c33a8add3113814969f3ba0410ff",
+    "CSL.csv.gz": "462117e019f09af31e482fd9aee714ac4e07a7342e42c32608ec2ddbf436406b",
+    "CSO.csv.gz": "fb694da7d9293f96e253958525661de478d2a0375b30e9b6ca97f3e911958663",
+    "CMW.csv.gz": "4e564e5ccb97c4aaff6f277459ca9c2ba31f880f85446fa9626c5c684611fae7"
+  }
+}
