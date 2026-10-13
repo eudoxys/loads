@@ -1,8 +1,8 @@
 """Commercial building load data accessor
 
 
-The commercial load data frame collects and consolidates `COMstock` data. Floor areas are
-obtained from `Floorarea` data to scale loads for the specified year.
+The commercial load data frame collects and consolidates `COMstock` data.
+Floor areas are obtained from `Floorarea` data to scale loads.
 
 Examples
 --------
@@ -29,6 +29,15 @@ which outputs the following
     2018-12-31 23:00:00+00:00         1379.7961  ...          507.9539
 
     [8760 rows x 10 columns]
+
+Caveats
+-------
+
+1. Some building types have floor areas for which Comstock provides no
+   data. These are assume to be needed in the final tally so that floor
+   area is added pro rata to all the other building type floor areas so
+   that the total floor area comes out as required by the Floorarea
+   data.
 """
 
 import logging
@@ -126,7 +135,7 @@ class Commercial(pd.DataFrame):
 
           - `county`: specify the county name (required)
 
-          - `year`: specify the year for which the building data is provided
+          - `year`: specify the year for which the building data is provided (default is 2018)
 
           - `collect`: specify how COMstock columns are collected (default is `COLLECT`)
 
@@ -141,10 +150,10 @@ class Commercial(pd.DataFrame):
         in MW.
         """
         # pylint: disable=too-many-locals
-        if self.states is None:
-            self.states = States()
-        if self.counties is None:
-            self.counties = Counties()
+        if Commercial.states is None:
+            Commercial.states = States()
+        if Commercial.counties is None:
+            Commercial.counties = Counties()
         if not state in self.states["ST"].values:
             raise ValueError(f"{state=} is not valid")
         if not county in self.counties.set_index(["ST","COUNTY"]).loc[state].index:
@@ -154,9 +163,9 @@ class Commercial(pd.DataFrame):
         data = None
         cache = None
         if collect is None:
-            collect = self.COLLECT
 
             # only use caching for default collection
+            collect = self.COLLECT
             if self.CACHEDIR:
 
                 # Note: this update to cachedir needs to be done through
@@ -223,14 +232,19 @@ class Commercial(pd.DataFrame):
 
             # update totals (overwrite old values to guarantee consistency)
             data["elec_total_MW"] = sum(data[f"elec_{x}_MW"] for x in ["baseload","cooling","heating"] if f"elec_{x}_MW" in data.columns)
-            data["elec_net_MW"] = data["elec_total_MW"] + data["elec_dg_MW"]
+            if "elec_dg_MW" in data.columns:
+                data["elec_net_MW"] = data["elec_total_MW"] - data["elec_dg_MW"].abs()
+            else:
+                data["elec_dg_MW"] = 0.0
+                data["elec_net_MW"] = data["elec_total_MW"]
             data["nonelec_total_MW"] = sum(data[f"nonelec_{x}_MW"] for x in ["baseload","cooling","heating"] if f"nonelec_{x}_MW" in data.columns)
             
             # no such thing as non-electric DG
-            data.drop("nonelec_dg_MW",axis=1,inplace=True)
+            if "nonelec_dg_MW" in data.columns:
+                data.drop("nonelec_dg_MW",axis=1,inplace=True)
 
             # truncate non-significant digits
-            data = data.round(4)
+            data = data.fillna(0).round(4)
 
             # save to cache
             if not cache is None:
@@ -247,6 +261,8 @@ class Commercial(pd.DataFrame):
         if year != 2018:
 
             t0 = pd.Timestamp("2018-01-01", tz="UTC")
+            if data.index[0] != t0 or len(data) != 8760 or not data.index.is_monotonic_increasing:
+                raise RuntimeError("Commercial() returned an invalid date/time index")
             target = pd.date_range(f"{year}-01-01", f"{year+1}-01-01", 
                 freq="h", tz="UTC", inclusive="left")
             
@@ -286,7 +302,10 @@ if __name__ == "__main__":
 
     for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
         try:
-            Commercial(state,county,refresh=refresh)
-            _logger.info(f"{state} {county} ok")
+            df = Commercial(state,county,refresh=refresh)
+            if (df.sum()==0).all():
+                _logger.warning(f"{state} {county} no data")
+            else:
+                _logger.info(f"{state} {county} ok")
         except Exception as err:
             (_logger.exception if debug else _logger.error)(f"{state} {county} {err}")
