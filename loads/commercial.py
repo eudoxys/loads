@@ -144,10 +144,7 @@ class Commercial(pd.DataFrame):
         if collect is None:
             collect = self.COLLECT
 
-        floorarea = {}
-        total_area = 0.0
         data = None
-
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
         cache = Cache(package="loads",version=0,path=[state,county,"C.csv.gz"])
@@ -169,59 +166,41 @@ class Commercial(pd.DataFrame):
             actual_areas = Floorarea(state=state,county=county,year=year)\
                 .set_index("BUILDING_TYPE")\
                 .sort_index()
-            split_areas = {"BUILDING_TYPE":[],"FLOORAREA":[],"SPLITS":[],"FRACTION":[]}
-            actual_areas_sum = actual_areas.FLOORAREA.sum()
-            for bts,area in list(actual_areas.iterrows()):
-                for bt in bts.split("+"):
-                    split_areas["BUILDING_TYPE"].append(bt if bt else "OTH")
-                    split_areas["FLOORAREA"].append(area.FLOORAREA / len(bts.split("+")))
-                    split_areas["SPLITS"].append(bts)
-                    split_areas["FRACTION"].append(area.FLOORAREA/actual_areas_sum if actual_areas_sum > 0 else 0.0)
-            split_areas = pd.DataFrame(split_areas).set_index("BUILDING_TYPE")
+            total_actual_area = actual_areas.FLOORAREA.sum()
 
-            # collect building type data
-            data = {}
-            total_area = None
+            data = None
+            total_stock_area = 0.0
             for btype in COMstock.BUILDING_TYPES:
+
                 bdata = COMstock(
                     state=state,
                     county=county,
                     building_type=btype,
                     )
 
-                # collect time-series of total areas
-                if total_area is None:
-                    total_area = bdata["floor_area"]
+                stock_area = bdata["floor_area"]
+                total_stock_area += stock_area
+                bdata.drop("floor_area",inplace=True,axis=1)
+
+                bdata = bdata.mul(stock_area,axis=0) / 1e6
+                if data is None:
+                    data = bdata
                 else:
-                    total_area += bdata["floor_area"]
-                for aggr,columns in collect.items():
+                    data += bdata
 
-                    # convert from W/sf to MW
-                    data[f"{btype}_{aggr}_MW"] = bdata[columns].sum(axis=1) / 1e6 * bdata["floor_area"]
-            data = pd.DataFrame(data)
+            # construct the reverse mapping of collections
+            rmap = {item: key for key, items in self.COLLECT.items() for item in items}
+            
+            # group columns to collections
+            data.drop([x for x in data.columns if x not in rmap],axis=1,inplace=True)
+            data.columns = pd.MultiIndex.from_tuples([(f"{rmap[x]}_MW",x) for x in data.columns])
+            data = data.T.groupby(level=0).sum().T
 
-            # prepare consolidation columns
-            for ctype in collect.keys():
-                data[f"{ctype}_MW"] = 0.0
+            # append empty collections
+            data[[f"{x}_MW" for x,y in self.COLLECT.items() if not y]] = 0.0
 
-            # collect and consolidate data
-            for btype in COMstock.BUILDING_TYPES:
-
-                # collect building type data
-                if btype in split_areas.index:
-                    for ctype in {x.split("_",1)[0] for x in collect.keys()}:
-                        for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
-                            data[kwname] *= split_areas.loc[btype].FLOORAREA / total_area
-                else:
-                    for ctype in {x.split("_",1)[0] for x in collect.keys()}:
-                        for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
-                            data[kwname] = 0.0
-                    _logger.debug(f"COMstock {county} {state} building type '{btype}' has zero floor area for {kwname}")
-
-                # consolidate building type data
-                for ctype in collect.keys():
-                    data[f"{ctype}_MW"] += data[f"{btype}_{ctype}_MW"]
-                    data.drop(f"{btype}_{ctype}_MW",axis=1,inplace=True)
+            # rescale from stock total area to actual total area
+            data = data.div(total_stock_area,axis=0) * total_actual_area
 
             # update totals
             data["elec_total_MW"] = sum(data[f"elec_{x}_MW"] for x in ["baseload","cooling","heating"])
@@ -234,6 +213,7 @@ class Commercial(pd.DataFrame):
             data.index.name = "timestamp"
             data.sort_index(inplace=True)
             data = data.round(4)
+
             data.to_csv(cache.pathname,
                 index=True,
                 header=True,
@@ -268,6 +248,9 @@ if __name__ == "__main__":
     The main script refreshes the cache with debugging enabled.
     """
 
+    pd.options.display.width = None
+    pd.options.display.max_columns = None
+
     import sys
     refresh = "--refresh" in sys.argv
     debug = "--debug" in sys.argv
@@ -281,3 +264,4 @@ if __name__ == "__main__":
             _logger.info(f"{state} {county} ok")
         except Exception as err:
             (_logger.exception if debug else _logger.error)(f"{state} {county} {err}")
+            raise
