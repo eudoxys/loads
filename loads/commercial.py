@@ -44,7 +44,6 @@ Caveats
 import logging
 
 import pandas as pd
-import numpy as np
 
 from fips import States, Counties
 from loads.floorarea import Floorarea
@@ -112,10 +111,10 @@ class Commercial(pd.DataFrame):
     CACHEDIR = None
     """Cache folder"""
 
-    states = None
+    _states = None
     """States database"""
 
-    counties = None
+    _counties = None
     """Counties database"""
 
     def __init__(self,
@@ -149,15 +148,15 @@ class Commercial(pd.DataFrame):
         # pylint: disable=too-many-locals
 
         # load state database
-        if Commercial.states is None:
-            Commercial.states = States()
-        if not state in self.states["ST"].values:
+        if Commercial._states is None:
+            Commercial._states = States()
+        if not state in Commercial._states["ST"].values:
             raise ValueError(f"{state=} is not valid")
 
         # load county database
-        if Commercial.counties is None:
-            Commercial.counties = Counties()
-        if not county in self.counties.set_index(["ST","COUNTY"]).loc[state].index:
+        if Commercial._counties is None:
+            Commercial._counties = Counties().set_index("ST")
+        if not county in Commercial._counties.loc[state].COUNTY.values:
             raise ValueError(f"{state=} {county=} is not valid")
 
         # load data from cache if default collection is desired
@@ -183,6 +182,8 @@ class Commercial(pd.DataFrame):
             else:
                 data = None
                 _logger.debug(f"{cache=} (re)generation required")
+        else:
+            pass # TODO: need to check for duplicate/invalid columns in collect
 
         # load data from Comstock if cache not used
         if data is None:
