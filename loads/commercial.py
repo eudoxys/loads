@@ -2,7 +2,8 @@
 
 
 The commercial load data frame collects and consolidates `COMstock` data.
-Floor areas are obtained from `Floorarea` data to scale loads.
+Floor areas are obtained from `Floorarea` data to scale loads to actual
+floor area of the county rather than the floor area in Comstock's samples.
 
 Examples
 --------
@@ -121,7 +122,6 @@ class Commercial(pd.DataFrame):
         # pylint: disable=too-many-arguments,too-many-positional-arguments
         state:str,
         county:str,
-        year:int=2018,
         *,
         collect:dict[str,list[str]]=None,
         refresh:bool=False,
@@ -135,8 +135,6 @@ class Commercial(pd.DataFrame):
 
           - `county`: specify the county name (required)
 
-          - `year`: specify the year for which the building data is provided (default is 2018)
-
           - `collect`: specify how COMstock columns are collected (default is `COLLECT`)
 
           - `refresh`: force cache refresh from source data
@@ -145,26 +143,27 @@ class Commercial(pd.DataFrame):
         -----------
 
         This class compiles the building type data for a county by collecting
-        COMstock columns, scaling by the floor area, realigning the days for
-        the target year, and computing total electric and non-electric loads
-        in MW.
+        COMstock columns, scaling by the floor area, and computing total
+        electric and non-electric loads in MW.
         """
         # pylint: disable=too-many-locals
+
+        # load state database
         if Commercial.states is None:
             Commercial.states = States()
-        if Commercial.counties is None:
-            Commercial.counties = Counties()
         if not state in self.states["ST"].values:
             raise ValueError(f"{state=} is not valid")
+
+        # load county database
+        if Commercial.counties is None:
+            Commercial.counties = Counties()
         if not county in self.counties.set_index(["ST","COUNTY"]).loc[state].index:
             raise ValueError(f"{state=} {county=} is not valid")
 
-
+        # load data from cache if default collection is desired
         data = None
         cache = None
         if collect is None:
-
-            # only use caching for default collection
             collect = self.COLLECT
             if self.CACHEDIR:
 
@@ -185,6 +184,7 @@ class Commercial(pd.DataFrame):
                 data = None
                 _logger.debug(f"{cache=} (re)generation required")
 
+        # load data from Comstock if cache not used
         if data is None:
 
             # split floor areas by building type
@@ -256,21 +256,6 @@ class Commercial(pd.DataFrame):
                     header=True,
                     compression="gzip" if cache.pathname.endswith(".gz") else None,
                     )
-
-        # reindex to target year
-        if year != 2018:
-
-            t0 = pd.Timestamp("2018-01-01", tz="UTC")
-            if data.index[0] != t0 or len(data) != 8760 or not data.index.is_monotonic_increasing:
-                raise RuntimeError("Commercial() returned an invalid date/time index")
-            target = pd.date_range(f"{year}-01-01", f"{year+1}-01-01", 
-                freq="h", tz="UTC", inclusive="left")
-            
-            # nearest whole-week shift keeps weekdays
-            days = round((target[0] - t0).days / 7) * 7          
-            hours = ((target - pd.Timedelta(days=days)) - t0) // pd.Timedelta("1h")
-            data = data.iloc[np.mod(hours, len(data))]
-            data.index = target
 
         # name the date/time index 
         data.index.name = "timestamp"
