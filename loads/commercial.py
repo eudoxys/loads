@@ -181,7 +181,7 @@ class Commercial(pd.DataFrame):
 
             # collect building type data
             data = {}
-            total_area is None
+            total_area = None
             for btype in COMstock.BUILDING_TYPES:
                 bdata = COMstock(
                     state=state,
