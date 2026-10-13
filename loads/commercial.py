@@ -31,9 +31,7 @@ which outputs the following
     [8760 rows x 10 columns]
 """
 
-import calendar
 import logging
-from typing import Callable
 
 import pandas as pd
 import numpy as np
@@ -44,12 +42,6 @@ from loads.comstock import COMstock
 from cache import Cache
 
 _logger = logging.getLogger(__name__)
-
-states = States()
-"""State database"""
-
-counties = Counties()
-"""Counties database"""
 
 class Commercial(pd.DataFrame):
     """Commercial building data frame class
@@ -110,6 +102,12 @@ class Commercial(pd.DataFrame):
     CACHEDIR = None
     """Cache folder"""
 
+    states = None
+    """States database"""
+
+    counties = None
+    """Counties database"""
+
     def __init__(self,
         # pylint: disable=too-many-arguments,too-many-positional-arguments
         state:str,
@@ -143,10 +141,15 @@ class Commercial(pd.DataFrame):
         in MW.
         """
         # pylint: disable=too-many-locals
-        if not state in states["ST"].values:
+        if self.states is None:
+            self.states = States()
+        if self.counties is None:
+            self.counties = Counties()
+        if not state in self.states["ST"].values:
             raise ValueError(f"{state=} is not valid")
-        if not county in counties.set_index(["ST","COUNTY"]).loc[state].index:
+        if not county in self.counties.set_index(["ST","COUNTY"]).loc[state].index:
             raise ValueError(f"{state=} {county=} is not valid")
+
 
         data = None
         cache = None
@@ -210,13 +213,10 @@ class Commercial(pd.DataFrame):
             rmap = {item: key for key, items in collect.items() for item in items}
             
             # group columns to collections
-            data.drop([x for x in data.columns if x not in rmap],axis=1,inplace=True)
+            data.drop([x for x in data.columns if not x in rmap],axis=1,inplace=True)
             data.columns = pd.MultiIndex.from_tuples([(f"{rmap[x]}_MW",x) for x in data.columns])
             data = data.T.groupby(level=0).sum().T
             data = data.reindex(columns=[f"{k}_MW" for k in collect], fill_value=0.0)
-
-            # append empty collections
-            data[[f"{x}_MW" for x,y in collect.items() if not y]] = 0.0
 
             # rescale from stock total area to actual total area
             data = data.div(total_stock_area,axis=0) * total_actual_area
@@ -255,9 +255,6 @@ class Commercial(pd.DataFrame):
             hours = ((target - pd.Timedelta(days=days)) - t0) // pd.Timedelta("1h")
             data = data.iloc[np.mod(hours, len(data))]
             data.index = target
-
-            # resort records to new year's data order
-            data.sort_index(inplace=True)
 
         # name the date/time index 
         data.index.name = "timestamp"
