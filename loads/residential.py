@@ -235,7 +235,6 @@ class Residential(pd.DataFrame):
         # pylint: disable=too-many-arguments,too-many-positional-arguments
         state:str,
         county:str,
-        year:int=None,
         *,
         collect=None,
         refresh:bool=False,
@@ -252,9 +251,6 @@ class Residential(pd.DataFrame):
 
           - `collect`: specify how RESstock columns are collected
 
-          - `year`: specify the year on which the number of housing units is
-            based (default most recent in `Units()`)
-
           - `refresh`: force download of data from source
 
           - `calibrate`: set load/solar calibration
@@ -263,9 +259,9 @@ class Residential(pd.DataFrame):
         -----------
 
         This class compiles the building type data for a county by collecting
-        RESstock columns, scaling by the number of housing units in that year,
-        and finally computing total MW and the fraction of total of electric
-        or non-electric load.
+        RESstock columns, scaling by the number of housing units in 2018, and
+        finally computing total MW and the fraction of total of electric or
+        non-electric load.
 
         If calibrate is set to `'auto'`, then the loadshape will scaled based
         on the contents of the `loads.commercial.Commercial.CALIBRATE` data
@@ -325,7 +321,7 @@ class Residential(pd.DataFrame):
                 data[f"{ctype}_MW"] = 0.0
 
             # scale by number of residential units and calculate fractional loads
-            actual_units = Units(state=state,county=county,year=year)
+            actual_units = Units(state=state,county=county,year=2018)
 
             for btype in RESstock.BUILDING_TYPES:
 
