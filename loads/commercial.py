@@ -182,8 +182,6 @@ class Commercial(pd.DataFrame):
             else:
                 data = None
                 _logger.debug(f"{cache=} (re)generation required")
-        elif len(rmap) != sum(len(v) for v in collect.values()):
-            raise ValueError(f"{collect=} has duplicate entries")
 
         # load data from Comstock if cache not used
         if data is None:
@@ -221,6 +219,8 @@ class Commercial(pd.DataFrame):
 
             # construct the reverse mapping of collections
             rmap = {item: key for key, items in collect.items() for item in items}
+            if len(rmap) != sum(len(v) for v in collect.values()):
+                raise ValueError(f"{collect=} has duplicate entries")
 
             # group columns to collections
             data.drop([x for x in data.columns if not x in rmap],axis=1,inplace=True)
@@ -275,6 +275,10 @@ if __name__ == "__main__":
 
     The main script refreshes the cache with debugging enabled.
     """
+
+    print(Commercial("CA","Alameda",refresh=True))
+
+    quit()
 
     pd.options.display.width = None
     pd.options.display.max_columns = None
