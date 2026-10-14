@@ -4,11 +4,6 @@ The total load module computes the expected sum of the residential,
 commercial, industrial and agricultural loads at the county level for the
 specified year.
 
-Note that calibration requires that the total load and DG for each county in a
-state is computed first before the load for a specified county can be
-calculated. This can take some time if it has not been done before and is not
-in the loads cache.
-
 Data Flow
 ---------
 
@@ -52,12 +47,8 @@ flowchart TD
 
     end
 
-    Sample --> Total
-
-    Total --> Calibration
-    DG --> Calibration
-
-    Calibration --> Net
+    Sample --> Total --> Net
+    DG --> Net
 ```
 
 Example
@@ -735,6 +726,7 @@ if __name__ == "__main__":
     debug = "--debug" in sys.argv
     plot = "--plot" in sys.argv
     show = "--show" in sys.argv
+    wait = "--wait" in sys.argv
 
     test_variables = ["elec_total_MW"]
 
