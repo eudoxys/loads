@@ -16,7 +16,7 @@ To get the commercial building load data for Alameda County CA, use the followin
 which outputs the following
 
                                elec_baseload_MW  ...  nonelec_total_MW
-    timestamp                                    ...                  
+    timestamp                                    ...
     2018-01-01 00:00:00+00:00         1302.4337  ...          530.8230
     2018-01-01 01:00:00+00:00         1278.7185  ...          601.4498
     2018-01-01 02:00:00+00:00         1187.3559  ...          676.6662
@@ -35,7 +35,7 @@ Caveats
 -------
 
 1. Some building types have floor areas for which Comstock provides no
-   data. These are assume to be needed in the final tally so that floor
+   data. These are assumed to be needed in the final tally so that floor
    area is added pro rata to all the other building type floor areas so
    that the total floor area comes out as required by the Floorarea
    data.
@@ -182,8 +182,8 @@ class Commercial(pd.DataFrame):
             else:
                 data = None
                 _logger.debug(f"{cache=} (re)generation required")
-        else:
-            pass # TODO: need to check for duplicate/invalid columns in collect
+        elif len(rmap) != sum(len(v) for v in collect.values()):
+            raise ValueError(f"{collect=} has duplicate entries")
 
         # load data from Comstock if cache not used
         if data is None:
@@ -221,7 +221,7 @@ class Commercial(pd.DataFrame):
 
             # construct the reverse mapping of collections
             rmap = {item: key for key, items in collect.items() for item in items}
-            
+
             # group columns to collections
             data.drop([x for x in data.columns if not x in rmap],axis=1,inplace=True)
             data.columns = pd.MultiIndex.from_tuples([(f"{rmap[x]}_MW",x) for x in data.columns])
@@ -234,12 +234,12 @@ class Commercial(pd.DataFrame):
             # update totals (overwrite old values to guarantee consistency)
             data["elec_total_MW"] = sum(data[f"elec_{x}_MW"] for x in ["baseload","cooling","heating"] if f"elec_{x}_MW" in data.columns)
             if "elec_dg_MW" in data.columns:
-                data["elec_net_MW"] = data["elec_total_MW"] - data["elec_dg_MW"].abs()
+                data["elec_net_MW"] = data["elec_total_MW"] - data["elec_dg_MW"].abs() # ignore the DG sign from Comstock
             else:
                 data["elec_dg_MW"] = 0.0
                 data["elec_net_MW"] = data["elec_total_MW"]
             data["nonelec_total_MW"] = sum(data[f"nonelec_{x}_MW"] for x in ["baseload","cooling","heating"] if f"nonelec_{x}_MW" in data.columns)
-            
+
             # no such thing as non-electric DG
             if "nonelec_dg_MW" in data.columns:
                 data.drop("nonelec_dg_MW",axis=1,inplace=True)
@@ -258,9 +258,9 @@ class Commercial(pd.DataFrame):
                     compression="gzip" if cache.pathname.endswith(".gz") else None,
                     )
 
-        # name the date/time index 
+        # name the date/time index
         data.index.name = "timestamp"
-            
+
         # all done
         super().__init__(data[sorted(data.columns)])
 

@@ -23,7 +23,7 @@ Get the commercial building floor areas for Alameda County CA using the code
 which generates the following output
 
              BUILDING_TYPE  FLOORAREA
-    ST FIPS                          
+    ST FIPS
     CA 06001           CLL  244969200
        06001           CLF    3200900
        06001           CLH    5894800
@@ -212,7 +212,7 @@ class Floorarea(pd.DataFrame):
                     ))
 
 if __name__ == '__main__':
-    
+
     refresh = True
 
     pd.options.display.width = None

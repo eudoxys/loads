@@ -36,7 +36,7 @@ def _(mo, state_counties, state_ui):
 
 
 @app.cell
-def _(county_ui, mo, state_ui, year_ui):
+def _(county_ui, mo, state_ui):
     mo.hstack([state_ui,county_ui],justify="start")
     return
 

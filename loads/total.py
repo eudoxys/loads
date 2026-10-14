@@ -71,7 +71,7 @@ To compute the total load in 2020 for Alameda County CA use the following
 which outputs
 
                                elec_residential_MW  elec_commercial_MW  elec_industrial_MW  elec_agricultural_MW  elec_transportation_MW  elec_total_MW  elec_net_MW  elec_dg_MW  temperature_degF  global_Wpms  direct_Wpms  diffuse_Wpms
-    timestamp                                                                                                                                                                                                                             
+    timestamp
     2020-01-01 00:00:00+00:00             1000.677             988.157             223.618                 6.901                     0.0       2219.353     2219.353        -0.0              50.9         37.0         40.0          34.0
     2020-01-01 01:00:00+00:00              857.849             850.925             223.618                 6.901                     0.0       1939.294     1939.294        -0.0              49.5          0.0          0.0           0.0
     2020-01-01 02:00:00+00:00              675.618             715.667             223.618                 6.901                     0.0       1621.805     1621.805        -0.0              48.9          0.0          0.0           0.0
@@ -104,7 +104,7 @@ import pandas as pd
 import numpy as np
 
 from tsgam_estimator import (
-    TsgamEstimatorConfig, 
+    TsgamEstimatorConfig,
     TsgamMultiPeriodicConfig,
     TsgamSplineConfig,
     TsgamArConfig,
@@ -119,7 +119,6 @@ from loads.residential import Residential
 from loads.commercial import Commercial
 from loads.industry import Industry
 from loads.agriculture import Agriculture
-from loads.calibrate import Calibrate
 from loads.dgen import DG
 
 _logger = logging.getLogger(__file__)
@@ -227,7 +226,7 @@ class Total(pd.DataFrame):
         "nonelec_commercial_MW" : (None,None),
         "nonelec_total_MW" : (None,None),
         "elec_dg_MW": (np.negative,np.negative),
-        # Notes: 
+        # Notes:
         # 1. elec_net_MW cannot be done in log domain because it can be negative
         # 2. no transformations are identified for ind/agr/tra yet.
     }
@@ -237,7 +236,7 @@ class Total(pd.DataFrame):
     -----
 
     1. `elec_net_MW` cannot be done in log domain because it can be negative
-    
+
     2. No transformations are identified for ind/agr/tra yet.
     """
 
@@ -382,7 +381,7 @@ class Total(pd.DataFrame):
         # identify location of cached results
         nonelec = Y.startswith("nonelec_")
         source = "nonelec" if nonelec else "elec"
-        cache = Cache(package="loads",version=0,path=[state,county,f"T_{source}_1h_training.csv.gz"])
+        cache = Cache(package="loads",version=1,path=[state,county,f"T_{source}_1h_training.csv.gz"])
 
         # load refresh from cache
         data = None
@@ -437,17 +436,17 @@ class Total(pd.DataFrame):
                 county,
                 loadshape if cls.AGRICULTURE_LOADSHAPE is None else cls.AGRICULTURE_LOADSHAPE,
                 )[f"{source}_{'total' if nonelec else 'net'}_MW"]
-            
+
             # set transportation to zero until data is available
             data[f"{source}_transportation_MW"] = 0.0
-            
+
             # finalize total load
             data[f"{source}_total_MW"] = data[[x for x in data.columns if x.endswith("_MW")]].sum(axis=1)
             data[f"{source}_net_MW"] = data[f"{source}_total_MW"]
 
             # finalize net load
             if not nonelec:
-                data[f"elec_net_MW"] += data["elec_dg_MW"]
+                data[f"elec_net_MW"] -= data["elec_dg_MW"].abs()
 
             # save cache
             data.to_csv(cache.pathname,
@@ -455,32 +454,6 @@ class Total(pd.DataFrame):
                 header=True,
                 compression="gzip" if cache.pathname.endswith(".gz") else None,
                 )
-
-        return data
-
-    @staticmethod
-    def _calibrate(
-        state,
-        sector,
-        data,
-        ):
-        """Calibrate load/solar data to state energy usage"""
-
-        for year in set(data.index.year):
-            
-            dt_range = pd.date_range(
-                start=f"{year}-01-01 00:00:00+0000",
-                end=f"{year}-12-31 23:59:59+0000",
-                freq="1h"
-                )
-
-            load = Calibrate.load(state,year).loc[sector[0].upper()].values[0]
-            data.loc[dt_range,[x for x in data.columns if x != "elec_dg_MW"]] *= load
-
-            solar = Calibrate.solar(state,year).loc[sector[0].upper()].values[0]
-            data.loc[dt_range,"elec_dg_MW"] *= solar
-
-        data["elec_net_MW"] = data["elec_total_MW"] + data["elec_dg_MW"]
 
         return data
 
@@ -512,7 +485,7 @@ class Total(pd.DataFrame):
 
         # return estimator if cache active and found in cache
         if not cls.cache is None and cache in cls.cache and not refresh:
-        
+
             return cls.cache[cache]
 
         # get training data
@@ -540,7 +513,7 @@ class Total(pd.DataFrame):
         refresh:bool=False,
         ) -> pd.DataFrame:
         """Get the prediction for the specified date range"""
-        
+
         # get estimator
         estimator = cls._get_estimator(state,county,X,Y,refresh)
 
@@ -572,7 +545,7 @@ class Total(pd.DataFrame):
         refresh:bool=False,
         ) -> pd.DataFrame:
         """Get the AR samples for the specified date range"""
-        
+
         # get estimator
         estimator = cls._get_estimator(state,county,X,Y,refresh)
 
@@ -604,7 +577,7 @@ class Total(pd.DataFrame):
         refresh:bool=False,
         ) -> pd.DataFrame:
         """Get the AR samples for the specified date range"""
-        
+
         # get estimator
         estimator = cls._get_estimator(state,county,X,Y,refresh)
 
@@ -643,7 +616,7 @@ class Total(pd.DataFrame):
         refresh:bool=False,
         ) -> pd.DataFrame:
         """Get the AR sample at specified percentile for the specified date range"""
-        
+
         data = cls._get_samples(state,county,date_range,X,Y,n_samples,refresh)
         columns = [x for x in data.columns if x.startswith("sample_")]
         data[Y] = np.percentile(data[columns],percentile,axis=1)
@@ -692,7 +665,7 @@ class Total(pd.DataFrame):
         training = data.copy()
         training.loc[holdout,Y] = float('nan')
 
-        # TODO: drop NaNs until TSGAM accepts NaN inputs 
+        # TODO: drop NaNs until TSGAM accepts NaN inputs
         training.dropna(inplace=True)
 
         # get estimator
@@ -723,12 +696,12 @@ class Total(pd.DataFrame):
                 data = pd.concat([data,
                                     pd.DataFrame(
                                         data={
-                                            f"sample_{n}":samples[n,:] 
+                                            f"sample_{n}":samples[n,:]
                                             for n in range(samples.shape[0])
                                             },
                                         index=data.index)],
                     axis=1)
-        
+
         return data
 
     @classmethod
@@ -752,7 +725,7 @@ if __name__ == "__main__":
 
     import os, sys
     import matplotlib.pyplot as plt
-    
+
     pd.options.display.max_columns = None
     pd.options.display.width = None
     pd.options.display.max_rows = None
@@ -765,7 +738,7 @@ if __name__ == "__main__":
     test_variables = ["elec_total_MW"]
 
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
-    
+
     test_range = pd.date_range(
         start="2018-01-01 00:00:00+0000",
         end="2018-12-31 23:59:59+0000",
@@ -813,14 +786,14 @@ if __name__ == "__main__":
                         .rename({variable:"predict"},axis=1)
                     tsgam["sample"] = Total(state,county,Y=variable,date_range=full_range,samples=1000,percentile=95)[[variable]]
                     result = pd.concat([result,tsgam])
-                    
+
                     result.index.name = "timestamp"
 
                     os.makedirs(os.path.split(file)[0],exist_ok=True)
                     result.round(3).to_csv(file,index=True,header=True)
 
                 else:
-                    
+
                     _logger.info(f"{file} ok")
 
                 if plot and variable == "elec_total_MW":

@@ -17,7 +17,7 @@ of sigmas specified by its value, i.e., a value of `2.0` will deleted training
 that is outside the 95th percentile of the training data.
 
 When `EstimatorConfig.keep_actual` is `True`, then the reference data is kept
-instead of predicted data for the reference year. This is the default. 
+instead of predicted data for the reference year. This is the default.
 
 If no years are specified, then holdout data is witheld from training and an
 additional column `Estimator.status` is created with the following values to
@@ -43,7 +43,7 @@ The following estimates the 2025 total load for Alameda county in California
 which returns the data frame
 
                                temperature_degF  humidity_pc  elec_total_MW
-    timestamp                                                              
+    timestamp
     2025-01-01 00:00:00+00:00              48.2         79.7            NaN
     2025-01-01 01:00:00+00:00              45.7         80.4            NaN
     2025-01-01 02:00:00+00:00              43.9         85.2            NaN
@@ -65,7 +65,7 @@ The following obtains only the residential and commercial building loads
 which returns the data frame
 
                                temperature_degF  humidity_pc  elec_total_MW
-    timestamp                                                              
+    timestamp
     2025-01-01 00:00:00+00:00              48.2         79.7            NaN
     2025-01-01 01:00:00+00:00              45.7         80.4            NaN
     2025-01-01 02:00:00+00:00              43.9         85.2            NaN
@@ -87,7 +87,7 @@ The following generates the default 5-day holdout test
 which outputs the data frame
 
                                temperature_degF  humidity_pc      actual  prediction status
-    timestamp                                                                              
+    timestamp
     2018-01-04 00:00:00+00:00              50.9         88.1  297.196569  288.690881      H
     2018-01-04 01:00:00+00:00              51.1         84.5  304.703669  295.331078      H
     2018-01-04 02:00:00+00:00              52.0         83.5  309.154469  300.106376      H
@@ -274,7 +274,7 @@ def _get_holdout(
     assert count > 0, f"{county=} must be positive"
 
     training = df.dropna()
-    
+
     match m:
         case "m": # every `count` months of the year
             ndx = training.index.month
@@ -335,7 +335,7 @@ class Estimator(pd.DataFrame):
             ))
 
         # isolate valid training data
-        reference = pd.concat([X,Y],axis=1) 
+        reference = pd.concat([X,Y],axis=1)
         training = reference.dropna()
         if years is None: # perform holdout test
 
@@ -360,11 +360,11 @@ class Estimator(pd.DataFrame):
             data["status"] = "T"
             data.loc[holdout,"status"] = "H"
 
-        else: # predict for specified 
+        else: # predict for specified
 
             assert hasattr(years,"__iter__"), f"{years=} must be iterable"
             years = sorted(set(years)) # make sure years are unique and ordered
-            
+
             estimator = self._get_model(
                 X=reference[config.weather],
                 Y=reference[config.enduse],
@@ -479,7 +479,7 @@ class Estimator(pd.DataFrame):
 
         # TODO: apply outlier threshold to Y values
 
-        model = TsgamEstimator(config)        
+        model = TsgamEstimator(config)
         model.fit(X,Y.values.ravel())
         return lambda x:model.predict(x)
 
@@ -524,7 +524,7 @@ class Estimator(pd.DataFrame):
         return data
 
 if __name__ == '__main__':
-    
+
     VERBOSE = True
     pd.options.display.width = None
 
