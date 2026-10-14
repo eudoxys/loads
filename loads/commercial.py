@@ -155,8 +155,8 @@ class Commercial(pd.DataFrame):
 
         # load county database
         if Commercial._counties is None:
-            Commercial._counties = Counties().set_index("ST")
-        if not county in Commercial._counties.loc[state].COUNTY.values:
+            Commercial._counties = Counties().set_index(["ST","COUNTY"])
+        if not county in Commercial._counties.loc[state].index.values:
             raise ValueError(f"{state=} {county=} is not valid")
 
         # load data from cache if default collection is desired
