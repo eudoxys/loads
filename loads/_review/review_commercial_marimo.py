@@ -36,23 +36,16 @@ def _(mo, state_counties, state_ui):
 
 
 @app.cell
-def _(dt, mo):
-    year_ui = mo.ui.dropdown(options=range(2018,dt.datetime.now().year),value=2018)
-    return (year_ui,)
-
-
-@app.cell
 def _(county_ui, mo, state_ui, year_ui):
-    mo.hstack([state_ui,county_ui,year_ui],justify="start")
+    mo.hstack([state_ui,county_ui],justify="start")
     return
 
 
 @app.cell
-def _(Commercial, county_ui, mo, state, year_ui):
+def _(Commercial, county_ui, mo, state):
     county = county_ui.value
-    year = year_ui.value
     with mo.status.spinner("Reading building enduse data"):
-        data = Commercial(state,county,year)
+        data = Commercial(state,county)
     return (data,)
 
 

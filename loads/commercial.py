@@ -50,7 +50,7 @@ from loads.floorarea import Floorarea
 from loads.comstock import COMstock
 from cache import Cache
 
-_logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__file__)
 
 class Commercial(pd.DataFrame):
     """Commercial building data frame class

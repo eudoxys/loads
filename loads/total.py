@@ -413,9 +413,7 @@ class Total(pd.DataFrame):
                     "residential":Residential,
                     "commercial":Commercial,
                     }.items():
-                loaddata = dataset(state,county,
-                    calibrate=lambda x:cls._calibrate(state,sector,x),
-                    )
+                loaddata = dataset(state,county)
                 data[f"{source}_{sector}_MW"] = loaddata[f"{source}_total_MW"]
                 if not nonelec:
                         data["elec_dg_MW"] += loaddata[f"{source}_dg_MW"]

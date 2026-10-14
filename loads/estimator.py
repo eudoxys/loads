@@ -331,7 +331,6 @@ class Estimator(pd.DataFrame):
             sectors=config.sectors,
             state=state,
             county=county,
-            year=REFERENCE_YEAR,
             enduse=config.enduse,
             ))
 
@@ -489,7 +488,6 @@ class Estimator(pd.DataFrame):
         sectors:list[str],
         state:str,
         county:str,
-        year:int,
         enduse:str,
         ) -> pd.DataFrame:
         """Load sectors
@@ -499,7 +497,6 @@ class Estimator(pd.DataFrame):
         - `sectors`: list of sectors to load
         - `state`: state abbrevation
         - `county`: county name
-        - `year`: year
         - `enduse`: enduse
 
         Returns
@@ -511,9 +508,9 @@ class Estimator(pd.DataFrame):
         sector = sectors[0]
         match sector:
             case "residential":
-                data = Residential(state,county,year)[[enduse]]
+                data = Residential(state,county)[[enduse]]
             case "commercial":
-                data = Commercial(state,county,year)[[enduse]]
+                data = Commercial(state,county)[[enduse]]
             case "industrial":
                 data = Industry(state,county).loc[enduse].values[0]
             case "agricultural":
@@ -522,7 +519,7 @@ class Estimator(pd.DataFrame):
                 raise EstimatorError(f"{sector=} is not a valid load sector")
 
         if len(sectors) > 1:
-            data += cls._load_sectors(sectors[1:],state,county,year,enduse)
+            data += cls._load_sectors(sectors[1:],state,county,enduse)
 
         return data
 
