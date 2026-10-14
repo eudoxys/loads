@@ -271,7 +271,7 @@ def _get_holdout(
     except Exception as err:
         raise EstimatorError(f"{freq=} is not valid") from err
     count = int(n)
-    assert count > 0, f"{county=} must be positive"
+    assert count > 0, f"{count=} must be positive"
 
     training = df.dropna()
 

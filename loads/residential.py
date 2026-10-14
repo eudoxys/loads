@@ -129,7 +129,6 @@ which outputs the following
     [8760 rows x 10 columns]
 """
 
-import os
 import logging
 
 import pandas as pd

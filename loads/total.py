@@ -307,7 +307,8 @@ class Total(pd.DataFrame):
             Cache.CACHEDIR = self.CACHEDIR
 
         # choose sampling method
-        assert samples is None or isinstance(samples,int), f"{sample=} is not valid"
+        if not samples is None and not isinstance(samples,int):
+            raise ValueError(f"{samples=} is not valid")
         if samples is None:
 
             # no sampling gets training data (also ignores date range)
@@ -730,7 +731,7 @@ if __name__ == "__main__":
     pd.options.display.width = None
     pd.options.display.max_rows = None
 
-    refresh = True # "--refresh" in sys.argv
+    refresh = "--refresh" in sys.argv
     debug = "--debug" in sys.argv
     plot = "--plot" in sys.argv
     show = "--show" in sys.argv
