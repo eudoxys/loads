@@ -276,10 +276,6 @@ if __name__ == "__main__":
     The main script refreshes the cache with debugging enabled.
     """
 
-    print(Commercial("CA","Alameda",refresh=True))
-
-    quit()
-
     pd.options.display.width = None
     pd.options.display.max_columns = None
 

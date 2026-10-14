@@ -441,7 +441,7 @@ class Total(pd.DataFrame):
             data[f"{source}_transportation_MW"] = 0.0
 
             # finalize total load
-            data[f"{source}_total_MW"] = data[[x for x in data.columns if x.endswith("_MW")]].sum(axis=1)
+            data[f"{source}_total_MW"] = data[[x for x in data.columns if x.endswith("_MW") and "_dg_" not in x]].sum(axis=1)
             data[f"{source}_net_MW"] = data[f"{source}_total_MW"]
 
             # finalize net load
