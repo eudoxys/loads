@@ -330,7 +330,7 @@ class Total(pd.DataFrame):
 
                 else:
                     # multiple samples uses percentile
-                    assert 0<=percentile<=100, f"{percentile=} must be between 0 and 1"
+                    assert 0<=percentile<=100, f"{percentile=} must be between 0 and 100"
                     data = Total._get_percentile(state,county,date_range,X,Y,samples,percentile,refresh)
             else:
                 raise ValueError(f"{samples=} must be a non-negative integer, infinity, or None")
@@ -361,6 +361,20 @@ class Total(pd.DataFrame):
             return data
 
     @classmethod
+    def _trim_lags(cls,data:pd.DataFrame,columns:list[str]) -> pd.DataFrame:
+        """Set the rows in the exogenous lag windows at head and tail of columns to NaN"""
+        lags = [lag for config in cls.TSGAM_CONFIG.exog_config
+            for lag in getattr(config,"lags",[])]
+        headlag = max([0]+[-x for x in lags])
+        taillag = max([0]+lags)
+        columns = [data.columns.get_loc(x) for x in columns]
+        if headlag > 0:
+            data.iloc[:headlag,columns] = float('nan')
+        if taillag > 0:
+            data.iloc[-taillag:,columns] = float('nan')
+        return data
+
+    @classmethod
     def _get_training(cls,
         state:str,
         county:str,
@@ -373,7 +387,7 @@ class Total(pd.DataFrame):
         # identify location of cached results
         nonelec = Y.startswith("nonelec_")
         source = "nonelec" if nonelec else "elec"
-        cache = Cache(package="loads",version=1,path=[state,county,f"T_{source}_1h_training.csv.gz"])
+        cache = Cache(package="loads",version=2,path=[state,county,f"T_{source}_1h_training.csv.gz"])
 
         # load refresh from cache
         data = None
@@ -407,7 +421,8 @@ class Total(pd.DataFrame):
                 loaddata = dataset(state,county)
                 data[f"{source}_{sector}_MW"] = loaddata[f"{source}_total_MW"]
                 if not nonelec:
-                        data["elec_dg_MW"] += loaddata[f"{source}_dg_MW"]
+                    # DG is a negative load regardless of the sign used by the stock data
+                    data["elec_dg_MW"] -= loaddata[f"{source}_dg_MW"].abs()
 
             # make flat loadshape for industry and agriculture
             loadshape = pd.DataFrame(
@@ -438,7 +453,7 @@ class Total(pd.DataFrame):
 
             # finalize net load
             if not nonelec:
-                data[f"elec_net_MW"] -= data["elec_dg_MW"].abs()
+                data["elec_net_MW"] += data["elec_dg_MW"]
 
             # save cache
             data.to_csv(cache.pathname,
@@ -517,15 +532,7 @@ class Total(pd.DataFrame):
         data[Y] = cls._postprocess(estimator.predict(data[X]),Y)
 
         # remove lag windows from head and tail of training data
-        headlag = 0
-        taillag = 0
-        for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
-            headlag = -min(min(config.lags)+1,headlag)
-            taillag = -max(max(config.lags),taillag)
-        data.loc[:data.index[headlag],Y] = float('nan')
-        data.loc[data.index[taillag]:,Y] = float('nan')
-
-        return data
+        return cls._trim_lags(data,[Y])
 
     @classmethod
     def _get_sample(cls,
@@ -548,15 +555,7 @@ class Total(pd.DataFrame):
         data[Y] = cls._postprocess(estimator.sample(data[X])[0],Y)
 
         # remove lag windows from head and tail of training data
-        headlag = 0
-        taillag = 0
-        for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
-            headlag = -min(min(config.lags)+1,headlag)
-            taillag = -max(max(config.lags),taillag)
-        data.loc[:data.index[headlag],Y] = float('nan')
-        data.loc[data.index[taillag]:,Y] = float('nan')
-
-        return data
+        return cls._trim_lags(data,[Y])
 
     @classmethod
     def _get_samples(cls,
@@ -586,15 +585,7 @@ class Total(pd.DataFrame):
         data = pd.concat(samples,axis=1).copy() # copy avoids coming fragmentation warning
 
         # remove lag windows from head and tail of training data
-        headlag = 0
-        taillag = 0
-        for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
-            headlag = -min(min(config.lags)+1,headlag)
-            taillag = -max(max(config.lags),taillag)
-        data.loc[:data.index[headlag],Y] = float('nan')
-        data.loc[data.index[taillag]:,Y] = float('nan')
-
-        return data
+        return cls._trim_lags(data,[x for x in data.columns if x.startswith("sample_")])
 
     @classmethod
     def _get_percentile(cls,
@@ -666,22 +657,9 @@ class Total(pd.DataFrame):
 
         # get the test data
         data["predict"] = cls._postprocess(estimator.predict(data[X]),Y)
-        headlag = 0
-        taillag = 0
-        for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
-            headlag = -min(min(config.lags),headlag)
-            taillag = -max(max(config.lags),taillag)
-        prediction_column = list(data.columns).index("predict")
-        if headlag != 0:
-            data.iloc[:headlag,prediction_column] = float('nan')
-        if taillag != 0:
-            data.iloc[taillag:,prediction_column] = float('nan')
+        cls._trim_lags(data,["predict"])
         if n_samples > 0:
             samples = cls._postprocess(estimator.sample(data[X],n_samples=n_samples),Y)
-            if headlag != 0:
-                samples[:,:headlag] = float('nan')
-            if taillag != 0:
-                samples[:,taillag:] = float('nan')
             if samples.shape[0] == 1:
                 data["sample"] = samples[0,:]
             else:
@@ -693,6 +671,7 @@ class Total(pd.DataFrame):
                                             },
                                         index=data.index)],
                     axis=1)
+            cls._trim_lags(data,[x for x in data.columns if x.startswith("sample")])
 
         return data
 
@@ -766,9 +745,10 @@ if __name__ == "__main__":
 
                     result = Total.test(state,county,holdout,Y=variable).rename({variable:"actual",},axis=1)
                     result["holdout"] = result.index.isin(holdout)
-                    residual = result["predict"] - result["holdout"]
-                    RMSE = np.sqrt(np.mean(residual**2))
-                    MEAN = result["holdout"].mean()
+                    tested = result.loc[result["holdout"]]
+                    residual = tested["predict"] - tested["actual"]
+                    RMSE = np.sqrt(np.nanmean(residual**2))
+                    MEAN = tested["actual"].mean()
                     PRMSE = RMSE/MEAN*100 if MEAN != 0 else (0.0 if RMSE == 0 else np.inf)
                     _logger.info(f"{state} {county} {variable} holdout {PRMSE=:.1f}%")
 
