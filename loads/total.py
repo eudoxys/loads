@@ -387,7 +387,7 @@ class Total(pd.DataFrame):
         # identify location of cached results
         nonelec = Y.startswith("nonelec_")
         source = "nonelec" if nonelec else "elec"
-        cache = Cache(package="loads",version=2,path=[state,county,f"T_{source}_1h_training.csv.gz"])
+        cache = Cache(package="loads",version=1,path=[state,county,f"T_{source}_1h_training.csv.gz"])
 
         # load refresh from cache
         data = None
