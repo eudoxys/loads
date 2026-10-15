@@ -51,18 +51,83 @@ See https://www.eudoxys.com/loads for full documentation.
 Description
 -----------
 
-The `loads` package retrieves data for the following sectors:
+`loads` estimates hourly electricity demand, in megawatts, for each county in
+the United States, broken down by economic sector and driven by that county's
+actual weather. It is intended for power-system planning studies that need a
+realistic county load shape for a specific year, and it can sum county loads
+onto network nodes (e.g., the WECC 240-bus model) with `loads.aggregate`.
 
-  - `residential`: based on data from NREL RESstock
+Given a state, a county, and a year or date range, `loads.total.Total` returns
+a data frame that is expected to satisfy the following:
 
-  - `commercial`: based on data from NREL COMstock
+  1. **Complete hourly coverage.** One row per hour of the requested period,
+     indexed by a UTC `timestamp` (8760 rows for a normal year, 8784 for a
+     leap year).
 
-  - `industrial`: based on data from NREL's industrial loads inventory
+  2. **Sector breakdown.** Separate columns for residential, commercial,
+     industrial, agricultural and transportation load
+     (`elec_residential_MW`, ..., `elec_transportation_MW`), plus the weather
+     used to produce them.
 
-  - `agricultural`: based on data from NREL's agricultural loads inventory
+  3. **Consistent totals.** `elec_total_MW` is the sum of the sector columns.
+     `elec_dg_MW` (rooftop solar and other distributed generation) is never
+     positive. `elec_net_MW = elec_total_MW + elec_dg_MW`.
 
-In addition corresponding `weather` data is available for the residential and
-commercial sector loads that weather sensitive
+  4. **Weather response.** Residential and commercial load follow the
+     county's outdoor temperature and humidity for the requested period, and
+     distributed generation follows its direct and diffuse sunlight.
+     Industrial and agricultural load do not depend on weather.
+
+  5. **Agreement with reported state totals.** For the reference year (2018),
+     residential and commercial energy summed over every county in a state
+     equals that state's annual EIA Form 861M retail sales for each sector.
+     Distributed generation summed the same way equals the state's
+     EIA-reported small-scale solar output.
+
+  6. **Repeatability.** The same request returns the same result; results are
+     cached locally after the first run unless `refresh=True` is given.
+
+How the estimate is produced
+----------------------------
+
+  - Residential load uses NLR ResStock 2018 building-type load shapes, scaled
+    by US Census housing-unit counts.
+
+  - Commercial load uses NLR ComStock 2018 building-type load shapes, scaled
+    by OpenEI commercial floor area.
+
+  - Industrial and agricultural load spread each county's annual energy from
+    NLR county inventories evenly over the year (a flat load shape).
+
+  - Transportation is not yet modeled and is reported as zero.
+
+  - The 2018 sector loads and the county's 2018 weather are used to train a
+    time-series model (TSGAM). Loads for other years are predicted from that
+    year's weather, so a hotter summer produces more cooling load.
+
+  - Residential and commercial loads and distributed generation are scaled to
+    match the state totals EIA reports for 2018 (item 5 above).
+
+The same approach applies to non-electric energy (`nonelec_*` columns) where
+the building-stock data provides it.
+
+What is not promised
+--------------------
+
+  - Industrial and agricultural loads have no hourly, daily or seasonal shape
+    and are not checked against EIA totals.
+
+  - Predicted years are not re-calibrated to that year's EIA totals; they
+    inherit the 2018 calibration.
+
+  - Results are only available for years with weather data and have mostly
+    been exercised for 2018-2022 in western (WECC) states.
+
+  - Calibrating any one county requires computing every county in its state
+    first, which can take a long time for states with many counties.
+
+  - When `samples` is 1 or more, the first and last few hours of a sampled
+    series may be missing (see `loads.total`).
 
 Load data
 ---------
@@ -285,6 +350,21 @@ Caveats
   - Some residential and commercial building types are not available in some
     counties. In such cases a warning is output and a zero dataframe is
     constructed.
+
+  - Item 3 of the Description may not hold at present. `Total` computes
+    `elec_total_MW` by summing every column ending in `_MW`, which at that
+    point already includes `elec_dg_MW`. DG therefore appears to be counted in
+    the total and then subtracted again when `elec_net_MW` is computed (see
+    `loads.total.Total._get_training`).
+
+  - Item 1 of the Description does not hold when sampling. With `samples` of
+    1 or more, the leading and trailing lag hours of each sampled series are
+    set to NaN.
+
+  - The "Load data" section describes `elec_baseload_MW` (and
+    `nonelec_baseload_MW`) as dependent on outdoor air temperature and solar
+    gains, which describes a weather-driven load rather than a base load.
+    The definitions should be checked against how the columns are computed.
 
 Package information
 -------------------
