@@ -121,7 +121,7 @@ def _(closest, cluster, cluster_ui, normalize_ui, plt):
         plt.plot(normalize_ui.value[x], label=f"{cluster.C[x]}")
     plt.gca().set_ylabel("Mean loadshape")
     plt.legend()
-    plt.gca().set_xlabel("Hour of day (UTC)")
+    plt.gca().set_xlabel("Hour of day (local standard time)")
     plt.title(f"$k$-Means cluster medoids ($k={cluster_ui.value}$)")
     plt.grid()
     clusters = plt.gca()
@@ -209,7 +209,7 @@ def _(county_ui, label_ui, mo, state_ui):
 
 @app.cell
 def _(cluster, mo):
-    svd_ui = mo.ui.slider(label="$U$-column",steps=range(cluster.U.shape[1]//24),value=0,debounce=True,show_value=True)
+    svd_ui = mo.ui.slider(label="$U$-column",steps=range(cluster.K),value=0,debounce=True,show_value=True)
     return (svd_ui,)
 
 
