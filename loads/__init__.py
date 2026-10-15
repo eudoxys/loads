@@ -104,57 +104,130 @@ Package architecture
 --------------------
 
 ```mermaid
-flowchart TD
+---
+config:
+  flowchart:
+    wrappingWidth: 700
+    rankSpacing: 40
+---
+%% Data flow in github.com/eudoxys/loads
+%% Orange dashed cylinders = external sources fetched over the network
+%% Grey = files bundled in the repo · Green = outputs
+flowchart TB
 
-    NREL ---> RESstock
+    NOTE["<b>eudoxys/loads</b> data flow · all modules cache results locally via <b>eudoxys/cache</b>"]
 
-    Census --> Units
-
-    OpenEI --> Floorarea
-
-    RESstock --> Residential
-    Units --> Residential
-
-
-    NREL ---> Industry
-
-    NREL ---> Agriculture
-
-    NREL --> Weather
-    NSRDB --> Weather
-
-    NREL ---> COMstock
-
-    COMstock --> Commercial
-    Floorarea --> Commercial
-
-    Residential --> Predict
-    Commercial --> Predict
-    Weather ----> Predict
-
-    Predict --> Calibrate
-
-    Industry ----> Total
-    Agriculture ----> Total
-    Calibrate --> Total
-
-    EIA ------> Calibrate
-
-    subgraph Loads
-        RESstock
-        COMstock
-        Units
-        Floorarea
-        Industry
-        Agriculture
-        Residential
-        Commercial
-        Predict
-        Calibrate
-        Total --> Aggregate
+    %% ---------- all external sources, one row ----------
+    %% Ordered left→right to match where their consumers sit; sources feeding
+    %% the deepest consumers are at the outer edges so their lines run down the sides.
+    subgraph EXT["EXTERNAL DATA SOURCES"]
+        direction LR
+        FIPS[("eudoxys/fips<br/>county metadata<br/>(used everywhere)")]
+        GEOJSON[("Plotly county<br/>GeoJSON")]
+        EIA[("EIA Form 861M<br/>/ HS861M<br/>via eudoxys/eia")]
+        OEDI_RES[("NLR ResStock<br/>OEDI S3")]
+        CENSUS[("US Census<br/>housing units")]
+        OEDI_COM[("NLR ComStock<br/>OEDI S3")]
+        OPENEI[("OpenEI #906<br/>floor area")]
+        NLR97[("NLR #97<br/>industry &<br/>agriculture")]
+        WX[("NLR weather<br/>via eudoxys/weather")]
+        WECCGIS[("wecc240 GitHub<br/>node GIS, Canada,<br/>Mexico")]
+        NODES[("wecc240 GitHub<br/>county_nodes.csv")]
     end
 
-    Aggregate --> GeoPanel
+    %% Pin every external source to the top row (duplicate invisible links
+    %% outweigh each source's outgoing edges so the layout won't pull it down).
+    NOTE ~~~ FIPS
+    NOTE ~~~ GEOJSON & GEOJSON
+    NOTE ~~~ EIA & EIA & EIA
+    NOTE ~~~ OEDI_RES & OEDI_RES
+    NOTE ~~~ CENSUS & CENSUS
+    NOTE ~~~ OEDI_COM & OEDI_COM
+    NOTE ~~~ OPENEI & OPENEI
+    NOTE ~~~ NLR97 & NLR97 & NLR97
+    NOTE ~~~ WX & WX
+    NOTE ~~~ WECCGIS & WECCGIS
+    NOTE ~~~ NODES & NODES
+
+    %% ---------- sector models ----------
+    RESID["residential.py"]
+    COMM["commercial.py"]
+    IND["industry.py"]
+    AGR["agriculture.py"]
+    TRANS["transportation.py<br/>(not implemented)"]
+
+    OEDI_RES -- resstock.py --> RESID
+    CENSUS -- units.py --> RESID
+    OEDI_COM -- comstock.py --> COMM
+    OPENEI -- floorarea.py --> COMM
+    NLR97 --> IND
+    NLR97 --> AGR
+
+    %% ---------- total load model ----------
+    subgraph TOTALG["total.py · Total"]
+        direction TB
+        FIT["TSGAM fit<br/>(nimish/estimator)"]
+        SAMPLE["Sample / predict<br/>hourly county load"]
+        CAL["calibrate.py · Calibrate"]
+        NET["elec_total_MW<br/>elec_dg_MW · elec_net_MW"]
+        FIT --> SAMPLE --> CAL --> NET
+    end
+
+    RESID --> FIT
+    COMM --> FIT
+    IND --> FIT
+    AGR --> FIT
+    TRANS -.-> FIT
+    WX --> FIT
+
+    DGFILE["wecc/county_dg.csv.gz<br/>(built offline, see below)"]
+    DG["dgen.py · DG<br/>county solar"]
+
+    EIA -- "solar" --> DG
+    DGFILE --> DG
+    EIA -- "state sales" --> CAL
+    DG --> CAL
+
+    %% ---------- offline build of county DG ----------
+    subgraph BUILD["Offline build · dgen.compile()"]
+        direction TB
+        ENERGY["energy.py · Energy<br/>monthly MWh"]
+        DGEN_RAW["wecc/dgen.csv.gz<br/>NLR dGen nodal DG"]
+        MWH_CF["wecc/county_mwh.csv<br/>wecc/county_cf.csv"]
+        COMPILE["nodal → county DG"]
+        DGOUT["wecc/county_dg.csv.gz"]
+        ENERGY --> MWH_CF
+        ENERGY --> COMPILE
+        DGEN_RAW --> COMPILE
+        COMPILE --> DGOUT
+    end
+    NET -. "Energy() calls Total()" .-> ENERGY
+    NODES --> COMPILE
+
+    %% ---------- downstream uses ----------
+    CLUSTER["cluster.py<br/>review_clusters.py"]
+    CLUSTERS["clusters.csv · configs.csv"]
+    EVAL(["tsgam_evaluate.py<br/>evaluate_lag.py"])
+    CLI(["cli.py · loads command<br/>Python API"])
+    AGG(["aggregate.py<br/>WECC 240 node loads"])
+
+    GEOJSON --> CLUSTER
+    NET --> CLUSTER
+    CLUSTER --> CLUSTERS --> EVAL
+    NET --> CLI
+    NET --> AGG
+    WECCGIS --> AGG
+
+    %% ---------- styles ----------
+    classDef external fill:#fde7d2,stroke:#d9480f,stroke-width:2px,stroke-dasharray:5 3,color:#5c2200
+    classDef bundled fill:#eceff1,stroke:#607d8b,color:#263238
+    classDef output fill:#e8f5e9,stroke:#2e7d32,color:#1b4d20
+    classDef note fill:#fffde7,stroke:#c9b458,color:#4a4000
+    class FIPS,GEOJSON,EIA,OEDI_RES,CENSUS,OEDI_COM,OPENEI,NLR97,WX,WECCGIS,NODES external
+    class DGEN_RAW,DGFILE,DGOUT,MWH_CF,CLUSTERS bundled
+    class NET,CLI,AGG,EVAL output
+    class NOTE note
+    style EXT fill:#fff8f2,stroke:#d9480f,stroke-width:2px
 ```
   - `loads.aggregate`: load aggregation by geography
 
