@@ -34,11 +34,20 @@ which outputs the following
 Caveats
 -------
 
-1. Some building types have floor areas for which Comstock provides no
-   data. These are assumed to be needed in the final tally so that floor
-   area is added pro rata to all the other building type floor areas so
-   that the total floor area comes out as required by the Floorarea
-   data.
+1. Loads are scaled by the `Floorarea` total of the commercial building
+   types only. The `apartment` floor area is excluded because apartment
+   loads are already included in `Residential` through the Census housing
+   unit counts, and the `no_match` floor area is excluded because
+   Comstock has no building type for it (see
+   [issue #17](https://github.com/eudoxys/loads/issues/17)).
+
+2. Per-building-type floor areas are not used yet, so the remaining
+   commercial floor area is distributed pro rata to the Comstock building
+   types in proportion to their Comstock floor areas.
+
+3. The example output above was generated before the fix for issue #17
+   and overstates the load in counties with significant apartment or
+   unmatched floor area.
 """
 
 import logging
@@ -111,6 +120,11 @@ class Commercial(pd.DataFrame):
     CACHEDIR = None
     """Cache folder"""
 
+    EXCLUDED_FLOORAREA = ["apartment","no_match"]
+    """`Floorarea` building types excluded from the floor area used to scale
+    Comstock loads (apartments are included in `Residential` and unmatched
+    floor area has no Comstock building type)"""
+
     _states = None
     """States database"""
 
@@ -170,7 +184,7 @@ class Commercial(pd.DataFrame):
                 #       a future change to Cache that cannot be overwritten
                 #       by similar actions in other classes that use Cache
                 Cache.CACHEDIR = self.CACHEDIR
-            cache = Cache(package="loads",version=1,path=[state,county,"C.csv.gz"])
+            cache = Cache(package="loads",version=2,path=[state,county,"C.csv.gz"])
             if cache.exists() and not refresh:
                 try:
                     data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
@@ -190,7 +204,13 @@ class Commercial(pd.DataFrame):
             actual_areas = Floorarea(state=state,county=county)\
                 .set_index("BUILDING_TYPE")\
                 .sort_index()
-            total_actual_area = actual_areas.FLOORAREA.sum()
+
+            # exclude floor area that is not modeled by Comstock, i.e.,
+            # apartments (included in residential loads) and unmatched
+            # building types (see issue #17)
+            excluded = {"+".join(Floorarea.BUILDING_TYPES[x]) for x in self.EXCLUDED_FLOORAREA}
+            total_actual_area = actual_areas.loc[
+                ~actual_areas.index.isin(excluded),"FLOORAREA"].sum()
 
             # read commercial building type data
             data = None
