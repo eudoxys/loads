@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.25.1"
+__generated_with = "0.25.0"
 app = marimo.App(width="medium")
 
 
@@ -13,28 +13,14 @@ def _(mo):
 
 
 @app.cell
-def _(county_ui, mo, reload_ui, version_ui):
-    mo.hstack([county_ui,version_ui,reload_ui])
+def _(county_ui, mo, reload_ui):
+    mo.hstack([county_ui,reload_ui])
     return
 
 
 @app.cell
 def _():
     return
-
-
-@app.cell
-def _(glob, mo):
-    _options = {
-        str(x):f"v{x}"
-        for x in [
-            int(x.split("_")[-1].split(".")[0][1:])
-            for x in glob.glob(__file__.replace("_marimo.py", "_v*.csv"))
-        ]
-    }
-    get_version, set_version = mo.state(max(_options.keys()))
-    version_ui = mo.ui.dropdown(options=_options,value=get_version(),on_change=set_version,label="**Version**:")
-    return (version_ui,)
 
 
 @app.cell(hide_code=True)
@@ -124,9 +110,9 @@ def _(mo):
 
 
 @app.cell
-def _(pd, reload_ui, version_ui):
+def _(pd, reload_ui):
     reload_ui.value
-    data = pd.read_csv(__file__.replace("_marimo.py",f"_v{version_ui.selected_key}.csv"),index_col=[0,4])
+    data = pd.read_csv(__file__.replace("_marimo.py",".csv"),index_col=[0,4])
     return (data,)
 
 
@@ -330,7 +316,7 @@ def _():
     import altair as alt
     import IPython
 
-    return alt, glob, mo, pd
+    return alt, mo, pd
 
 
 if __name__ == "__main__":

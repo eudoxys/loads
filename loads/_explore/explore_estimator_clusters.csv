@@ -1,0 +1,19 @@
+metric,county,yearly,weekly,daily,holdout,value,cutoff,min
+mae,Franklin WA,2,2,2,5w,7.006,7.149,6.809
+mae,Maricopa AZ,2,3,3,5d,213.505,213.712,203.535
+mae,Mohave AZ,4,3,2,5w,14.155,14.16,13.486
+mae,San Diego CA,5,3,3,5d,174.595,174.688,166.37
+mae,Solano CA,3,7,2,5d,22.701,22.719,21.637
+mae,Washington OR,5,3,4,5d,22.047,22.188,21.131
+mape,Franklin WA,2,2,2,4w,5.01,5.133,4.889
+mape,Maricopa AZ,3,3,3,5d,3.52,3.534,3.366
+mape,Mohave AZ,4,3,3,5w,4.884,4.931,4.696
+mape,San Diego CA,4,5,3,5d,3.521,3.546,3.377
+mape,Solano CA,3,2,3,5d,4.344,4.347,4.14
+mape,Washington OR,4,3,4,5d,2.69,2.692,2.564
+rmse,Franklin WA,2,2,2,5w,9.904,10.242,9.754
+rmse,Maricopa AZ,2,3,3,5d,286.023,291.213,277.346
+rmse,Mohave AZ,5,3,2,5w,19.289,19.385,18.462
+rmse,San Diego CA,4,3,2,4m,242.118,243.092,231.516
+rmse,Solano CA,3,2,2,5d,31.826,32.169,30.637
+rmse,Washington OR,5,3,3,5d,30.083,30.122,28.688

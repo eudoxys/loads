@@ -351,39 +351,3 @@ class Cluster:
             for n in range(n_clusters)]
 
         return self.cluster
-
-if __name__ == '__main__':
-
-    # pylint: disable=pointless-string-statement
-
-    """
-    This test script generates tests/clusters.csv of all WECC counties for k
-    in [2..10]
-    """
-
-    counties_list = [f"{y} {x}" for x,y in Counties(use_index="RO", selection="WECC")[
-        ["ST", "COUNTY"]
-        ].values]
-
-    result = []
-    MAX_K = 10
-    columns = list(Total.COLUMNS.keys())
-    print("Reading county data",end="...",flush=True)
-    for _column in columns:
-
-        cluster = Cluster(counties_list,column=_column,preprocess=np.abs)
-        for _k in range(2,MAX_K+1):
-
-            cluster.kmeans(n_clusters=_k)
-            for medoid,members in zip(cluster.medoids,cluster.members):
-                _states = [x.split(" ")[-1] for x in members]
-                _counties = [" ".join(x.split(" ")[:-1]) for x in members]
-                df = pd.DataFrame({"state":_states,"county":_counties})
-                df["column"] = _column
-                df["k"] = _k
-                df["medoid"] = medoid
-                result.append(df)
-        print(_column,"ok")
-    pd.concat(result)\
-        .sort_values(["state","county","column","k"])\
-        .to_csv("tests/clusters.csv",index=False,header=True)
