@@ -3,7 +3,7 @@
 The `COMstock` class is a Pandas data frame loaded with the COMstock
 building data.
 
-Commercial building types are coded using three characters `C`, 
+Commercial building types are coded using three characters `C`,
 `{'L','M','S'}` (large, medium, and small), and
 `{'F','H','L','O','E','R','W'}` (food, health, lodging, office,
 education, retail, and warehouse). Load values are given in W/sf.
@@ -160,7 +160,7 @@ class COMstock(pd.DataFrame):
 
             # get whole state data
             url = f"{self.SOURCE}/by_state/state={state.upper()}/{state.lower()}-{btype}.csv"
-            cache = Cache(package="loads",version=0,path=[state,f"{building_type}.csv.gz"]) 
+            cache = Cache(package="loads",version=0,path=[state,f"{building_type}.csv.gz"])
 
         else:
 
@@ -202,7 +202,7 @@ class COMstock(pd.DataFrame):
 
         if retry >= maxretry or error:
             # download error (most likely no data in COMstock)
-            _logger.error(f"COMstock {county} {state} '{btype}' ({building_type}) data not available ({error}) after {retry} download attempts")            
+            _logger.error(f"COMstock {county} {state} '{btype}' ({building_type}) data not available ({error}) after {retry} download attempts")
 
         if data is None:
 
@@ -241,7 +241,9 @@ class COMstock(pd.DataFrame):
         data["floor_area"] = floor_area
 
         # resample to hourly frequency
-        data = data.resample("1h").sum()
+        rules = {x:"sum" for x in data.columns if x != "floor_area"}
+        rules["floor_area"] = "mean"
+        data = data.resample("1h").agg(rules)
 
         # move year-end data to beginning
         data.index = pd.DatetimeIndex([str(x).replace("2019","2018") for x in data.index])

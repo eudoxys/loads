@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.25.1"
+__generated_with = "0.25.0"
 app = marimo.App(width="medium")
 
 
@@ -15,6 +15,11 @@ def _(mo):
 @app.cell
 def _(county_ui, mo, reload_ui):
     mo.hstack([county_ui,reload_ui])
+    return
+
+
+@app.cell
+def _():
     return
 
 
@@ -289,7 +294,7 @@ def _(county_ui, data, get_daily, get_weekly, get_yearly, holdout_ui, mo):
         .set_index("holdout")
         .sort_index()
     )
-    _result = _best / _chosen
+    _result = _chosen/_best - 1
     _result.index = [
         f"**{x}**" if x == holdout_ui.value else x for x in _result.index
     ]

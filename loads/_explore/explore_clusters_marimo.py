@@ -25,36 +25,53 @@ selected as well.
 - The **County map** tab displays a map of the US showing which counties were
   grouped together in clusters. Note that the map can be very large and may
   take a few seconds to display.
+
+Saving `clusters.csv` makes a permanent copy of the chosen cluster
+configuration to the module folder. This copy will be used by other package
+modules that need to cluster counties to the medoids.
 """
 
 import marimo
 
-__generated_with = "0.20.2"
+__generated_with = "0.25.0"
 app = marimo.App(width="medium", app_title="County Loadshape Clustering")
 
 
 @app.cell
 def _(mo):
-    docs = __doc__.split("\n")
-    mo.md(f"# {docs[0]}")
-    return (docs,)
+    mo.md(f"""
+    ## {__doc__}
+    """)
+    return
 
 
 @app.cell
-def _(Total, cluster_ui, mo):
+def _(Total, mo):
     # variable selection
     _options = sorted(Total.COLUMNS)#[x for x in Total.COLUMNS if x.endswith("_MW")])
     variable_ui = mo.ui.dropdown(options=_options,value="elec_total_MW",label="Clustering variable:")
-
-    mo.hstack([variable_ui,cluster_ui],justify='start')
     return (variable_ui,)
+
+
+@app.cell
+def _(cluster_ui, mo, save_ui, variable_ui):
+    mo.hstack([mo.hstack([variable_ui,cluster_ui],justify='start'),save_ui])
+    return
+
+
+@app.cell
+def _(clusters_df, mo, pathlib):
+    def _save(*args):
+        _file = pathlib.Path(*pathlib.Path(__file__).parts[:-2],"clusters.csv")
+        clusters_df.to_csv(_file)
+    save_ui = mo.ui.button(label="Save `clusters.csv`",on_click=_save)
+    return (save_ui,)
 
 
 @app.cell
 def _(
     clusters,
     county_loads,
-    docs,
     fig,
     members_ui,
     mo,
@@ -69,7 +86,6 @@ def _(
             "Cluster medoids": mo.vstack([normalize_ui,clusters]),
             "County assignments": members_ui,
             "County map": fig,
-            "Help": mo.md("\n".join(docs[1:])),
         },
         lazy=True,
     )
@@ -99,6 +115,11 @@ def _(Cluster, Counties, cluster_ui, mo, np, variable_ui):
 
 
 @app.cell
+def _():
+    return
+
+
+@app.cell
 def _(mo):
     # clustering UI
     cluster_ui = mo.ui.slider(start=1,stop=10,step=1,debounce=True,show_value=True,value=6,label="Number of k-means clusters:")
@@ -121,7 +142,7 @@ def _(closest, cluster, cluster_ui, normalize_ui, plt):
         plt.plot(normalize_ui.value[x], label=f"{cluster.C[x]}")
     plt.gca().set_ylabel("Mean loadshape")
     plt.legend()
-    plt.gca().set_xlabel("Hour of day (UTC)")
+    plt.gca().set_xlabel("Hour of day (local standard time)")
     plt.title(f"$k$-Means cluster medoids ($k={cluster_ui.value}$)")
     plt.grid()
     clusters = plt.gca()
@@ -141,9 +162,18 @@ def _(cluster, mo, pd):
 
 @app.cell
 def _(cluster, pd):
-    clusters_df = pd.DataFrame(cluster.members,index=cluster.medoids).stack().reset_index().drop("level_1",axis=1).rename({"level_0":"medoid",0:"county_st"},axis=1).dropna().set_index("county_st")
-    clusters_df.to_csv("clusters.csv")
-    return
+    clusters_df = (
+        pd.DataFrame(cluster.members, index=cluster.medoids)
+        .stack()
+        .reset_index()
+        .drop("level_1", axis=1)
+        .rename({"level_0": "medoid", 0: "county_st"}, axis=1)
+        .dropna()
+        .set_index("county_st")
+    )
+    _sorted = sorted(clusters_df.index,key=lambda x:(x.split()[-1],x))
+    clusters_df = clusters_df.loc[_sorted]
+    return (clusters_df,)
 
 
 @app.cell
@@ -209,7 +239,7 @@ def _(county_ui, label_ui, mo, state_ui):
 
 @app.cell
 def _(cluster, mo):
-    svd_ui = mo.ui.slider(label="$U$-column",steps=range(cluster.U.shape[1]//24),value=0,debounce=True,show_value=True)
+    svd_ui = mo.ui.slider(label="$U$-column",steps=range(cluster.K),value=0,debounce=True,show_value=True)
     return (svd_ui,)
 
 
@@ -272,6 +302,7 @@ def _(cluster, counties, json, pd, px, urlopen):
 def _():
     # modules
     import marimo as mo
+    import pathlib
     import numpy as np
     import pandas as pd
     import datetime as dt
@@ -291,6 +322,7 @@ def _():
         json,
         mo,
         np,
+        pathlib,
         pd,
         plt,
         px,

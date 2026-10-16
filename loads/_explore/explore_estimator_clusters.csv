@@ -1,19 +1,19 @@
 metric,county,yearly,weekly,daily,holdout,value,cutoff,min
-mae,King WA,2,7,4,5w,7.297,7.407,7.054
-mae,Los Angeles CA,2,2,2,3m,37.776,38.833,36.984
-mae,Maricopa AZ,2,2,4,5d,16.341,16.399,15.618
-mae,Orange CA,2,2,3,5d,6.683,6.782,6.459
-mae,Riverside CA,4,2,2,5d,8.228,8.371,7.972
-mae,Salt Lake UT,4,2,4,5w,2.242,2.26,2.152
-mape,King WA,2,2,5,4w,1.321,1.325,1.262
-mape,Los Angeles CA,2,2,2,3m,2.099,2.156,2.053
-mape,Maricopa AZ,3,2,4,5d,1.49,1.496,1.425
-mape,Orange CA,2,2,3,5d,0.573,0.58,0.552
-mape,Riverside CA,4,2,2,5d,1.582,1.608,1.531
-mape,Salt Lake UT,4,2,4,5w,0.569,0.573,0.546
-rmse,King WA,2,2,2,5w,11.013,11.13,10.6
-rmse,Los Angeles CA,2,2,2,3m,51.627,53.397,50.854
-rmse,Maricopa AZ,2,2,3,5d,22.488,22.612,21.535
-rmse,Orange CA,2,2,3,5d,9.219,9.437,8.988
-rmse,Riverside CA,4,2,2,3m,12.901,13.308,12.674
-rmse,Salt Lake UT,2,2,4,5w,2.962,2.964,2.823
+mae,Lincoln OR,2,2,2,4w,3.184,3.31,3.152
+mae,Maricopa AZ,3,2,3,5d,182.616,183.897,175.14
+mae,Multnomah OR,2,7,4,5d,28.489,28.728,27.36
+mae,San Luis Obispo CA,4,7,2,5w,8.908,8.925,8.5
+mae,Solano CA,3,2,2,5d,19.335,19.374,18.451
+mae,Spokane WA,4,2,3,5w,25.764,25.901,24.668
+mape,Lincoln OR,2,2,2,4w,2.18,2.259,2.151
+mape,Maricopa AZ,3,7,3,5d,3.766,3.767,3.588
+mape,Multnomah OR,2,7,4,5d,2.595,2.613,2.489
+mape,San Luis Obispo CA,4,3,3,5w,2.812,2.826,2.691
+mape,Solano CA,5,2,2,5d,4.544,4.555,4.338
+mape,Spokane WA,4,2,3,5w,3.692,3.693,3.517
+rmse,Lincoln OR,2,2,2,4w,4.497,4.689,4.466
+rmse,Maricopa AZ,2,2,3,5d,248.916,252.051,240.049
+rmse,Multnomah OR,2,3,3,5d,42.337,42.342,40.326
+rmse,San Luis Obispo CA,2,3,2,3m,12.22,12.362,11.773
+rmse,Solano CA,3,2,2,5d,26.743,27.116,25.825
+rmse,Spokane WA,3,2,2,5w,35.483,35.513,33.822
