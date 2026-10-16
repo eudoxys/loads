@@ -42,7 +42,9 @@ from typing import Callable
 import pandas as pd
 import numpy as np
 import sklearn
+import sklearn.cluster
 
+from fips import Counties
 from loads.total import Total
 
 class Cluster:
@@ -61,7 +63,7 @@ class Cluster:
         # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         counties:list,
         column:str,
-        threshold:int=0.99,
+        threshold:float=0.99,
         preprocess:Callable=None,
         progress:Callable=None,
         refresh:bool=False,
@@ -93,7 +95,7 @@ class Cluster:
         The `column` value must be the name of a column included in the `Total`
         data.
 
-        If the `preprocessing` function is callable, then the specified column
+        If the `preprocess` function is callable, then the specified column
         data is passed to the specified function before SVD is performed.
 
         If `progress` is callable then callback is called for each county as
@@ -102,14 +104,23 @@ class Cluster:
         Methodology
         -----------
 
+        Each county's hourly data is first rolled by the county's standard
+        time UTC offset (`fips.Counties` `TZOFFSET`) so that each day starts at
+        local midnight. The hours rolled off one end of the year wrap around to
+        the other end, consistent with the simulated load data.
+
         K-means clustering is performed using the left-most column of the $U$
         matrix returned by the singular value decomposition of each county's
-        specified data column. The `U` attribute contains the collected $U_0$
-        column vectors. The k-means clustering is weighted according to the
-        county's total energy consumption, the value of which is available in
-        the `W` attribute. The significance of the $U_0$ of each county is
-        available in the `D` attribute.  The mean county normalized load is
-        available in the `M` attribute.
+        specified data column. The sign of each $U_0$ is chosen so its
+        elements sum to a non-negative value, because the SVD sign is
+        arbitrary. The `U` attribute contains the collected $U_0$ column
+        vectors. The k-means clustering is weighted according to the county's
+        total energy consumption, the value of which is available in the `W`
+        attribute. The normalized singular values of each county are available
+        in the `D` attribute, of which `D[n][0]` is the significance of $U_0$.
+        The `K` attribute is the largest number of singular components needed
+        by any county to reach `threshold` of its power spectrum. The mean
+        county normalized load is available in the `M` attribute.
 
         Caveat
         ------
@@ -152,7 +163,8 @@ class Cluster:
         """County loadshape peaks"""
 
         self.K = 1
-        """Power spectrum threshold value"""
+        """Largest number of singular components needed by any county to reach
+        the power spectrum threshold"""
 
         # read county data
         self.loaddata(counties,column,threshold,preprocess,progress,refresh)
@@ -160,16 +172,17 @@ class Cluster:
         # pylint: enable=invalid-name
 
         self.cluster = None
-        """K-means clustering object (see `numpy.linalg.kmeans`)"""
+        """K-means clustering object (see `sklearn.cluster.KMeans`)"""
 
         self.centroids = None
         """K-means clustering centroid vectors"""
 
         self.closest = None
-        """K-means clustering closest cluster"""
+        """Index of the member county nearest each cluster centroid"""
 
         self.medoids = None
-        """K-means clustering medoid county name"""
+        """K-means clustering medoid county name (the member county nearest
+        each cluster centroid)"""
 
         self.members = None
         """K-means clustering member county names"""
@@ -180,6 +193,7 @@ class Cluster:
     def loaddata(self,counties,column,threshold,preprocess,progress,refresh):
         # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         """Read county data for the specified column"""
+        tzoffsets = self._tzoffsets()
         for county in counties:
 
             # load data
@@ -193,9 +207,16 @@ class Cluster:
                 data = Total(state_abbr,county_name).fillna(0)
                 self.cache[county] = data
             data = data[column]
+            start = data.index[0] if isinstance(data.index,pd.DatetimeIndex) else None
             if preprocess:
                 data = preprocess(data)
-            load = np.reshape(data.values,(365,24)).T
+            values = np.asarray(data)
+            if len(values) % 24 != 0:
+                raise ValueError(f"{county} {column} data has {len(values)} rows, which is not a whole number of days")
+
+            # roll data so each day starts at local (standard time) midnight
+            values = np.roll(values,-self._midnight(start,tzoffsets[county]))
+            load = np.reshape(values,(-1,24)).T
 
             u,d,_ = np.linalg.svd(load)
 
@@ -203,33 +224,70 @@ class Cluster:
             dsum = np.sum(d)
             if dsum > 0:
                 self.D.append(d/dsum)
-                spectrum = [x for x in np.cumsum(self.D[-1]) if x<threshold]
-                k = len(spectrum) if spectrum else None
+                # number of components needed to reach the threshold
+                k = int(np.searchsorted(np.cumsum(self.D[-1]),threshold)) + 1
+                k = min(k,len(d))
             else:
                 self.D.append(np.array([1.0]+[0.0]*(len(d)-1)))
                 k = 1
 
-            # get U
-            self.K = max(self.K,len(self.D[-1]) if k is None else k)
-            self.U.append(u)
+            # get U_0 with a deterministic sign
+            self.K = max(self.K,k)
+            u0 = u[:,0]
+            self.U.append(-u0 if np.sum(u0) < 0 else u0)
 
             # get mean load and normalize mean loadshape
             m = np.mean(load,axis=1)
             self.L.append(m)
             mm = np.mean(m)
-            self.M.append(m / mm if mm != 0 else 0.0)
+            self.M.append(m / mm if mm != 0 else np.zeros_like(m))
             self.Mnorm.append(mm)
 
             # get peak load and normalize peak loadshape
             p = np.max(load,axis=1)
             pp = np.max(load)
-            self.P.append(p / pp if pp != 0 else 0.0)
+            self.P.append(p / pp if pp != 0 else np.zeros_like(p))
             self.Pnorm.append(pp)
 
             # save county weight
             self.W.append(float(load.sum()/1e6))
 
-        self.U = np.array([x[:,0:self.K].flatten() for x in self.U])
+        self.U = np.array(self.U)
+
+    _TZOFFSETS = {}
+
+    @classmethod
+    def _tzoffsets(cls) -> dict:
+        """@private Get standard time UTC offsets (hours) of counties keyed by `County ST`"""
+        if not cls._TZOFFSETS:
+            cls._TZOFFSETS = {f"{y} {x}":int(z)
+                for x,y,z in Counties()[["ST","COUNTY","TZOFFSET"]].values}
+        return cls._TZOFFSETS
+
+    @staticmethod
+    def _midnight(start:pd.Timestamp|None,tzoffset:int) -> int:
+        """@private Get the index of the first sample at local standard time midnight
+
+        Arguments
+        ---------
+
+          - `start`: timestamp of the first sample (UTC is assumed if `None`
+            or tz-naive)
+
+          - `tzoffset`: standard time UTC offset in hours (e.g., -8 for PST)
+
+        Returns
+        -------
+
+          - `int`: sample index in the range [0,23]
+        """
+        if start is None:
+            hour = 0
+        elif start.tzinfo is None:
+            hour = start.hour
+        else:
+            hour = start.tz_convert("UTC").hour
+        return (-hour-tzoffset) % 24
 
     def kmeans(self,
         n_clusters:int,
@@ -256,7 +314,11 @@ class Cluster:
 
           - `loads.cluster.Cluster.centroids`: the cluster centroid vectors
 
-          - `loads.cluster.Cluster.medoids`: the cluster medoid names
+          - `loads.cluster.Cluster.closest`: the index of the member county
+            nearest each cluster centroid
+
+          - `loads.cluster.Cluster.medoids`: the cluster medoid names, i.e.,
+            the member county nearest each cluster centroid
 
           - `loads.cluster.Cluster.members`: the cluster member names
         """
@@ -276,49 +338,16 @@ class Cluster:
             raise
 
         self.centroids = self.cluster.cluster_centers_.tolist()
-        self.closest, _ = sklearn.metrics.pairwise_distances_argmin_min(
-                self.cluster.cluster_centers_,
-                self.U,
-                )
+
+        # find the member of each cluster nearest its centroid
+        self.closest = []
+        for n,centroid in enumerate(self.cluster.cluster_centers_):
+            index = np.flatnonzero(self.cluster.labels_ == n)
+            distance = np.linalg.norm(self.U[index] - centroid,axis=1)
+            self.closest.append(int(index[np.argmin(distance)]))
+        self.closest = np.array(self.closest)
         self.medoids = [self.C[x] for x in self.closest]
         self.members = [[self.C[m] for m,x in enumerate(self.cluster.labels_) if x == n]
             for n in range(n_clusters)]
 
         return self.cluster
-
-if __name__ == '__main__':
-
-    # pylint: disable=pointless-string-statement
-
-    """
-    This test script generates tests/clusters.csv of all WECC counties for k
-    in [2..10]
-    """
-
-    from fips import Counties
-    counties_list = [f"{y} {x}" for x,y in Counties(use_index="RO", selection="WECC")[
-        ["ST", "COUNTY"]
-        ].values]
-
-    result = []
-    MAX_K = 10
-    columns = list(Total.COLUMNS.keys())
-    print("Reading county data",end="...",flush=True)
-    for _column in columns:
-
-        cluster = Cluster(counties_list,column=_column,preprocess=np.abs)
-        for _k in range(2,MAX_K+1):
-
-            cluster.kmeans(n_clusters=_k)
-            for medoid,members in zip(cluster.medoids,cluster.members):
-                _states = [x.split(" ")[-1] for x in members]
-                _counties = [" ".join(x.split(" ")[:-1]) for x in members]
-                df = pd.DataFrame({"state":_states,"county":_counties})
-                df["column"] = _column
-                df["k"] = _k
-                df["medoid"] = medoid
-                result.append(df)
-        print(_column,"ok")
-    pd.concat(result)\
-        .sort_values(["state","county","column","k"])\
-        .to_csv("tests/clusters.csv",index=False,header=True)

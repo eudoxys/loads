@@ -4,16 +4,16 @@ parsimonious set of harmonics that satisfies the `TOLERANCE` threshold given
 a set of possible holdout tests.
 """
 
-VERSION = 1
-"""Result version (allows comparison with older results)"""
+VERSION = None
+"""Result version (allows comparison with older results if desired)"""
 
 TOLERANCE = 0.05
 """Fractional tolerance for parsimonious harmonic search"""
 
-SWEEP_FILE = f"explore_estimator_v{VERSION}.csv"
+SWEEP_FILE = "explore_estimator.csv" if VERSION is None else f"explore_estimator_v{VERSION}.csv"
 """File in which sweep results are stored"""
 
-BEST_FILE = f"explore_estimator_clusters_v{VERSION}.csv"
+BEST_FILE = "explore_estimator_clusters.csv" if VERSION is None else f"explore_estimator_clusters_v{VERSION}.csv"
 """File in which sweep results are stored"""
 
 CLUSTER_DATA = "../clusters.csv"
