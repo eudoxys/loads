@@ -19,7 +19,7 @@ BEST_FILE = "explore_estimator_clusters.csv" if VERSION is None else f"explore_e
 CLUSTER_DATA = "../clusters.csv"
 """File in which to read clusters"""
 
-HOLDOUT_TESTS = ["3m","4m","4w","5w","5d"]
+HOLDOUT_TESTS = ["4w","5w","5d"]
 """Range of holdout tests"""
 
 INDEX_NAMES = ["county","yearly","weekly","daily","holdout"]
@@ -29,9 +29,9 @@ COLUMN_NAMES = ["mae","rmse","mape","r2","etime"]
 """Names of data columns"""
 
 MAX_HARMONICS = {
-	"daily": 8,
-	"weekly": 8,
-	"yearly": 8,
+	"daily": 13,
+	"weekly": 4,
+	"yearly": 4,
 }
 """Maximum harmonics to sweep"""
 
