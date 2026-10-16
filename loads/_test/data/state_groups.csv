@@ -1,0 +1,408 @@
+,CAISO,WECC
+Apache AZ,0.0,1.0
+Cochise AZ,0.0,1.0
+Coconino AZ,0.0,1.0
+Gila AZ,0.0,1.0
+Graham AZ,0.0,1.0
+Greenlee AZ,0.0,1.0
+La Paz AZ,0.0,1.0
+Maricopa AZ,0.0,1.0
+Mohave AZ,0.0,1.0
+Navajo AZ,0.0,1.0
+Pima AZ,0.0,1.0
+Pinal AZ,0.0,1.0
+Santa Cruz AZ,0.0,1.0
+Yavapai AZ,0.0,1.0
+Yuma AZ,0.0,1.0
+Alameda CA,1.0,1.0
+Alpine CA,0.0,1.0
+Amador CA,1.0,1.0
+Butte CA,1.0,1.0
+Calaveras CA,1.0,1.0
+Colusa CA,1.0,1.0
+Contra Costa CA,1.0,1.0
+Del Norte CA,0.0,1.0
+El Dorado CA,1.0,1.0
+Fresno CA,1.0,1.0
+Glenn CA,1.0,1.0
+Humboldt CA,1.0,1.0
+Imperial CA,0.0,1.0
+Inyo CA,0.0,1.0
+Kern CA,1.0,1.0
+Kings CA,1.0,1.0
+Lake CA,1.0,1.0
+Lassen CA,0.0,1.0
+Los Angeles CA,0.0,1.0
+Madera CA,1.0,1.0
+Marin CA,1.0,1.0
+Mariposa CA,1.0,1.0
+Mendocino CA,1.0,1.0
+Merced CA,1.0,1.0
+Modoc CA,0.0,1.0
+Mono CA,0.0,1.0
+Monterey CA,1.0,1.0
+Napa CA,1.0,1.0
+Nevada CA,1.0,1.0
+Orange CA,1.0,1.0
+Placer CA,1.0,1.0
+Plumas CA,1.0,1.0
+Riverside CA,0.0,1.0
+Sacramento CA,1.0,1.0
+San Benito CA,1.0,1.0
+San Bernardino CA,1.0,1.0
+San Diego CA,1.0,1.0
+San Francisco CA,1.0,1.0
+San Joaquin CA,1.0,1.0
+San Luis Obispo CA,1.0,1.0
+San Mateo CA,1.0,1.0
+Santa Barbara CA,1.0,1.0
+Santa Clara CA,1.0,1.0
+Santa Cruz CA,1.0,1.0
+Shasta CA,1.0,1.0
+Sierra CA,1.0,1.0
+Siskiyou CA,0.0,1.0
+Solano CA,1.0,1.0
+Sonoma CA,1.0,1.0
+Stanislaus CA,1.0,1.0
+Sutter CA,1.0,1.0
+Tehama CA,1.0,1.0
+Trinity CA,1.0,1.0
+Tulare CA,1.0,1.0
+Tuolumne CA,1.0,1.0
+Ventura CA,1.0,1.0
+Yolo CA,1.0,1.0
+Yuba CA,1.0,1.0
+Adams CO,0.0,1.0
+Alamosa CO,0.0,1.0
+Arapahoe CO,0.0,1.0
+Archuleta CO,0.0,1.0
+Baca CO,0.0,1.0
+Bent CO,0.0,1.0
+Boulder CO,0.0,1.0
+Broomfield CO,0.0,1.0
+Chaffee CO,0.0,1.0
+Cheyenne CO,0.0,1.0
+Clear Creek CO,0.0,1.0
+Conejos CO,0.0,1.0
+Costilla CO,0.0,1.0
+Crowley CO,0.0,1.0
+Custer CO,0.0,1.0
+Delta CO,0.0,1.0
+Denver CO,0.0,1.0
+Dolores CO,0.0,1.0
+Douglas CO,0.0,1.0
+Eagle CO,0.0,1.0
+El Paso CO,0.0,1.0
+Elbert CO,0.0,1.0
+Fremont CO,0.0,1.0
+Garfield CO,0.0,1.0
+Gilpin CO,0.0,1.0
+Grand CO,0.0,1.0
+Gunnison CO,0.0,1.0
+Hinsdale CO,0.0,1.0
+Huerfano CO,0.0,1.0
+Jackson CO,0.0,1.0
+Jefferson CO,0.0,1.0
+Kiowa CO,0.0,1.0
+Kit Carson CO,0.0,1.0
+La Plata CO,0.0,1.0
+Lake CO,0.0,1.0
+Larimer CO,0.0,1.0
+Las Animas CO,0.0,1.0
+Lincoln CO,0.0,1.0
+Logan CO,0.0,1.0
+Mesa CO,0.0,1.0
+Mineral CO,0.0,1.0
+Moffat CO,0.0,1.0
+Montezuma CO,0.0,1.0
+Montrose CO,0.0,1.0
+Morgan CO,0.0,1.0
+Otero CO,0.0,1.0
+Ouray CO,0.0,1.0
+Park CO,0.0,1.0
+Phillips CO,0.0,1.0
+Pitkin CO,0.0,1.0
+Prowers CO,0.0,1.0
+Pueblo CO,0.0,1.0
+Rio Blanco CO,0.0,1.0
+Rio Grande CO,0.0,1.0
+Routt CO,0.0,1.0
+Saguache CO,0.0,1.0
+San Juan CO,0.0,1.0
+San Miguel CO,0.0,1.0
+Sedgwick CO,0.0,1.0
+Summit CO,0.0,1.0
+Teller CO,0.0,1.0
+Washington CO,0.0,1.0
+Weld CO,0.0,1.0
+Yuma CO,0.0,1.0
+Ada ID,0.0,1.0
+Adams ID,0.0,1.0
+Bannock ID,0.0,1.0
+Bear Lake ID,0.0,1.0
+Benewah ID,0.0,1.0
+Bingham ID,0.0,1.0
+Blaine ID,0.0,1.0
+Boise ID,0.0,1.0
+Bonner ID,0.0,1.0
+Bonneville ID,0.0,1.0
+Boundary ID,0.0,1.0
+Butte ID,0.0,1.0
+Camas ID,0.0,1.0
+Canyon ID,0.0,1.0
+Caribou ID,0.0,1.0
+Cassia ID,0.0,1.0
+Clark ID,0.0,1.0
+Clearwater ID,0.0,1.0
+Custer ID,0.0,1.0
+Elmore ID,0.0,1.0
+Franklin ID,0.0,1.0
+Fremont ID,0.0,1.0
+Gem ID,0.0,1.0
+Gooding ID,0.0,1.0
+Idaho ID,0.0,1.0
+Jefferson ID,0.0,1.0
+Jerome ID,0.0,1.0
+Kootenai ID,0.0,1.0
+Latah ID,0.0,1.0
+Lemhi ID,0.0,1.0
+Lewis ID,0.0,1.0
+Lincoln ID,0.0,1.0
+Madison ID,0.0,1.0
+Minidoka ID,0.0,1.0
+Nez Perce ID,0.0,1.0
+Oneida ID,0.0,1.0
+Owyhee ID,0.0,1.0
+Payette ID,0.0,1.0
+Power ID,0.0,1.0
+Shoshone ID,0.0,1.0
+Teton ID,0.0,1.0
+Twin Falls ID,0.0,1.0
+Valley ID,0.0,1.0
+Washington ID,0.0,1.0
+Beaverhead MT,0.0,1.0
+Big Horn MT,0.0,1.0
+Blaine MT,0.0,1.0
+Broadwater MT,0.0,1.0
+Carbon MT,0.0,1.0
+Carter MT,0.0,1.0
+Cascade MT,0.0,1.0
+Chouteau MT,0.0,1.0
+Custer MT,0.0,1.0
+Deer Lodge MT,0.0,1.0
+Fergus MT,0.0,1.0
+Flathead MT,0.0,1.0
+Gallatin MT,0.0,1.0
+Garfield MT,0.0,1.0
+Glacier MT,0.0,1.0
+Golden Valley MT,0.0,1.0
+Granite MT,0.0,1.0
+Hill MT,0.0,1.0
+Jefferson MT,0.0,1.0
+Judith Basin MT,0.0,1.0
+Lake MT,0.0,1.0
+Lewis and Clark MT,0.0,1.0
+Liberty MT,0.0,1.0
+Lincoln MT,0.0,1.0
+Madison MT,0.0,1.0
+McCone MT,0.0,1.0
+Meagher MT,0.0,1.0
+Mineral MT,0.0,1.0
+Missoula MT,0.0,1.0
+Musselshell MT,0.0,1.0
+Park MT,0.0,1.0
+Petroleum MT,0.0,1.0
+Phillips MT,0.0,1.0
+Pondera MT,0.0,1.0
+Powder River MT,0.0,1.0
+Powell MT,0.0,1.0
+Prairie MT,0.0,1.0
+Ravalli MT,0.0,1.0
+Rosebud MT,0.0,1.0
+Sanders MT,0.0,1.0
+Silver Bow MT,0.0,1.0
+Stillwater MT,0.0,1.0
+Sweet Grass MT,0.0,1.0
+Teton MT,0.0,1.0
+Toole MT,0.0,1.0
+Treasure MT,0.0,1.0
+Valley MT,0.0,1.0
+Wheatland MT,0.0,1.0
+Yellowstone MT,0.0,1.0
+Bernalillo NM,0.0,1.0
+Catron NM,0.0,1.0
+Chaves NM,0.0,1.0
+Cibola NM,0.0,1.0
+Colfax NM,0.0,1.0
+De Baca NM,0.0,1.0
+Doña Ana NM,0.0,1.0
+Eddy NM,0.0,1.0
+Grant NM,0.0,1.0
+Guadalupe NM,0.0,1.0
+Harding NM,0.0,1.0
+Hidalgo NM,0.0,1.0
+Lincoln NM,0.0,1.0
+Los Alamos NM,0.0,1.0
+Luna NM,0.0,1.0
+McKinley NM,0.0,1.0
+Mora NM,0.0,1.0
+Otero NM,0.0,1.0
+Rio Arriba NM,0.0,1.0
+San Juan NM,0.0,1.0
+San Miguel NM,0.0,1.0
+Sandoval NM,0.0,1.0
+Santa Fe NM,0.0,1.0
+Sierra NM,0.0,1.0
+Socorro NM,0.0,1.0
+Taos NM,0.0,1.0
+Torrance NM,0.0,1.0
+Union NM,0.0,1.0
+Valencia NM,0.0,1.0
+Carson City NV,0.0,1.0
+Churchill NV,0.0,1.0
+Clark NV,0.0,1.0
+Douglas NV,0.0,1.0
+Elko NV,0.0,1.0
+Esmeralda NV,1.0,1.0
+Eureka NV,0.0,1.0
+Humboldt NV,0.0,1.0
+Lander NV,0.0,1.0
+Lincoln NV,0.0,1.0
+Lyon NV,0.0,1.0
+Mineral NV,0.0,1.0
+Nye NV,1.0,1.0
+Pershing NV,0.0,1.0
+Storey NV,0.0,1.0
+Washoe NV,0.0,1.0
+White Pine NV,0.0,1.0
+Baker OR,0.0,1.0
+Benton OR,0.0,1.0
+Clackamas OR,0.0,1.0
+Clatsop OR,0.0,1.0
+Columbia OR,0.0,1.0
+Coos OR,0.0,1.0
+Crook OR,0.0,1.0
+Curry OR,0.0,1.0
+Deschutes OR,0.0,1.0
+Douglas OR,0.0,1.0
+Gilliam OR,0.0,1.0
+Grant OR,0.0,1.0
+Harney OR,0.0,1.0
+Hood River OR,0.0,1.0
+Jackson OR,0.0,1.0
+Jefferson OR,0.0,1.0
+Josephine OR,0.0,1.0
+Klamath OR,0.0,1.0
+Lake OR,0.0,1.0
+Lane OR,0.0,1.0
+Lincoln OR,0.0,1.0
+Linn OR,0.0,1.0
+Malheur OR,0.0,1.0
+Marion OR,0.0,1.0
+Morrow OR,0.0,1.0
+Multnomah OR,0.0,1.0
+Polk OR,0.0,1.0
+Sherman OR,0.0,1.0
+Tillamook OR,0.0,1.0
+Umatilla OR,0.0,1.0
+Union OR,0.0,1.0
+Wallowa OR,0.0,1.0
+Wasco OR,0.0,1.0
+Washington OR,0.0,1.0
+Wheeler OR,0.0,1.0
+Yamhill OR,0.0,1.0
+Custer SD,0.0,1.0
+Fall River SD,0.0,1.0
+Lawrence SD,0.0,1.0
+El Paso TX,0.0,1.0
+Beaver UT,0.0,1.0
+Box Elder UT,0.0,1.0
+Cache UT,0.0,1.0
+Carbon UT,0.0,1.0
+Daggett UT,0.0,1.0
+Davis UT,0.0,1.0
+Duchesne UT,0.0,1.0
+Emery UT,0.0,1.0
+Garfield UT,0.0,1.0
+Grand UT,0.0,1.0
+Iron UT,0.0,1.0
+Juab UT,0.0,1.0
+Kane UT,0.0,1.0
+Millard UT,0.0,1.0
+Morgan UT,0.0,1.0
+Piute UT,0.0,1.0
+Rich UT,0.0,1.0
+Salt Lake UT,0.0,1.0
+San Juan UT,0.0,1.0
+Sanpete UT,0.0,1.0
+Sevier UT,0.0,1.0
+Summit UT,0.0,1.0
+Tooele UT,0.0,1.0
+Uintah UT,0.0,1.0
+Utah UT,0.0,1.0
+Wasatch UT,0.0,1.0
+Washington UT,0.0,1.0
+Wayne UT,0.0,1.0
+Weber UT,0.0,1.0
+Adams WA,0.0,1.0
+Asotin WA,0.0,1.0
+Benton WA,0.0,1.0
+Chelan WA,0.0,1.0
+Clallam WA,0.0,1.0
+Clark WA,0.0,1.0
+Columbia WA,0.0,1.0
+Cowlitz WA,0.0,1.0
+Douglas WA,0.0,1.0
+Ferry WA,0.0,1.0
+Franklin WA,0.0,1.0
+Garfield WA,0.0,1.0
+Grant WA,0.0,1.0
+Grays Harbor WA,0.0,1.0
+Island WA,0.0,1.0
+Jefferson WA,0.0,1.0
+King WA,0.0,1.0
+Kitsap WA,0.0,1.0
+Kittitas WA,0.0,1.0
+Klickitat WA,0.0,1.0
+Lewis WA,0.0,1.0
+Lincoln WA,0.0,1.0
+Mason WA,0.0,1.0
+Okanogan WA,0.0,1.0
+Pacific WA,0.0,1.0
+Pend Oreille WA,0.0,1.0
+Pierce WA,0.0,1.0
+San Juan WA,0.0,1.0
+Skagit WA,0.0,1.0
+Skamania WA,0.0,1.0
+Snohomish WA,0.0,1.0
+Spokane WA,0.0,1.0
+Stevens WA,0.0,1.0
+Thurston WA,0.0,1.0
+Wahkiakum WA,0.0,1.0
+Walla Walla WA,0.0,1.0
+Whatcom WA,0.0,1.0
+Whitman WA,0.0,1.0
+Yakima WA,0.0,1.0
+Albany WY,0.0,1.0
+Big Horn WY,0.0,1.0
+Campbell WY,0.0,1.0
+Carbon WY,0.0,1.0
+Converse WY,0.0,1.0
+Crook WY,0.0,1.0
+Fremont WY,0.0,1.0
+Goshen WY,0.0,1.0
+Hot Springs WY,0.0,1.0
+Johnson WY,0.0,1.0
+Laramie WY,0.0,1.0
+Lincoln WY,0.0,1.0
+Natrona WY,0.0,1.0
+Niobrara WY,0.0,1.0
+Park WY,0.0,1.0
+Platte WY,0.0,1.0
+Sheridan WY,0.0,1.0
+Sublette WY,0.0,1.0
+Sweetwater WY,0.0,1.0
+Teton WY,0.0,1.0
+Uinta WY,0.0,1.0
+Washakie WY,0.0,1.0
+Weston WY,0.0,1.0
