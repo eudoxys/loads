@@ -38,8 +38,8 @@ COLUMN_NAMES = ["mae","rmse","mape","r2","etime"]
 
 MAX_HARMONICS = {
 	"daily": 13, # Nyquist limit is 12 for hourly data
-	"weekly": 5, # Nyquist limit is 84 for hourly data
-	"yearly": 5, # Nyquist limit is 4380 for hourly data (4392 in leap years)
+	"weekly": 7, # Nyquist limit is 84 for hourly data
+	"yearly": 7, # Nyquist limit is 4380 for hourly data (4392 in leap years)
 }
 """Maximum harmonics to sweep"""
 
