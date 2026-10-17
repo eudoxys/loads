@@ -175,7 +175,7 @@ def main(jobs=None):
 		with ProcessPoolExecutor(
 				max_workers=jobs,
 				mp_context=mp.get_context("spawn"), # same behavior on Linux and macOS
-				max_tasks_per_child=100, # recycle workers to bound solver memory growth
+				# max_tasks_per_child=100, # recycle workers to bound solver memory growth
 				) as pool:
 			futures = {pool.submit(_run_case,ndx):ndx for ndx in pending}
 			for n,future in enumerate(as_completed(futures),1):
