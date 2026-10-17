@@ -42,6 +42,7 @@ References
 ----------
 
   - https://data.openei.org/submissions/906
+  - https://www.eia.gov/todayinenergy/detail.php?id=46118
 """
 
 import os
@@ -56,8 +57,6 @@ from cache import Cache
 
 _logger = logging.getLogger(__file__)
 
-_cache = {}
-
 class Floorarea(pd.DataFrame):
     """Commercial building floor area data frame implementation"""
 
@@ -70,6 +69,9 @@ class Floorarea(pd.DataFrame):
 
     YEAR = 2019
     """Default floor area data year"""
+
+    GROWTH_RATE = 0.0175
+    """Annual growth rate (default is 1.75% annual)"""
 
     BUILDING_TYPES = {
         "apartment": ["CLL"],
@@ -116,81 +118,76 @@ class Floorarea(pd.DataFrame):
         # set default year
         if year is None:
             year = self.YEAR
-        elif year != self.YEAR:
-            _logger.debug(f"no floorarea data for {year}--using {self.YEAR} instead")
-            year = self.YEAR
 
-        global _cache
-        if year not in _cache or refresh:
-
-            # load county commercial floor area data from cache if possible
-            cache = Cache(f"floorarea_{year}.csv.gz",package="loads",version=0)
-            if cache.exists() and not refresh:
-                try:
-                    data = pd.read_csv(cache.pathname)
-                    _logger.debug(f"{cache=} ok")
-                except Exception as err:
-                    data = None
-                    cache.delete()
-                    _logger.debug(f"{cache=} {err}")
-            else:
+        # load county commercial floor area data from cache if possible
+        cache = Cache(f"floorarea_{self.YEAR}.csv.gz",package="loads",version=0)
+        if cache.exists() and not refresh:
+            try:
+                data = pd.read_csv(cache.pathname)
+                _logger.debug(f"{cache=} ok")
+            except Exception as err:
                 data = None
-                _logger.debug(f"{cache=} (re)generation required")
-
-            # download data if necessary
-            if data is None:
-
-                data = []
-                for n,region in enumerate([
-                    "South Central",
-                    "Northeast",
-                    "South Atlantic",
-                    "Midwest",
-                    "West",
-                    ]):
-
-                    file = Cache(package="loads",version=0,path=f"floorarea_region{n}_{year}.csv.gz")
-                    if file.exists() and not refresh:
-                        try:
-                            result = pd.read_csv(file.pathname)
-                            _logger.debug(f"{file=} ok")
-                        except:
-                            result = None
-                            _logger.error(f"{file=} {err}")
-                    else:
-                        result = None
-                        _logger.debug(f"{file=} (re)generation required")
-                    if result is None:
-                        url = self.SOURCE.format(region=region.replace(" ","%20"),year=year)
-                        try:
-                            result = pd.read_excel(url,
-                                sheet_name="County",
-                                usecols=["statecode","countyid","doe_prototype","area_sum"]
-                                ).dropna()
-                        except urllib.error.HTTPError as err:
-                            _logger.error(f"{url=} {err=}")
-                            raise
-                        result = result.groupby(["statecode","countyid","doe_prototype"])\
-                            .sum()\
-                            .reset_index()
-                        result.columns = ["ST","FIPS","BUILDING_TYPE","FLOORAREA"]
-                        result.to_csv(file.pathname,index=False,header=True,compression="gzip")
-                        _logger.debug(f"download of {url=} ok")
-                    result.FLOORAREA = result.FLOORAREA.astype(float)
-                    data.append(result)
-                data = pd.concat(data)
-                data.to_csv(cache.pathname,
-                    index=False,
-                    header=True,
-                    compression="gzip" if cache.pathname.endswith(".gz") else None,
-                    )
-            # fix up records
-            data.FIPS=[f"{x:05d}" for x in data.FIPS]
-            data.BUILDING_TYPE = ["+".join(self.BUILDING_TYPES[x]) for x in data.BUILDING_TYPE]
-
-            _cache[year] = data
+                cache.delete()
+                _logger.debug(f"{cache=} {err}")
         else:
-            data = _cache[year]
+            data = None
+            _logger.debug(f"{cache=} (re)generation required")
+
+        # download data if necessary
+        if data is None:
+
+            data = []
+            for n,region in enumerate([
+                "South Central",
+                "Northeast",
+                "South Atlantic",
+                "Midwest",
+                "West",
+                ]):
+
+                file = Cache(package="loads",version=0,path=f"floorarea_region{n}_{self.YEAR}.csv.gz")
+                if file.exists() and not refresh:
+                    try:
+                        result = pd.read_csv(file.pathname)
+                        _logger.debug(f"{file=} ok")
+                    except:
+                        result = None
+                        _logger.error(f"{file=} {err}")
+                else:
+                    result = None
+                    _logger.debug(f"{file=} (re)generation required")
+                if result is None:
+                    url = self.SOURCE.format(region=region.replace(" ","%20"),year=self.YEAR)
+                    try:
+                        result = pd.read_excel(url,
+                            sheet_name="County",
+                            usecols=["statecode","countyid","doe_prototype","area_sum"]
+                            ).dropna()
+                    except urllib.error.HTTPError as err:
+                        _logger.error(f"{url=} {err=}")
+                        raise
+                    result = result.groupby(["statecode","countyid","doe_prototype"])\
+                        .sum()\
+                        .reset_index()
+                    result.columns = ["ST","FIPS","BUILDING_TYPE","FLOORAREA"]
+                    result.to_csv(file.pathname,index=False,header=True,compression="gzip")
+                    _logger.debug(f"download of {url=} ok")
+                result.FLOORAREA = result.FLOORAREA.astype(float)
+                data.append(result)
+            data = pd.concat(data)
+            data.to_csv(cache.pathname,
+                index=False,
+                header=True,
+                compression="gzip" if cache.pathname.endswith(".gz") else None,
+                )
+
+        # fix up records
+        data.FIPS=[f"{x:05d}" for x in data.FIPS]
+        data.BUILDING_TYPE = ["+".join(self.BUILDING_TYPES[x]) for x in data.BUILDING_TYPE]
+
+        # apply annual growth rate
+        if year != self.YEAR:
+            data.FLOORAREA *= np.pow(1+self.GROWTH_RATE,year-self.YEAR)
 
         if not state and not county:
             super().__init__(data)
@@ -218,6 +215,11 @@ if __name__ == '__main__':
     pd.options.display.width = None
     pd.options.display.max_columns = None
     pd.options.display.max_rows = None
+
+    print(Floorarea("CA","Alameda"))
+    print(Floorarea("CA","Alameda",2020))
+    
+    quit()
 
     logging.basicConfig(level=logging.DEBUG)
     from fips import Counties
