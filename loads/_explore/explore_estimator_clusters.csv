@@ -1,19 +1,19 @@
 metric,county,yearly,weekly,daily,holdout,value,cutoff,min
-mae,Lincoln OR,2,2,2,4w,3.184,3.293,3.136
-mae,Maricopa AZ,3,2,3,5d,182.616,183.035,174.319
-mae,Multnomah OR,2,2,5,5d,28.759,28.799,27.428
-mae,San Luis Obispo CA,4,3,3,5w,8.851,8.879,8.456
-mae,Solano CA,3,2,2,5d,19.335,19.429,18.504
-mae,Spokane WA,4,2,3,5w,25.764,25.798,24.57
-mape,Lincoln OR,2,2,2,4w,2.18,2.249,2.142
-mape,Maricopa AZ,3,2,4,5d,3.739,3.75,3.571
-mape,Multnomah OR,2,2,5,5d,2.615,2.618,2.493
-mape,San Luis Obispo CA,4,2,4,5w,2.797,2.804,2.67
-mape,Solano CA,3,2,3,5d,4.438,4.542,4.326
-mape,Spokane WA,4,2,4,5w,3.67,3.687,3.511
-rmse,Lincoln OR,2,2,2,4w,4.497,4.66,4.438
-rmse,Maricopa AZ,2,2,3,5d,248.916,251.263,239.298
-rmse,Multnomah OR,2,3,4,5d,41.709,42.281,40.268
-rmse,San Luis Obispo CA,4,2,2,5w,12.373,12.489,11.894
-rmse,Solano CA,3,2,2,5d,26.743,27.21,25.914
-rmse,Spokane WA,4,2,2,5w,35.197,35.409,33.723
+mae,Lincoln OR,2,2,2,4w,3.184,3.199,3.136
+mae,Maricopa AZ,3,2,5,5d,176.041,177.805,174.319
+mae,Multnomah OR,2,3,5,5d,27.618,27.977,27.428
+mae,San Luis Obispo CA,4,3,5,5w,8.594,8.625,8.456
+mae,Solano CA,3,2,3,5d,18.845,18.874,18.504
+mae,Spokane WA,4,2,5,5w,24.794,25.061,24.57
+mape,Lincoln OR,2,2,2,4w,2.18,2.185,2.142
+mape,Maricopa AZ,3,2,5,5d,3.642,3.642,3.571
+mape,Multnomah OR,2,3,5,5d,2.512,2.543,2.493
+mape,San Luis Obispo CA,4,3,5,5w,2.723,2.723,2.67
+mape,Solano CA,3,2,4,5d,4.406,4.413,4.326
+mape,Spokane WA,3,2,5,5w,3.581,3.581,3.511
+rmse,Lincoln OR,2,2,2,4w,4.497,4.527,4.438
+rmse,Maricopa AZ,2,2,5,5d,242.492,244.084,239.298
+rmse,Multnomah OR,2,3,5,5d,40.467,41.073,40.268
+rmse,San Luis Obispo CA,4,2,4,5w,12.128,12.132,11.894
+rmse,Solano CA,3,2,3,5d,26.233,26.432,25.914
+rmse,Spokane WA,3,2,5,5w,34.268,34.397,33.723
