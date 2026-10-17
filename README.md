@@ -1,6 +1,5 @@
-[![validate](https://github.com/eudoxys/loads/actions/workflows/validate.yaml/badge.svg)](https://github.com/eudoxys/loads/actions/workflows/validate.yaml)
-
-[![Deploy Pages](https://github.com/eudoxys/loads/actions/workflows/deploy-pages.yaml/badge.svg)](https://github.com/eudoxys/loads/actions/workflows/deploy-pages.yaml)
+[![Validation](https://github.com/eudoxys/loads/actions/workflows/validate.yaml/badge.svg)](https://github.com/eudoxys/loads/actions/workflows/validate.yaml)
+[![Documetation](https://github.com/eudoxys/loads/actions/workflows/deploy-pages.yaml/badge.svg)](https://github.com/eudoxys/loads/actions/workflows/deploy-pages.yaml)
 
 Electric loads data accessor and multi-sector load data tool
 
