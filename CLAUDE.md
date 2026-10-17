@@ -27,7 +27,7 @@ loads/                     package source (flat; one module per concept)
   transportation.py        stub; raises NotImplementedError (loads set to 0 in Total)
   dgen.py _solar_estimator.py  distributed generation (rooftop PV) model
   cast.py                  back/forecast a 2018 load to another year by weather
-  calibrate.py             rescale loads to EIA energy / peak (uses `eia` package)
+  calibrate.py             convex net-load shaping to state energy / regional peak targets (cvxpy)
   total.py                 sector sum + TSGAM fit/predict/sample (the core model)
   estimator.py             newer TSGAM front end (`Estimator`, `EstimatorConfig`)
   energy.py                periodic (monthly etc.) county energy in MWh
