@@ -9,6 +9,12 @@ See https://www.eudoxys.com/loads
 
 # Installation
 
+Install using Eudoxys Package Manager:
+
+    pip install --upgrade git+https://github.com/eudoxys/epm
+    epm install loads
+
+Install using `pip`.
     pip install git+https://github.com/eudoxys/loads
 
 # Maintenance
