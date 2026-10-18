@@ -15,6 +15,7 @@ Install using Eudoxys Package Manager:
     epm install loads
 
 Install using `pip`.
+
     pip install git+https://github.com/eudoxys/loads
 
 # Maintenance
