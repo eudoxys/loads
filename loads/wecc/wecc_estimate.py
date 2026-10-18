@@ -252,6 +252,37 @@ def _run_county(state,county,harmonics,refresh):
     """@private Run one county in a worker process"""
     return estimate_county(state,county,harmonics,refresh)
 
+def _run_parallel(pool,items,harmonics,refresh,results,label):
+    """@private Run counties in the worker pool
+
+    Arguments
+    ---------
+    - `pool`: process pool executor
+    - `items`: list of `(state,county)` to run
+    - `harmonics`: TSGAM harmonics by `"County ST"`
+    - `refresh`: ignore cached data
+    - `results`: dictionary in which estimates are stored by `(state,county)`
+    - `label`: progress label
+
+    Returns
+    -------
+    - `list[str]`: `"County ST"` of counties that failed
+    """
+    failed = []
+    futures = {pool.submit(_run_county,s,c,harmonics[f"{c} {s}"],refresh):(s,c)
+        for s,c in items}
+    for n,future in enumerate(as_completed(futures),1):
+        state,county = futures[future]
+        try:
+            results[(state,county)] = future.result()
+        except Exception as err: # pylint: disable=broad-exception-caught
+            failed.append(f"{county} {state}")
+            print(f"  {label} [{n}/{len(items)}] FAILED {county} {state}",
+                f"({type(err).__name__}: {err})",file=sys.stderr,flush=True)
+            continue
+        print(f"  {label} [{n}/{len(items)}] {county} {state}",flush=True)
+    return failed
+
 def main( # pylint: disable=too-many-locals
         jobs:int=None,
         refresh:bool=False,
@@ -285,34 +316,44 @@ def main( # pylint: disable=too-many-locals
         print(f"ERROR: no cluster medoid for {', '.join(missing)}",file=sys.stderr)
         return 1
 
-    # populate shared state-level caches serially before fanning out
+    # Cache warming happens in two stages so that no two workers build the
+    # same shared cache file at the same time:
+    # 1. one county, serially, builds the package-wide caches (industry,
+    #    agriculture, floor area) and its own state's caches;
+    # 2. the first county of every other state, in parallel, builds each
+    #    state's caches (housing units, RESstock/COMstock state files).
+    # The remaining counties then run in parallel with all shared caches warm.
     first = {}
     for state,county in counties:
         first.setdefault(state,county)
-    results = {}
-    for state,county in first.items():
-        print(f"  warming cache for {county} {state}",flush=True)
-        results[(state,county)] = estimate_county(state,county,harmonics[f"{county} {state}"],refresh)
+    seed = next(iter(first.items()))
 
-    # run the remaining counties
+    results = {}
     failed = []
-    pending = [x for x in counties if x not in results]
+    print(f"  warming shared caches with {seed[1]} {seed[0]}",flush=True)
+    try:
+        results[seed] = estimate_county(*seed,harmonics[f"{seed[1]} {seed[0]}"],refresh)
+    except Exception as err: # pylint: disable=broad-exception-caught
+        print(f"ERROR: unable to warm shared caches with {seed[1]} {seed[0]}",
+            f"({type(err).__name__}: {err})",file=sys.stderr)
+        return 1
+
     with ProcessPoolExecutor(
             max_workers=jobs,
             mp_context=mp.get_context("spawn"), # same behavior on Linux and macOS
             ) as pool:
-        futures = {pool.submit(_run_county,s,c,harmonics[f"{c} {s}"],refresh):(s,c)
-            for s,c in pending}
-        for n,future in enumerate(as_completed(futures),1):
-            state,county = futures[future]
-            try:
-                results[(state,county)] = future.result()
-            except Exception as err: # pylint: disable=broad-exception-caught
-                failed.append(f"{county} {state}")
-                print(f"  [{n}/{len(pending)}] FAILED {county} {state}",
-                    f"({type(err).__name__}: {err})",file=sys.stderr,flush=True)
-                continue
-            print(f"  [{n}/{len(pending)}] {county} {state}",flush=True)
+
+        warm = [x for x in first.items() if x != seed]
+        print(f"  warming state caches for {len(warm)} states",flush=True)
+        failed += _run_parallel(pool,warm,harmonics,refresh,results,"warm")
+
+        # skip counties whose state cache could not be warmed
+        cold = {s for s,c in warm if (s,c) not in results}
+        pending = [x for x in counties if x not in results and x[0] not in cold]
+        failed += [f"{c} {s}" for s,c in counties
+            if s in cold and (s,c) not in results and (s,c) not in warm]
+        print(f"  estimating {len(pending)} counties",flush=True)
+        failed += _run_parallel(pool,pending,harmonics,refresh,results,"run")
 
     if failed:
         print(f"ERROR: {len(failed)} counties failed; rerun to retry them",file=sys.stderr)
