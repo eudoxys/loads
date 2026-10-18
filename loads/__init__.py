@@ -304,7 +304,7 @@ flowchart TB
 
   - `loads.agriculture`: 2019 agricultural load data
 
-  - `loads.calibrate`: load calibration to energy use
+  - `loads.calibrate`: net-load shaping to state energy and regional peak targets
 
   - `loads.cli`: command line interface
 
