@@ -7,6 +7,11 @@ includes agricultural load data.
 Agricultural non-electric total load and electric net load are converted to average
 MW. All agricultural loads in each county are aggregated. 
 
+As with `loads.industry.Industry`, the data frame also contains the columns
+`elec_cooling_MW`, `elec_heating_MW`, `elec_dg_MW`, `nonelec_cooling_MW`, and
+`nonelec_heating_MW`, which are always zero. These columns are omitted from
+the example output below.
+
 Example
 -------
 
@@ -34,9 +39,9 @@ For more examples, see `loads.industry.Industry`, which uses the same syntax.
 Caveat
 ------
 
-    - Any agriculture for which a county FIPS code in the NREL data does not match a
-      valid county FIPS code is matched to the previous county FIPS code, e.g.,
-      `2270` is aggregated with `2265` and not `2275`.
+  - Any agriculture for which a county FIPS code in the NREL data does not match a
+    valid county FIPS code is matched to the previous county FIPS code, e.g.,
+    `2270` is aggregated with `2265` and not `2275`.
 """
 
 import os
@@ -88,7 +93,8 @@ class Agriculture(pd.DataFrame):
 
           - `county`: county (default all counties)
 
-          - `loadshape`: load shape to roll out county load
+          - `loadshape`: load shape to roll out county load (see
+            `loads.industry.Industry`)
 
           - `refresh`: force reload of data from the online source
         """

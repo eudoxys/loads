@@ -25,10 +25,10 @@ loads/                     package source (flat; one module per concept)
   commercial.py            COMstock → consolidated MW columns, scaled by Floorarea
   industry.py agriculture.py  NREL county inventories (flat load shape by default)
   transportation.py        stub; raises NotImplementedError (loads set to 0 in Total)
-  dgen.py _solar_estimator.py  distributed generation (rooftop PV) model
+  dgen.py _solar_estimator.py  county distributed generation (rooftop PV) data
   cast.py                  back/forecast a 2018 load to another year by weather
   calibrate.py             convex net-load shaping to state energy / regional peak targets (cvxpy)
-  total.py                 sector sum + TSGAM fit/predict/sample (the core model)
+  total.py                 2018 sector sum + TSGAM fit/predict/sample (the core model)
   estimator.py             newer TSGAM front end (`Estimator`, `EstimatorConfig`)
   energy.py                periodic (monthly etc.) county energy in MWh
   cluster.py               SVD + k-means clustering of counties → medoids
@@ -36,9 +36,11 @@ loads/                     package source (flat; one module per concept)
   cli.py                   argparse CLI (`loads print|plot ...`)
   clusters.csv configs.csv county→medoid map, best TSGAM config per medoid
   review_*.py evaluate_lag.py  marimo notebooks
-  tsgam_evaluate.py        TSGAM config search script
+  tsgam_evaluate.py        TSGAM config search script (writes to tests/)
   caiso/ isone/ wecc/      checked-in reference data
-  _test/ _validate/ _explore/  pytest tests, validation notebook, exploration scripts
+  wecc/wecc_estimate.py    hourly 2018-2022 estimate of every WECC county
+  _test/ _validate/        pytest tests, estimator validation notebook
+  _explore/ _review/       exploration scripts/notebooks, result review notebooks
 examples/                  marimo notebook + county CSV outputs
 ```
 
@@ -82,7 +84,8 @@ must match the CLI option's dest name (`state`, `county`, `year`, `building_type
 
 **Column naming.** Columns are `{elec|nonelec}_{category}_MW` with categories
 `baseload`, `cooling`, `heating`, `total`, `dg`, `net`. `Total` uses
-`elec_{sector}_MW`. Invariants:
+`elec_{sector}_MW` (training data only; predictions return just the `X`
+weather columns and the `Y` column). Invariants:
 - `elec_total_MW = baseload + cooling + heating`
 - `elec_net_MW = elec_total_MW + elec_dg_MW` and `elec_dg_MW <= 0`
   (DG is a negative load)
@@ -149,14 +152,30 @@ make docs                           # pdoc → ./docs (creates its own .venv)
 ## Known rough edges (don't "fix" silently; mention or ask)
 
 - `Makefile` `test` target runs `./test/test.sh`, which doesn't exist; tests
-  live in `loads/_test/`. The README's `make cache` target also doesn't exist.
+  live in `loads/_test/`.
 - `help`/`info` reference undefined `webbrowser` and `_URLS`; `viewer`/`test`
   point at `viewer.py`/`tests.py`, which aren't in the package; there's a
-  duplicate `viewer` case.
-- `dgen.SolarModel` has a stray `print(len(weather.index))`.
-- Several docstrings refer to `tests/` (`tests/clusters.csv`), but the
-  checked-in files are `loads/clusters.csv` and `loads/configs.csv`; `tests/`
-  is a gitignored scratch output folder.
+  duplicate `viewer` case. `_plot`/`_getdata` use `case "_":` (a string
+  literal) instead of `case _:`, so `plot` draws nothing for the sector
+  datasets.
+- `Total` has no year argument; the CLI's `-Y` only reaches `Weather`, and
+  `Total`'s `dg` and `holdout` arguments are unused. `Total` imports `DG`
+  but doesn't use it (training DG comes from RESstock/COMstock PV).
+- `dgen.SolarModel` has a stray `print(len(weather.index))`; `dgen.compile`
+  has debugging `print`/`quit()` calls that stop it before writing; the
+  `SolarModel` branch of `DG` uses undefined names. `wecc/county_dg.csv.gz`
+  holds positive DG output, opposite to the `elec_dg_MW` sign convention.
+- `Energy` requires a list/tuple `year` (the cache name uses `min(year)`),
+  its cache ignores `counties`, and a failing county appends the previous
+  county's result.
+- `EstimatorConfig.outlier_regularizer`/`outlier_threshold` lack annotations,
+  so they are class attributes, not `NamedTuple` fields; the threshold is
+  never applied (`TODO` in `_get_model`).
+- `tsgam_evaluate.py` writes `tests/test_config.csv` but then reads
+  `tests/best_config.csv`. It and `Total`'s `__main__` use the gitignored
+  `tests/` scratch folder; the checked-in cluster files are
+  `loads/clusters.csv` (current `elec_total_MW` k=6 medoids) and
+  `loads/configs.csv` (TSGAM configs for an earlier medoid set).
 
 ## Working rules
 

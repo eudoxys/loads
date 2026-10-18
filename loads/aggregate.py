@@ -1,20 +1,24 @@
 """Load aggregation module
 
 The `loads.aggregate.Aggregator` class is used to sum data from multiple load
-sources into a panel with target columns and date/time rows.
+sources into a panel with target columns and date/time rows. The
+`loads.aggregate.aggregate` function uses it to map every WECC county to its
+nearest target location and sum the county loads predicted by
+`loads.total.Total`.
 
 Example
 -------
 
-To aggregate the county net loads in 2018 to the WECC 240 nodes, do the following
+To aggregate the county net loads in August 2018 to the WECC 240 nodes, do
+the following
 
     # load the targets
     import pandas as pd
-    wecc240_gis = pd.read_csv("wecc_gis.csv")
+    wecc240_gis = pd.read_csv("https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/gis/wecc240.csv")
     locations,latlons = wecc240_gis.GEOHASH,list(zip(wecc240_gis.LAT,wecc240_gis.LON))
 
     # create the target aggregator
-    from aggregate import Aggregator
+    from loads.aggregate import Aggregator
     elec_net_MW = Aggregator(locations.unique(),"2018-08-01 00:00:00+00:00","2018-08-31 23:59:59+00:00")
 
     # add the sources into the targets
@@ -23,7 +27,8 @@ To aggregate the county net loads in 2018 to the WECC 240 nodes, do the followin
     from loads import Total
     for state,county,lat,lon,geohash in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY","LAT","LON","GEOHASH"]].values:
         nearest,_,_ = nearest2([lat,lon],latlons)
-        elec_net_MW.add(locations[nearest],Total(state,county,2018).elec_net_MW)
+        target = locations[nearest]
+        elec_net_MW.add(target,Total(state,county)[["elec_net_MW"]].rename({"elec_net_MW":target},axis=1))
 
     # show the result
     elec_net_MW
@@ -78,6 +83,8 @@ _logger = logging.getLogger(__file__)
 class Aggregator(pd.DataFrame):
     """Load aggregator class
 
+    The data frame has one column per target, sorted by name, and an hourly
+    `timestamp` index from `start` to `end`, initialized to zero.
     """
 
     def __init__(self,
@@ -120,7 +127,8 @@ class Aggregator(pd.DataFrame):
 
           - `target`: target column name
 
-          - `data`: data values to add
+          - `data`: data frame with a column named `target`, whose values are
+            added to the target column where its index matches
         """
 
         # add the new data to the data frame
@@ -137,9 +145,12 @@ def aggregate(
     Arguments
     ---------
 
-      - `targets`: list of targets locations
+      - `targets`: dict of target names and their `[latitude,longitude]`
 
-      - `dt_range`: date range or year for which aggregrates are collected
+      - `dt_range`: date range or year for which aggregates are collected
+
+      - `column`: `loads.total.Total` column to aggregate (must end with
+        `_MW`)
 
       - `refresh`: force refresh of cached data
 
@@ -148,7 +159,14 @@ def aggregate(
 
       - `pandas.DataFrame`: aggregates of loads
 
-      - `dict`: result of mapping to targets
+      - `pandas.DataFrame`: mapping of county geohash (`source`) to target
+        (`target`)
+
+    Description
+    -----------
+
+    Each WECC county is mapped to its nearest target and one AR sample
+    (`samples=1`) of its `column` over `dt_range` is added to that target.
     """
 
     assert column.endswith("_MW"), f"{column=} is not a column to aggregate (only MW columns can be aggregated)"

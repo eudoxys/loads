@@ -24,8 +24,8 @@ hours instead of 8760 hours.
 The heating and cooling loads are adjusted by computing the heating and
 cooling weather sensitivity curves that fit the function $P(x) = \frac L{1+e^
 {-k(x-x_0)}}+b$ where $L$, $k$, $x_0$, and $b$ are the parameters of the
-sensitivity curve. The load difference between the reference $B(T)$ and
-target $B(T')$ weather is applied to the reference load.
+sensitivity curve. The load difference between the reference $P(T)$ and
+target $P(T')$ weather is applied to the reference load.
 
 The distributed generation is a least-squares fit to all the weather data.
 
@@ -71,7 +71,7 @@ NONELEC_FIELDS = namedtuple("nonelec",
         "nonelec_baseload_MW","nonelec_cooling_MW","nonelec_heating_MW",
         "nonelec_total_MW",
         )
-"""Electric load data fields"""
+"""Non-electric load data fields"""
 
 class Cast(pd.DataFrame):
     """Load casting class implementation"""
@@ -96,11 +96,17 @@ class Cast(pd.DataFrame):
         Arguments
         ---------
 
-          - `data`: load and weather data frame containing load data to cast
+          - `data`: hourly 2018 load and weather data frame containing the
+            `elec_` and `nonelec_` `baseload`, `cooling`, `heating`, `total`
+            (and `elec_dg_MW`, `elec_net_MW`) load columns and the
+            `temperature_degF`, `global_Wpms`, `direct_Wpms`, and
+            `diffuse_Wpms` weather columns
 
           - `year`: year to which load is cast
 
-          - `weather`: target year weather
+          - `weather`: target year weather (default keeps the weather in
+            `data`); its index must match the day-shifted index of the
+            target year
         """
         # pylint: disable=too-many-locals,invalid-name
 

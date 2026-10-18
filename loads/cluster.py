@@ -15,12 +15,23 @@ clusters based on total electric load:
     cluster.kmeans(n_clusters=6)
     print(cluster.medoids)
 
-The output is
+The six medoids are Lincoln OR, Maricopa AZ, Multnomah OR, San Luis Obispo
+CA, Solano CA, and Spokane WA (in cluster order, which depends on the k-means
+labeling). The county to medoid
+mapping of this clustering is saved in `clusters.csv` by the
+`_explore/explore_clusters_marimo.py` notebook, and the clusterings of all
+`loads.total.Total` columns for $k$ from 2 to 10 are saved in
+`_explore/explore_clusters.csv` by `_explore/explore_clusters.py`.
 
-    ['Riverside CA', 'Orange CA', 'Los Angeles CA', 'King WA', 'Salt Lake UT', 'Maricopa AZ']
+The estimator harmonics for each medoid are chosen by
+`_explore/explore_estimator.py` (see `_explore/explore_estimator_clusters.csv`)
+and used by `loads/wecc/wecc_estimate.py`.
 
-The load clusters are evaluated by `tests.py` and `evaluate_lag.py` to find
-the optimal TSGAM configuration, which is found to be as follows:
+An earlier clustering, whose medoids were Riverside CA, Orange CA, Los Angeles
+CA, King WA, Salt Lake UT, and Maricopa AZ, was evaluated by
+`tsgam_evaluate.py` and `evaluate_lag.py` to find the optimal
+`loads.total.Total` TSGAM configuration, which is found to be as follows (see
+`configs.csv`):
 
 | County         | Year Harmonics | Week Harmonics | Day Harmonics | Knots | AR Lag (h) | Exogenous Window (h) | RMSE (GW) |
 | -------------- | -------------- | -------------- | ------------- | ----- | ---------- | -------------------- | --------- |
@@ -30,9 +41,6 @@ the optimal TSGAM configuration, which is found to be as follows:
 | Orange CA      |       4        |        4       |      12       |   5   |     6      |         >6           |    0.13   |
 | Riverside CA   |       2        |        2       |      12       |   7   |    10      |          2           |    0.18   |
 | Salt Lake UT   |       4        |        3       |      12       |   3   |     4      |          5           |    0.04   |
-
-Each county's model is based on which county cluster medoid it is associated
-with, as provided in `clusters.csv`.
 """
 
 # pylint: enable=line-too-long
