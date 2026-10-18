@@ -80,9 +80,31 @@ def _predict(args:tuple[str,str,str|None]) -> tuple[str,np.ndarray]:
     return f"{county} {state}",data.loc[START:END].values
 
 
+def _load_cache() -> Cache:
+    """Cache file holding the assembled August 2020 load matrix"""
+    return Cache(package="loads",version=0,path=["_test",f"calibrate_X_{MONTH}.csv.gz"])
+
+
+def _missing_inputs() -> list[str]:
+    """Counties whose TSGAM training data or 2020 weather is not in the cache
+
+    The cache files are named exactly as `loads.total.Total` (version 2
+    training data) and `weather.Weather` (version 0) name them.
+    """
+    if _load_cache().exists():
+        return []
+    missing = []
+    for state,county in _wecc_units():
+        training = Cache(package="loads",version=2,path=[state,county,"T_elec_1h_training.csv.gz"])
+        weather = Cache([state,county,f"W_{START.year}.csv.gz"],package="weather",version=0)
+        if not training.exists() or not weather.exists():
+            missing.append(f"{county} {state}")
+    return missing
+
+
 def august_2020_load(refresh:bool=False) -> pd.DataFrame:
     """Gross county load for August 2020 (MW), from the cached TSGAM models"""
-    cache = Cache(package="loads",version=0,path=["_test",f"calibrate_X_{MONTH}.csv.gz"])
+    cache = _load_cache()
     if cache.exists() and not refresh:
         try:
             return pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
@@ -119,7 +141,17 @@ def august_2020_dg(units:list[str]) -> pd.DataFrame:
 
 @pytest.fixture(scope="module")
 def problem() -> dict:
-    """Assemble the August 2020 county-form problem"""
+    """Assemble the August 2020 county-form problem
+
+    Building the inputs from scratch downloads weather and building data for
+    all 407 WECC counties and takes hours, so the test is skipped unless the
+    local cache already holds them. Set `LOADS_TEST_BUILD=1` to build them
+    anyway.
+    """
+    missing = _missing_inputs()
+    if missing and not os.environ.get("LOADS_TEST_BUILD"):
+        pytest.skip(f"cache lacks August 2020 inputs for {len(missing)} WECC counties "
+            f"(e.g. {missing[0]}); set LOADS_TEST_BUILD=1 to build them")
     X = august_2020_load()
     D = august_2020_dg(list(X.columns))
     regions = pd.read_csv(os.path.join(DATA,"state_groups.csv"),index_col=[0])

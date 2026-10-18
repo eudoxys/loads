@@ -25,4 +25,10 @@ read it from the cache. The weight search itself takes several minutes.
 Set `LOADS_CACHEDIR` to use a cache folder other than the default. Reports
 are written to the gitignored `loads/tests/calibrate/` folder.
 
+Because building the inputs from an empty cache downloads data for every
+WECC county and takes hours, the test is skipped (e.g., in CI) unless the
+cache already holds them; set `LOADS_TEST_BUILD=1` to build them anyway.
+`test_calibrate_synthetic.py` checks the formulation on a small synthetic
+system in seconds and always runs.
+
 	pytest -s test_calibrate.py
