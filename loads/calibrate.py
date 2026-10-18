@@ -393,7 +393,7 @@ class _Block:
 
 
 class Calibrate(pd.DataFrame):
-    """Calibrated (shaped) load data frame
+    r"""Calibrated (shaped) load data frame
 
     The data frame contains the shaped gross load $L=sX+b$ in MW with the
     same index and columns as the input load. Calibration results are
