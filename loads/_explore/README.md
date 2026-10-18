@@ -28,3 +28,9 @@ by a search the most parsimonious harmonics that are within 1% of the best harmo
 
 The marimo notebook `explore_estimator_marimo.py` is used to visualize the
 results of the exploration script.
+
+## WECC estimate
+
+The marimo notebook `explore_wecc_estimate_marimo.py` displays the hourly
+county loads in `loads/wecc/wecc_estimate.csv.gz` for a selected state and
+county. Run `loads/wecc/wecc_estimate.py` first to generate that file.
