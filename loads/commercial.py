@@ -1,8 +1,9 @@
 """Commercial building load data accessor
 
 
-The commercial load data frame collects and consolidates `COMstock` data. Floor areas are
-obtained from `Floorarea` data to scale loads for the specified year.
+The commercial load data frame collects and consolidates `COMstock` data.
+Floor areas are obtained from `Floorarea` data to scale loads to actual
+floor area of the county rather than the floor area in Comstock's samples.
 
 Examples
 --------
@@ -15,25 +16,43 @@ To get the commercial building load data for Alameda County CA, use the followin
 which outputs the following
 
                                elec_baseload_MW  ...  nonelec_total_MW
-    2018-01-01 00:00:00+00:00          6.288318  ...          1.970713
-    2018-01-01 01:00:00+00:00          6.690304  ...          2.775018
-    2018-01-01 02:00:00+00:00          6.362257  ...          3.586859
-    2018-01-01 03:00:00+00:00          6.157291  ...          4.237439
-    2018-01-01 04:00:00+00:00          6.043443  ...          4.681834
+    timestamp                                    ...
+    2018-01-01 00:00:00+00:00         1302.4337  ...          530.8230
+    2018-01-01 01:00:00+00:00         1278.7185  ...          601.4498
+    2018-01-01 02:00:00+00:00         1187.3559  ...          676.6662
+    2018-01-01 03:00:00+00:00         1098.1876  ...          677.1097
+    2018-01-01 04:00:00+00:00         1021.7827  ...          621.0280
     ...                                     ...  ...               ...
-    2018-12-31 19:00:00+00:00          7.498333  ...          2.924475
-    2018-12-31 20:00:00+00:00          7.660632  ...          2.249275
-    2018-12-31 21:00:00+00:00          7.640507  ...          1.753567
-    2018-12-31 22:00:00+00:00          7.358111  ...          1.600068
-    2018-12-31 23:00:00+00:00          6.819952  ...          1.606544
+    2018-12-31 19:00:00+00:00         1610.1920  ...          849.0425
+    2018-12-31 20:00:00+00:00         1619.8298  ...          753.1261
+    2018-12-31 21:00:00+00:00         1589.6403  ...          664.3381
+    2018-12-31 22:00:00+00:00         1513.8585  ...          584.5360
+    2018-12-31 23:00:00+00:00         1379.7961  ...          507.9539
 
     [8760 rows x 10 columns]
+
+Caveats
+-------
+
+1. Loads are scaled by the `Floorarea` total of the commercial building
+   types only. The `apartment` floor area is excluded because apartment
+   loads are already included in `Residential` through the Census housing
+   unit counts, and the `no_match` floor area is excluded because
+   Comstock has no building type for it (see
+   [issue #17](https://github.com/eudoxys/loads/issues/17)).
+
+2. Per-building-type floor areas are not used yet, so the remaining
+   commercial floor area is distributed pro rata to the Comstock building
+   types in proportion to their Comstock floor areas.
+
+3. The example output above was generated before the fix for issue #17
+   and overstates the load in counties with significant apartment or
+   unmatched floor area.
 """
 
-import os
-import pandas as pd
 import logging
-from typing import Callable
+
+import pandas as pd
 
 from fips import States, Counties
 from loads.floorarea import Floorarea
@@ -48,7 +67,7 @@ class Commercial(pd.DataFrame):
     The `Commercial` class is a data frame that contains the collected
     building loads for each commercial building types, aggregated by load
     category, i.e., `baseload`,`cooling`, `heating`, `dg`, and `total` for
-    both electric and non-electric loads.  Values are delivered both in MW.
+    both electric and non-electric loads.  Values are delivered in MW.
     """
     COLLECT = {
             "elec_baseload": [
@@ -75,7 +94,6 @@ class Commercial(pd.DataFrame):
                 ],
             "nonelec_baseload": [
                 "district_hotwater",
-                "gas_heating",
                 "gas_equipment",
                 "gas_watersystems",
                 "other_watersystems",
@@ -85,6 +103,7 @@ class Commercial(pd.DataFrame):
                 ],
             "nonelec_heating": [
                 "other_heating",
+                "gas_heating",
                 "district_heating",
                 ],
             "nonelec_dg": [
@@ -101,15 +120,24 @@ class Commercial(pd.DataFrame):
     CACHEDIR = None
     """Cache folder"""
 
+    EXCLUDED_FLOORAREA = ["apartment","no_match"]
+    """`Floorarea` building types excluded from the floor area used to scale
+    Comstock loads (apartments are included in `Residential` and unmatched
+    floor area has no Comstock building type)"""
+
+    _states = None
+    """States database"""
+
+    _counties = None
+    """Counties database"""
+
     def __init__(self,
         # pylint: disable=too-many-arguments,too-many-positional-arguments
         state:str,
         county:str,
-        year:int=None,
         *,
-        collect=None,
+        collect:dict[str,list[str]]=None,
         refresh:bool=False,
-        calibrate:float|dict[str,float]|Callable|None=None,
         ):
         """Construct building types data frame
 
@@ -122,131 +150,138 @@ class Commercial(pd.DataFrame):
 
           - `collect`: specify how COMstock columns are collected (default is `COLLECT`)
 
-          - `year`: specify the year on which the floor area is based
-            (default most recent in `Floorarea()`)
-
           - `refresh`: force cache refresh from source data
-
-          - `calibrate`: set load calibration
 
         Description
         -----------
 
         This class compiles the building type data for a county by collecting
-        COMstock columns, scaling by the floor area in that year, and finally
-        computing total electric and non-electric loads in MW.
+        COMstock columns, scaling by the floor area, and computing total
+        electric and non-electric loads in MW.
         """
         # pylint: disable=too-many-locals
-        assert state in States()["ST"].values, f"{state=} is not valid"
-        assert county in Counties().set_index(["ST","COUNTY"]).loc[state].index, \
-            f"{state=} {county=} is not valid"
 
+        # load state database
+        if Commercial._states is None:
+            Commercial._states = States()
+        if not state in Commercial._states["ST"].values:
+            raise ValueError(f"{state=} is not valid")
+
+        # load county database
+        if Commercial._counties is None:
+            Commercial._counties = Counties().set_index(["ST","COUNTY"])
+        if not county in Commercial._counties.loc[state].index.values:
+            raise ValueError(f"{state=} {county=} is not valid")
+
+        # load data from cache if default collection is desired
+        data = None
+        cache = None
         if collect is None:
             collect = self.COLLECT
+            if self.CACHEDIR:
 
-        floorarea = {}
-        total_area = 0.0
-        data = None
-
-        if self.CACHEDIR:
-            Cache.CACHEDIR = self.CACHEDIR
-        cache = Cache(package="loads",version=0,path=[state,county,"C.csv.gz"])
-        if cache.exists() and not refresh:
-            try:
-                data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
-                _logger.debug(f"{cache=} ok")
-            except Exception as err:
+                # Note: this update to cachedir needs to be done through
+                #       a future change to Cache that cannot be overwritten
+                #       by similar actions in other classes that use Cache
+                Cache.CACHEDIR = self.CACHEDIR
+            cache = Cache(package="loads",version=2,path=[state,county,"C.csv.gz"])
+            if cache.exists() and not refresh:
+                try:
+                    data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
+                    _logger.debug(f"{cache=} ok")
+                except Exception as err:
+                    data = None
+                    cache.delete()
+                    _logger.debug(f"{cache=} {err}")
+            else:
                 data = None
-                cache.delete()
-                _logger.debug(f"{cache=} {err}")
-        else:
-            data = None
-            _logger.debug(f"{cache=} (re)generation required")
+                _logger.debug(f"{cache=} (re)generation required")
 
+        # load data from Comstock if cache not used
         if data is None:
 
             # split floor areas by building type
-            actual_areas = Floorarea(state=state,county=county,year=year)\
+            actual_areas = Floorarea(state=state,county=county)\
                 .set_index("BUILDING_TYPE")\
                 .sort_index()
-            split_areas = {"BUILDING_TYPE":[],"FLOORAREA":[],"SPLITS":[],"FRACTION":[]}
-            actual_areas_sum = actual_areas.FLOORAREA.sum()
-            for bts,area in list(actual_areas.iterrows()):
-                for bt in bts.split("+"):
-                    split_areas["BUILDING_TYPE"].append(bt if bt else "OTH")
-                    split_areas["FLOORAREA"].append(area.FLOORAREA / len(bts.split("+")))
-                    split_areas["SPLITS"].append(bts)
-                    split_areas["FRACTION"].append(area.FLOORAREA/actual_areas_sum if actual_areas_sum > 0 else 0.0)
-            split_areas = pd.DataFrame(split_areas).set_index("BUILDING_TYPE")
 
-            # collect building type data
-            data = {}
+            # exclude floor area that is not modeled by Comstock, i.e.,
+            # apartments (included in residential loads) and unmatched
+            # building types (see issue #17)
+            excluded = {"+".join(Floorarea.BUILDING_TYPES[x]) for x in self.EXCLUDED_FLOORAREA}
+            total_actual_area = actual_areas.loc[
+                ~actual_areas.index.isin(excluded),"FLOORAREA"].sum()
+
+            # read commercial building type data
+            data = None
+            total_stock_area = 0.0
             for btype in COMstock.BUILDING_TYPES:
+
                 bdata = COMstock(
                     state=state,
                     county=county,
                     building_type=btype,
                     )
-                for aggr,columns in collect.items():
-                    data[f"{btype}_{aggr}_MW"] = bdata[columns].sum(axis=1) / 1e6
-                    floorarea[btype] = bdata["floor_area"].max()
-                    total_area += floorarea[btype]
-            data = pd.DataFrame(data)
 
-            # prepare consolidation columns
-            for ctype in collect.keys():
-                data[f"{ctype}_MW"] = 0.0
+                stock_area = bdata["floor_area"]
+                total_stock_area += stock_area
+                bdata.drop("floor_area",inplace=True,axis=1)
 
-            # collect and consolidate data
-            for btype in COMstock.BUILDING_TYPES:
-
-                # collect building type data
-                if btype in split_areas.index:
-                    for ctype in {x.split("_",1)[0] for x in collect.keys()}:
-                        for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
-                            data[kwname] *= floorarea[btype] / total_area * split_areas.loc[btype].FLOORAREA
+                # convert from W/sf to MW
+                bdata = bdata.mul(stock_area,axis=0) / 1e6
+                if data is None:
+                    data = bdata
                 else:
-                    for ctype in {x.split("_",1)[0] for x in collect.keys()}:
-                        for kwname in [x for x in data.columns if x.startswith(f"{btype}_{ctype}_")]:
-                            data[kwname] = 0.0
-                    _logger.debug(f"COMstock {county} {state} building type '{btype}' has zero floor area for {kwname}")
+                    data = data.add(bdata,fill_value=0.0)
 
-                # consolidate building type data
-                for ctype in collect.keys():
-                    data[f"{ctype}_MW"] += data[f"{btype}_{ctype}_MW"]
-                    data.drop(f"{btype}_{ctype}_MW",axis=1,inplace=True)
+            # Note: per-building-type areas are not used for now
+            #       this will be addressed in a future update
 
-            # update totals
-            data["elec_total_MW"] = sum(data[f"elec_{x}_MW"] for x in ["baseload","cooling","heating"])
-            data["elec_net_MW"] = data["elec_total_MW"] + data["elec_dg_MW"]
-            data["nonelec_total_MW"] = sum(data[f"nonelec_{x}_MW"] for x in ["baseload","cooling","heating"])
-            data.drop("nonelec_dg_MW",axis=1,inplace=True)
+            # construct the reverse mapping of collections
+            rmap = {item: key for key, items in collect.items() for item in items}
+            if len(rmap) != sum(len(v) for v in collect.values()):
+                raise ValueError(f"{collect=} has duplicate entries")
 
-            # move year-end data to beginning
-            data.index = pd.DatetimeIndex([str(x).replace("2019","2018") for x in data.index])
-            data.index.name = "timestamp"
-            data.sort_index(inplace=True)
-            data = data.round(4)
-            data.to_csv(cache.pathname,
-                index=True,
-                header=True,
-                compression="gzip" if cache.pathname.endswith(".gz") else None,
-                )
+            # group columns to collections
+            data.drop([x for x in data.columns if not x in rmap],axis=1,inplace=True)
+            data.columns = pd.MultiIndex.from_tuples([(f"{rmap[x]}_MW",x) for x in data.columns])
+            data = data.T.groupby(level=0).sum().T
+            data = data.reindex(columns=[f"{k}_MW" for k in collect], fill_value=0.0)
 
-        # calibrate load is requested
-        if isinstance(calibrate,float):
-            data *= calibrate
-        elif isinstance(calibrate,dict):
-            if "load" in calibrate:
-                columns = list(set(data.columns) - set("elec_dg_MW"))
-                data[columns] *= calibrate["load"]
-            if "solar" in calibrate:
-                data["elec_dg_MW"] *= calibrate["solar"]
-        elif callable(calibrate):
-            data = calibrate(data)
-        else:
-            assert calibrate is None, f"{calibrate=} is not valid"
-            
+            # rescale from stock total area to actual total area
+            data = data.div(total_stock_area,axis=0) * total_actual_area
+
+            # update totals (overwrite old values to guarantee consistency)
+            data["elec_total_MW"] = sum(data[f"elec_{x}_MW"] for x in ["baseload","cooling","heating"] if f"elec_{x}_MW" in data.columns)
+            if "elec_dg_MW" in data.columns:
+                data["elec_net_MW"] = data["elec_total_MW"] - data["elec_dg_MW"].abs() # ignore the DG sign from Comstock
+            else:
+                data["elec_dg_MW"] = 0.0
+                data["elec_net_MW"] = data["elec_total_MW"]
+            data["nonelec_total_MW"] = sum(data[f"nonelec_{x}_MW"] for x in ["baseload","cooling","heating"] if f"nonelec_{x}_MW" in data.columns)
+
+            # no such thing as non-electric DG
+            if "nonelec_dg_MW" in data.columns:
+                data.drop("nonelec_dg_MW",axis=1,inplace=True)
+
+            # truncate non-significant digits
+            data = data.fillna(0).round(4)
+
+            # save to cache
+            if not cache is None:
+
+                # Note: this write is not atomic, this will
+                #       be fixed in a future update
+                data.to_csv(cache.pathname,
+                    index=True,
+                    header=True,
+                    compression="gzip" if cache.pathname.endswith(".gz") else None,
+                    )
+
+        # name the date/time index
+        data.index.name = "timestamp"
+
+        # all done
         super().__init__(data[sorted(data.columns)])
 
     @classmethod
@@ -260,6 +295,10 @@ if __name__ == "__main__":
 
     The main script refreshes the cache with debugging enabled.
     """
+
+    pd.options.display.width = None
+    pd.options.display.max_columns = None
+
     import sys
     refresh = "--refresh" in sys.argv
     debug = "--debug" in sys.argv
@@ -269,7 +308,10 @@ if __name__ == "__main__":
 
     for state,county in Counties(use_index=["RO","ST","COUNTY"]).loc["WECC"].index.values:
         try:
-            Commercial(state,county,refresh=refresh)
-            _logger.info(f"{state} {county} ok")
+            df = Commercial(state,county,refresh=refresh)
+            if (df.sum()==0).all():
+                _logger.warning(f"{state} {county} no data")
+            else:
+                _logger.info(f"{state} {county} ok")
         except Exception as err:
             (_logger.exception if debug else _logger.error)(f"{state} {county} {err}")

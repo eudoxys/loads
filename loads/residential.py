@@ -28,7 +28,7 @@ flowchart LR
     subgraph RESstock
         subgraph elec
             others --> e_baseload
-            
+
             elec_cooling[cooling] --> e_cooling
             elec_coolingfan[coolingfan] --> e_cooling
             elec_cooling_pump[coolingpump] --> e_cooling
@@ -49,7 +49,7 @@ flowchart LR
         end
         subgraph nonelec
             n_others[others] --> ne_baseload
-            
+
             oilheating --> ne_heating
             gasheating --> ne_heating
             gasfireplace --> ne_heating
@@ -113,7 +113,7 @@ The residential load data for Alameda County CA is obtained using the command
 which outputs the following
 
                                elec_baseload_MW  ...  nonelec_total_MW
-    timestamp                                    ...                  
+    timestamp                                    ...
     2018-01-01 00:00:00+00:00         45.084952  ...         46.469329
     2018-01-01 01:00:00+00:00         52.149717  ...         55.490697
     2018-01-01 02:00:00+00:00         58.137018  ...         66.615070
@@ -129,9 +129,7 @@ which outputs the following
     [8760 rows x 10 columns]
 """
 
-import os
 import logging
-from typing import Callable
 
 import pandas as pd
 
@@ -235,11 +233,9 @@ class Residential(pd.DataFrame):
         # pylint: disable=too-many-arguments,too-many-positional-arguments
         state:str,
         county:str,
-        year:int=None,
         *,
         collect=None,
         refresh:bool=False,
-        calibrate:float|dict[str,float]|Callable|None=None,
         ):
         """Construct building types data frame
 
@@ -252,27 +248,17 @@ class Residential(pd.DataFrame):
 
           - `collect`: specify how RESstock columns are collected
 
-          - `year`: specify the year on which the number of housing units is
-            based (default most recent in `Units()`)
-
           - `refresh`: force download of data from source
-
-          - `calibrate`: set load/solar calibration
 
         Description
         -----------
 
         This class compiles the building type data for a county by collecting
-        RESstock columns, scaling by the number of housing units in that year,
-        and finally computing total MW and the fraction of total of electric
-        or non-electric load.
-
-        If calibrate is set to `'auto'`, then the loadshape will scaled based
-        on the contents of the `loads.commercial.Commercial.CALIBRATE` data
-        if the `state` is among its keys. Alternatively, a float value can be
-        provided to scale accordingly.
+        RESstock columns, scaling by the number of housing units in 2018, and
+        finally computing total MW and the fraction of total of electric or
+        non-electric load.
         """
-        
+
         # pylint: disable=too-many-locals
         assert state in States()["ST"].values, f"{state=} is not valid"
         assert county in Counties().set_index(["ST","COUNTY"]).loc[state].index, \
@@ -280,7 +266,7 @@ class Residential(pd.DataFrame):
 
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
-        cache = Cache(package="loads",version=0,path=[state,county,"R.csv.gz"])
+        cache = Cache(package="loads",version=1,path=[state,county,"R.csv.gz"])
 
         # load data from cache
         if cache.exists() and not refresh:
@@ -299,7 +285,7 @@ class Residential(pd.DataFrame):
 
         # no data in cache or cache needs to be refreshed
         if data is None:
-        
+
             if collect is None:
                 collect = self.COLLECT
 
@@ -314,10 +300,10 @@ class Residential(pd.DataFrame):
                     county=county,
                     building_type=btype,
                     )
+                units[btype] = bdata["units"].max()
+                total_units += units[btype]
                 for aggr,columns in collect.items():
                     data[f"{btype}_{aggr}_MW"] = bdata[columns].sum(axis=1) / 1e6
-                    units[btype] = bdata["units"].max()
-                    total_units += units[btype]
             data = pd.DataFrame(data)
 
             # prepare consolidation columns
@@ -325,7 +311,7 @@ class Residential(pd.DataFrame):
                 data[f"{ctype}_MW"] = 0.0
 
             # scale by number of residential units and calculate fractional loads
-            actual_units = Units(state=state,county=county,year=year)
+            actual_units = Units(state=state,county=county,year=2018)
 
             for btype in RESstock.BUILDING_TYPES:
 
@@ -341,7 +327,11 @@ class Residential(pd.DataFrame):
 
             # update totals
             data["elec_total_MW"] = sum(data[f"elec_{x}_MW"] for x in ["baseload","cooling","heating"])
-            data["elec_net_MW"] = data["elec_total_MW"] + data["elec_dg_MW"]
+            if "elec_dg_MW" in data.columns:
+                data["elec_net_MW"] = data["elec_total_MW"] - data["elec_dg_MW"].abs() # ignore the DG sign from Resstock
+            else:
+                data["elec_dg_MW"] = 0.0
+                data["elec_net_MW"] = data["elec_total_MW"]
             data["nonelec_total_MW"] = sum(data[f"nonelec_{x}_MW"] for x in ["baseload","cooling","heating"])
             data.drop("nonelec_dg_MW",axis=1,inplace=True)
 
@@ -352,21 +342,6 @@ class Residential(pd.DataFrame):
             data = data.round(4)
             data.to_csv(cache.pathname,index=True,header=True)
 
-        # calibrate load is requested
-        if isinstance(calibrate,float):
-            data *= calibrate
-        elif isinstance(calibrate,dict):
-            if "load" in calibrate:
-                columns = list(set(data.columns) - set(["elec_dg_MW"]))
-                data[columns] *= calibrate["load"]
-            if "solar" in calibrate:
-                data["elec_dg_MW"] *= calibrate["solar"]
-        elif callable(calibrate):
-            data = calibrate(data)
-        else:
-            assert calibrate is None, f"{calibrate=} is not valid"
-
-                        
         super().__init__(data[sorted(data.columns)])
 
     @classmethod

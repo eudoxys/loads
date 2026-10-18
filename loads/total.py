@@ -4,11 +4,6 @@ The total load module computes the expected sum of the residential,
 commercial, industrial and agricultural loads at the county level for the
 specified year.
 
-Note that calibration requires that the total load and DG for each county in a
-state is computed first before the load for a specified county can be
-calculated. This can take some time if it has not been done before and is not
-in the loads cache.
-
 Data Flow
 ---------
 
@@ -52,12 +47,8 @@ flowchart TD
 
     end
 
-    Sample --> Total
-
-    Total --> Calibration
-    DG --> Calibration
-
-    Calibration --> Net
+    Sample --> Total --> Net
+    DG --> Net
 ```
 
 Example
@@ -71,7 +62,7 @@ To compute the total load in 2020 for Alameda County CA use the following
 which outputs
 
                                elec_residential_MW  elec_commercial_MW  elec_industrial_MW  elec_agricultural_MW  elec_transportation_MW  elec_total_MW  elec_net_MW  elec_dg_MW  temperature_degF  global_Wpms  direct_Wpms  diffuse_Wpms
-    timestamp                                                                                                                                                                                                                             
+    timestamp
     2020-01-01 00:00:00+00:00             1000.677             988.157             223.618                 6.901                     0.0       2219.353     2219.353        -0.0              50.9         37.0         40.0          34.0
     2020-01-01 01:00:00+00:00              857.849             850.925             223.618                 6.901                     0.0       1939.294     1939.294        -0.0              49.5          0.0          0.0           0.0
     2020-01-01 02:00:00+00:00              675.618             715.667             223.618                 6.901                     0.0       1621.805     1621.805        -0.0              48.9          0.0          0.0           0.0
@@ -104,7 +95,7 @@ import pandas as pd
 import numpy as np
 
 from tsgam_estimator import (
-    TsgamEstimatorConfig, 
+    TsgamEstimatorConfig,
     TsgamMultiPeriodicConfig,
     TsgamSplineConfig,
     TsgamArConfig,
@@ -119,7 +110,6 @@ from loads.residential import Residential
 from loads.commercial import Commercial
 from loads.industry import Industry
 from loads.agriculture import Agriculture
-from loads.calibrate import Calibrate
 from loads.dgen import DG
 
 _logger = logging.getLogger(__file__)
@@ -227,7 +217,7 @@ class Total(pd.DataFrame):
         "nonelec_commercial_MW" : (None,None),
         "nonelec_total_MW" : (None,None),
         "elec_dg_MW": (np.negative,np.negative),
-        # Notes: 
+        # Notes:
         # 1. elec_net_MW cannot be done in log domain because it can be negative
         # 2. no transformations are identified for ind/agr/tra yet.
     }
@@ -237,7 +227,7 @@ class Total(pd.DataFrame):
     -----
 
     1. `elec_net_MW` cannot be done in log domain because it can be negative
-    
+
     2. No transformations are identified for ind/agr/tra yet.
     """
 
@@ -308,7 +298,8 @@ class Total(pd.DataFrame):
             Cache.CACHEDIR = self.CACHEDIR
 
         # choose sampling method
-        assert samples is None or isinstance(samples,int), f"{sample=} is not valid"
+        if not samples is None and not isinstance(samples,int):
+            raise ValueError(f"{samples=} is not valid")
         if samples is None:
 
             # no sampling gets training data (also ignores date range)
@@ -339,7 +330,7 @@ class Total(pd.DataFrame):
 
                 else:
                     # multiple samples uses percentile
-                    assert 0<=percentile<=100, f"{percentile=} must be between 0 and 1"
+                    assert 0<=percentile<=100, f"{percentile=} must be between 0 and 100"
                     data = Total._get_percentile(state,county,date_range,X,Y,samples,percentile,refresh)
             else:
                 raise ValueError(f"{samples=} must be a non-negative integer, infinity, or None")
@@ -370,6 +361,20 @@ class Total(pd.DataFrame):
             return data
 
     @classmethod
+    def _trim_lags(cls,data:pd.DataFrame,columns:list[str]) -> pd.DataFrame:
+        """Set the rows in the exogenous lag windows at head and tail of columns to NaN"""
+        lags = [lag for config in cls.TSGAM_CONFIG.exog_config
+            for lag in getattr(config,"lags",[])]
+        headlag = max([0]+[-x for x in lags])
+        taillag = max([0]+lags)
+        columns = [data.columns.get_loc(x) for x in columns]
+        if headlag > 0:
+            data.iloc[:headlag,columns] = float('nan')
+        if taillag > 0:
+            data.iloc[-taillag:,columns] = float('nan')
+        return data
+
+    @classmethod
     def _get_training(cls,
         state:str,
         county:str,
@@ -382,7 +387,7 @@ class Total(pd.DataFrame):
         # identify location of cached results
         nonelec = Y.startswith("nonelec_")
         source = "nonelec" if nonelec else "elec"
-        cache = Cache(package="loads",version=0,path=[state,county,f"T_{source}_1h_training.csv.gz"])
+        cache = Cache(package="loads",version=2,path=[state,county,f"T_{source}_1h_training.csv.gz"])
 
         # load refresh from cache
         data = None
@@ -413,12 +418,11 @@ class Total(pd.DataFrame):
                     "residential":Residential,
                     "commercial":Commercial,
                     }.items():
-                loaddata = dataset(state,county,
-                    calibrate=lambda x:cls._calibrate(state,sector,x),
-                    )
+                loaddata = dataset(state,county)
                 data[f"{source}_{sector}_MW"] = loaddata[f"{source}_total_MW"]
                 if not nonelec:
-                        data["elec_dg_MW"] += loaddata[f"{source}_dg_MW"]
+                    # DG is a negative load regardless of the sign used by the stock data
+                    data["elec_dg_MW"] -= loaddata[f"{source}_dg_MW"].abs()
 
             # make flat loadshape for industry and agriculture
             loadshape = pd.DataFrame(
@@ -439,17 +443,17 @@ class Total(pd.DataFrame):
                 county,
                 loadshape if cls.AGRICULTURE_LOADSHAPE is None else cls.AGRICULTURE_LOADSHAPE,
                 )[f"{source}_{'total' if nonelec else 'net'}_MW"]
-            
+
             # set transportation to zero until data is available
             data[f"{source}_transportation_MW"] = 0.0
-            
+
             # finalize total load
-            data[f"{source}_total_MW"] = data[[x for x in data.columns if x.endswith("_MW")]].sum(axis=1)
+            data[f"{source}_total_MW"] = data[[x for x in data.columns if x.endswith("_MW") and "_dg_" not in x]].sum(axis=1)
             data[f"{source}_net_MW"] = data[f"{source}_total_MW"]
 
             # finalize net load
             if not nonelec:
-                data[f"elec_net_MW"] += data["elec_dg_MW"]
+                data["elec_net_MW"] += data["elec_dg_MW"]
 
             # save cache
             data.to_csv(cache.pathname,
@@ -457,32 +461,6 @@ class Total(pd.DataFrame):
                 header=True,
                 compression="gzip" if cache.pathname.endswith(".gz") else None,
                 )
-
-        return data
-
-    @staticmethod
-    def _calibrate(
-        state,
-        sector,
-        data,
-        ):
-        """Calibrate load/solar data to state energy usage"""
-
-        for year in set(data.index.year):
-            
-            dt_range = pd.date_range(
-                start=f"{year}-01-01 00:00:00+0000",
-                end=f"{year}-12-31 23:59:59+0000",
-                freq="1h"
-                )
-
-            load = Calibrate.load(state,year).loc[sector[0].upper()].values[0]
-            data.loc[dt_range,[x for x in data.columns if x != "elec_dg_MW"]] *= load
-
-            solar = Calibrate.solar(state,year).loc[sector[0].upper()].values[0]
-            data.loc[dt_range,"elec_dg_MW"] *= solar
-
-        data["elec_net_MW"] = data["elec_total_MW"] + data["elec_dg_MW"]
 
         return data
 
@@ -514,7 +492,7 @@ class Total(pd.DataFrame):
 
         # return estimator if cache active and found in cache
         if not cls.cache is None and cache in cls.cache and not refresh:
-        
+
             return cls.cache[cache]
 
         # get training data
@@ -542,7 +520,7 @@ class Total(pd.DataFrame):
         refresh:bool=False,
         ) -> pd.DataFrame:
         """Get the prediction for the specified date range"""
-        
+
         # get estimator
         estimator = cls._get_estimator(state,county,X,Y,refresh)
 
@@ -554,15 +532,7 @@ class Total(pd.DataFrame):
         data[Y] = cls._postprocess(estimator.predict(data[X]),Y)
 
         # remove lag windows from head and tail of training data
-        headlag = 0
-        taillag = 0
-        for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
-            headlag = -min(min(config.lags)+1,headlag)
-            taillag = -max(max(config.lags),taillag)
-        data.loc[:data.index[headlag],Y] = float('nan')
-        data.loc[data.index[taillag]:,Y] = float('nan')
-
-        return data
+        return cls._trim_lags(data,[Y])
 
     @classmethod
     def _get_sample(cls,
@@ -574,7 +544,7 @@ class Total(pd.DataFrame):
         refresh:bool=False,
         ) -> pd.DataFrame:
         """Get the AR samples for the specified date range"""
-        
+
         # get estimator
         estimator = cls._get_estimator(state,county,X,Y,refresh)
 
@@ -585,15 +555,7 @@ class Total(pd.DataFrame):
         data[Y] = cls._postprocess(estimator.sample(data[X])[0],Y)
 
         # remove lag windows from head and tail of training data
-        headlag = 0
-        taillag = 0
-        for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
-            headlag = -min(min(config.lags)+1,headlag)
-            taillag = -max(max(config.lags),taillag)
-        data.loc[:data.index[headlag],Y] = float('nan')
-        data.loc[data.index[taillag]:,Y] = float('nan')
-
-        return data
+        return cls._trim_lags(data,[Y])
 
     @classmethod
     def _get_samples(cls,
@@ -606,7 +568,7 @@ class Total(pd.DataFrame):
         refresh:bool=False,
         ) -> pd.DataFrame:
         """Get the AR samples for the specified date range"""
-        
+
         # get estimator
         estimator = cls._get_estimator(state,county,X,Y,refresh)
 
@@ -623,15 +585,7 @@ class Total(pd.DataFrame):
         data = pd.concat(samples,axis=1).copy() # copy avoids coming fragmentation warning
 
         # remove lag windows from head and tail of training data
-        headlag = 0
-        taillag = 0
-        for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
-            headlag = -min(min(config.lags)+1,headlag)
-            taillag = -max(max(config.lags),taillag)
-        data.loc[:data.index[headlag],Y] = float('nan')
-        data.loc[data.index[taillag]:,Y] = float('nan')
-
-        return data
+        return cls._trim_lags(data,[x for x in data.columns if x.startswith("sample_")])
 
     @classmethod
     def _get_percentile(cls,
@@ -645,7 +599,7 @@ class Total(pd.DataFrame):
         refresh:bool=False,
         ) -> pd.DataFrame:
         """Get the AR sample at specified percentile for the specified date range"""
-        
+
         data = cls._get_samples(state,county,date_range,X,Y,n_samples,refresh)
         columns = [x for x in data.columns if x.startswith("sample_")]
         data[Y] = np.percentile(data[columns],percentile,axis=1)
@@ -694,7 +648,7 @@ class Total(pd.DataFrame):
         training = data.copy()
         training.loc[holdout,Y] = float('nan')
 
-        # TODO: drop NaNs until TSGAM accepts NaN inputs 
+        # TODO: drop NaNs until TSGAM accepts NaN inputs
         training.dropna(inplace=True)
 
         # get estimator
@@ -703,34 +657,22 @@ class Total(pd.DataFrame):
 
         # get the test data
         data["predict"] = cls._postprocess(estimator.predict(data[X]),Y)
-        headlag = 0
-        taillag = 0
-        for config in [x for x in cls.TSGAM_CONFIG.exog_config if hasattr(x,"lags")]:
-            headlag = -min(min(config.lags),headlag)
-            taillag = -max(max(config.lags),taillag)
-        prediction_column = list(data.columns).index("predict")
-        if headlag != 0:
-            data.iloc[:headlag,prediction_column] = float('nan')
-        if taillag != 0:
-            data.iloc[taillag:,prediction_column] = float('nan')
+        cls._trim_lags(data,["predict"])
         if n_samples > 0:
             samples = cls._postprocess(estimator.sample(data[X],n_samples=n_samples),Y)
-            if headlag != 0:
-                samples[:,:headlag] = float('nan')
-            if taillag != 0:
-                samples[:,taillag:] = float('nan')
             if samples.shape[0] == 1:
                 data["sample"] = samples[0,:]
             else:
                 data = pd.concat([data,
                                     pd.DataFrame(
                                         data={
-                                            f"sample_{n}":samples[n,:] 
+                                            f"sample_{n}":samples[n,:]
                                             for n in range(samples.shape[0])
                                             },
                                         index=data.index)],
                     axis=1)
-        
+            cls._trim_lags(data,[x for x in data.columns if x.startswith("sample")])
+
         return data
 
     @classmethod
@@ -754,20 +696,21 @@ if __name__ == "__main__":
 
     import os, sys
     import matplotlib.pyplot as plt
-    
+
     pd.options.display.max_columns = None
     pd.options.display.width = None
     pd.options.display.max_rows = None
 
-    refresh = True # "--refresh" in sys.argv
+    refresh = "--refresh" in sys.argv
     debug = "--debug" in sys.argv
     plot = "--plot" in sys.argv
     show = "--show" in sys.argv
+    wait = "--wait" in sys.argv
 
     test_variables = ["elec_total_MW"]
 
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
-    
+
     test_range = pd.date_range(
         start="2018-01-01 00:00:00+0000",
         end="2018-12-31 23:59:59+0000",
@@ -802,9 +745,10 @@ if __name__ == "__main__":
 
                     result = Total.test(state,county,holdout,Y=variable).rename({variable:"actual",},axis=1)
                     result["holdout"] = result.index.isin(holdout)
-                    residual = result["predict"] - result["holdout"]
-                    RMSE = np.sqrt(np.mean(residual**2))
-                    MEAN = result["holdout"].mean()
+                    tested = result.loc[result["holdout"]]
+                    residual = tested["predict"] - tested["actual"]
+                    RMSE = np.sqrt(np.nanmean(residual**2))
+                    MEAN = tested["actual"].mean()
                     PRMSE = RMSE/MEAN*100 if MEAN != 0 else (0.0 if RMSE == 0 else np.inf)
                     _logger.info(f"{state} {county} {variable} holdout {PRMSE=:.1f}%")
 
@@ -815,14 +759,14 @@ if __name__ == "__main__":
                         .rename({variable:"predict"},axis=1)
                     tsgam["sample"] = Total(state,county,Y=variable,date_range=full_range,samples=1000,percentile=95)[[variable]]
                     result = pd.concat([result,tsgam])
-                    
+
                     result.index.name = "timestamp"
 
                     os.makedirs(os.path.split(file)[0],exist_ok=True)
                     result.round(3).to_csv(file,index=True,header=True)
 
                 else:
-                    
+
                     _logger.info(f"{file} ok")
 
                 if plot and variable == "elec_total_MW":
