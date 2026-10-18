@@ -109,6 +109,7 @@ state energy and CAISO/WECC peak targets, searching the weight grid:
     result.parameters    # per-unit scale and offset (MW)
     result.summary       # selected weights and fit diagnostics
     result.states        # per-state target and achieved net-load energy
+    result.constraints   # active constraints and duals by constraint family
 
 Monthly targets may be given as data frames indexed by month start (e.g.,
 read from `energy_target.csv` and `peak_target.csv`); each month of `X` is
@@ -401,12 +402,19 @@ class Calibrate(pd.DataFrame):
 
       - `summary`: per-block selected weights, status, and fit metrics
 
+      - `constraints`: per-block, per-constraint-family dual summary (number
+        of active constraints, total, largest and summed dual) in the
+        normalized units of the program; a summed peak-ceiling dual $y$
+        predicts a first-order objective change of $-y\,P_g\,\delta$ for a
+        relative ceiling change $\delta$, with $P_g$ normalized by
+        `summary.normalization_MW`
+
       - `sweep`: per-block, per-candidate results when `search=True`
 
       - `net`: the shaped net load $L-D$ (MW)
     """
 
-    _metadata = ["parameters","states","regions","summary","sweep","net"]
+    _metadata = ["parameters","states","regions","constraints","summary","sweep","net"]
 
     ENERGY_WEIGHTS = (10.0,100.0,1_000.0,10_000.0)
     """Energy weights $\\mu$ searched by the default grid"""
@@ -555,7 +563,7 @@ class Calibrate(pd.DataFrame):
         index = X.index.tz_convert("UTC") if X.index.tz else X.index.tz_localize("UTC")
         months = index.tz_localize(None).to_period("M")
         shaped = X.values.astype(float).copy()
-        parameters,state_rows,region_rows,summaries,sweeps = [],[],[],[],[]
+        parameters,state_rows,region_rows,constraint_rows,summaries,sweeps = [],[],[],[],[],[]
 
         for month in months.unique():
             rows = np.asarray(months == month)
@@ -570,6 +578,7 @@ class Calibrate(pd.DataFrame):
             parameters.append(result["parameters"])
             state_rows.append(result["states"])
             region_rows.append(result["regions"])
+            constraint_rows.append(result["constraints"])
             summaries.append(result["summary"])
             if result["sweep"] is not None:
                 sweeps.append(result["sweep"])
@@ -579,6 +588,7 @@ class Calibrate(pd.DataFrame):
         self.parameters = pd.concat(parameters)
         self.states = pd.concat(state_rows)
         self.regions = pd.concat(region_rows)
+        self.constraints = pd.concat(constraint_rows)
         self.summary = pd.DataFrame(summaries).set_index("block")
         self.sweep = pd.concat(sweeps) if sweeps else None
         self.net = shaped - D
@@ -753,6 +763,25 @@ class Calibrate(pd.DataFrame):
                 })
         regions_frame = pd.DataFrame(region_records).set_index(["block","region"])
 
+        families = [(f"{r} ceiling",c) for r,c in zip(region_list,model.peak_constraints)]
+        families += [
+            ("Load nonnegativity",model.nonnegative),
+            ("Unit peak-multiple cap",model.peak_cap),
+            ("Unit relative-RMS cap",model.rmse_cap),
+            ]
+        constraint_records = []
+        for name,constraint in families:
+            dual = np.atleast_1d(np.asarray(constraint.dual_value,dtype=float))
+            constraint_records.append({
+                "block": block,
+                "constraint": name,
+                "active": int(np.count_nonzero(dual > 1.0e-7)),
+                "total": int(dual.size),
+                "dual_max": float(dual.max()),
+                "dual_sum": float(dual.sum()),
+                })
+        constraints_frame = pd.DataFrame(constraint_records).set_index(["block","constraint"])
+
         summary = {
             "block": block,
             "status": status,
@@ -773,6 +802,7 @@ class Calibrate(pd.DataFrame):
             "parameters": parameters,
             "states": states,
             "regions": regions_frame,
+            "constraints": constraints_frame,
             "summary": summary,
             "sweep": sweep,
             }

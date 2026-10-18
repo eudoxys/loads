@@ -79,6 +79,11 @@ def test_targets(searched):
     assert (regions.shaped_MW >= regions.target_MW * (1 - Calibrate.PEAK_SHORTFALL_TOL)).all()
     assert (searched.states.shaped_error.abs() <= Calibrate.STATE_ENERGY_TOL).all()
     assert (regions.dual_active_hours >= 1).all()
+    ceilings = searched.constraints.xs("WECC ceiling",level="constraint")
+    assert (ceilings.active >= 1).all() and (ceilings.dual_sum > 0).all()
+    families = set(searched.constraints.index.get_level_values("constraint"))
+    assert families == {"CAISO ceiling","WECC ceiling","Load nonnegativity",
+        "Unit peak-multiple cap","Unit relative-RMS cap"}
 
 
 def test_affine(searched,system):
