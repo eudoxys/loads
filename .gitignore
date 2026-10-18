@@ -178,5 +178,3 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
-# generated WECC county estimate (too large for GitHub)
-loads/wecc/wecc_estimate.csv

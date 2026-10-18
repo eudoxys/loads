@@ -1,6 +1,6 @@
 """WECC county hourly load estimate for 2018 through 2022
 
-Generates `wecc_estimate.csv`, which contains the estimated hourly electric
+Generates `wecc_estimate.csv.gz`, which contains the estimated hourly electric
 load in MW of every WECC county from 2018-01-01 00:00 UTC through 2022-12-31
 23:00 UTC.
 
@@ -14,7 +14,7 @@ Options
 - `-j N`, `--jobs N`: number of worker processes (default all CPUs)
 - `--refresh`: ignore cached county estimates and recompute them
 - `--debug`: enable debug logging
-- `-o FILE`, `--output FILE`: output file name (default `wecc_estimate.csv`
+- `-o FILE`, `--output FILE`: output file name (default `wecc_estimate.csv.gz`
   in this folder)
 
 Description
@@ -37,7 +37,7 @@ flowchart LR
     shape --> mul((x))
     target_mwh --> mul
     model_mwh -->|1/| mul
-    mul --> wecc_estimate.csv
+    mul --> wecc_estimate.csv.gz
 ```
 
 1. The hourly load shape is obtained from `loads.estimator.Estimator` for the
@@ -85,7 +85,7 @@ START = "2018-01-01 00:00:00+00:00"
 STOP = "2022-12-31 23:00:00+00:00"
 """Last hour of the estimate (UTC)"""
 
-OUTPUT = "wecc_estimate.csv"
+OUTPUT = "wecc_estimate.csv.gz"
 """Default output file name"""
 
 PRECISION = 4
