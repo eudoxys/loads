@@ -10,7 +10,7 @@ Select a state and a county to view the county's hourly load (MW) from
 
 import marimo
 
-__generated_with = "0.25.1"
+__generated_with = "0.25.0"
 app = marimo.App(width="medium", app_title="WECC County Load Estimate")
 
 
@@ -45,7 +45,7 @@ def _(data, mo):
 def _(data, mo, state_ui):
     # county selection
     _options = sorted(x.rsplit("_",1)[0] for x in data.columns if x.endswith(f"_{state_ui.value}"))
-    county_ui = mo.ui.dropdown(options=_options,value=_options[0],label="County:")
+    county_ui = mo.ui.dropdown(options=_options,value=None,label="County:")
     return (county_ui,)
 
 
@@ -58,8 +58,11 @@ def _(county_ui, mo, state_ui):
 @app.cell
 def _(county_ui, data, mo, state_ui):
     # county data
-    _column = f"{county_ui.value}_{state_ui.value}"
-    mo.ui.table(data[[_column]],page_size=24,selection=None)
+    if county_ui.value is None:
+        _columns = [x for x in data.columns if x.endswith(state_ui.value)]
+    else:
+        _columns = [f"{county_ui.value}_{state_ui.value}"]
+    mo.ui.table(data[_columns],page_size=24,selection=None)
     return
 
 
