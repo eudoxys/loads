@@ -174,6 +174,7 @@ config:
   flowchart:
     wrappingWidth: 700
     rankSpacing: 40
+    nodeSpacing: 20
 ---
 %% Data flow in github.com/eudoxys/loads
 %% Orange dashed cylinders = external sources fetched over the network
@@ -186,14 +187,16 @@ flowchart TB
     %% Split over two rows to keep the diagram narrow. The upper row holds the
     %% sources feeding the deepest consumers (their lines run down the sides);
     %% the lower row holds the sources feeding the sector models directly below.
+    %% Declaration order is tuned for Mermaid 11 (which pdoc loads) to minimize
+    %% the width; changing the order can change the layout substantially.
     subgraph EXT["EXTERNAL DATA SOURCES"]
         direction LR
+        NODES[("wecc240 GitHub<br/>county_nodes.csv")]
+        EIA[("EIA Form 861M<br/>/ HS861M<br/>via eudoxys/eia")]
         FIPS[("eudoxys/fips<br/>county metadata<br/>(used everywhere)")]
         GEOJSON[("Plotly county<br/>GeoJSON")]
-        EIA[("EIA Form 861M<br/>/ HS861M<br/>via eudoxys/eia")]
-        WX[("NLR weather<br/>via eudoxys/weather")]
         WECCGIS[("wecc240 GitHub<br/>node GIS, Canada,<br/>Mexico")]
-        NODES[("wecc240 GitHub<br/>county_nodes.csv")]
+        WX[("NLR weather<br/>via eudoxys/weather")]
         OEDI_RES[("NLR ResStock<br/>OEDI S3")]
         CENSUS[("US Census<br/>housing units")]
         OEDI_COM[("NLR ComStock<br/>OEDI S3")]
@@ -203,12 +206,12 @@ flowchart TB
 
     %% Pin the upper row of sources just below the note (duplicate invisible
     %% links outweigh each source's outgoing edges so the layout won't pull it down).
+    NOTE ~~~ NODES & NODES
+    NOTE ~~~ EIA & EIA & EIA
     NOTE ~~~ FIPS
     NOTE ~~~ GEOJSON & GEOJSON
-    NOTE ~~~ EIA & EIA & EIA
-    NOTE ~~~ WX & WX
     NOTE ~~~ WECCGIS & WECCGIS
-    NOTE ~~~ NODES & NODES
+    NOTE ~~~ WX & WX
 
     %% Pin the lower row of sources just below the upper row.
     EIA ~~~ OEDI_RES & OEDI_RES
@@ -264,8 +267,8 @@ flowchart TB
         MWH_CF["wecc/county_mwh.csv<br/>wecc/county_cf.csv"]
         COMPILE["nodal → county DG"]
         DGOUT["wecc/county_dg.csv.gz"]
-        ENERGY --> MWH_CF
         ENERGY --> COMPILE
+        ENERGY --> MWH_CF
         DGEN_RAW --> COMPILE
         COMPILE --> DGOUT
     end
