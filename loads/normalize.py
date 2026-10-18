@@ -214,35 +214,3 @@ class Normalize(pd.DataFrame):
 
 		# initialize base class
 		super().__init__(data)
-
-if __name__ == '__main__':
-	
-	pd.options.display.width = None
-	pd.options.display.max_columns = None
-
-	ami = pd.read_csv("_test/ami.csv.gz")
-	print(ami,flush=True)
-
-	for groups in [
-		None,
-		{"kwh_delta": "meter_id",},
-		{"kwh_delta": ["circuit_id"]},
-		{"kwh_delta": ["circuit_id","meter_id"]},
-		]:
-		df = Normalize(ami,
-			timestamps={
-				"date":pd.DatetimeIndex,
-				"hour":lambda x: pd.TimedeltaIndex((np.array(x)-1)*3600e9),
-				"tz_offset":lambda x: pd.TimedeltaIndex(np.array(x)*3600e9),
-				},
-			# timezone="US/Pacific",
-			mapping={
-				"elec_net_MW":"kwh_delta"
-			},
-			scales={
-				"kwh_delta": 1e-3,
-			},
-			groups=groups,
-			weather="Orange CA"
-			)
-		print(df,flush=True)
