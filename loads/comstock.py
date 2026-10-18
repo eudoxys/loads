@@ -11,8 +11,9 @@ education, retail, and warehouse). Load values are given in W/sf.
 Examples
 --------
 
-To get the large office load data for Alameda CA use the command
+To get the large office load data for the state of California use the command
 
+    from loads.comstock import COMstock
     print(COMstock(state="CA",building_type="CLO"))
 
 which outputs the following
@@ -133,15 +134,23 @@ class COMstock(pd.DataFrame):
         """Construct a COMstock data frame
 
         Arguments
+        ---------
 
           - `state`: specifies the state (e.g., "CA")
 
           - `county`: specifies the county (e.g., "Alameda") or None for the
             entire state
 
-          - `building_type`: specifies the building type (e.g., "house")
+          - `building_type`: specifies the building type code (e.g., "CMO",
+            required, see `COMstock.BUILDING_TYPES`)
 
           - `refresh`: force download of data from source
+
+        Description
+        -----------
+
+        If no data is available for the building type in the county, an
+        all-zero data frame is returned.
         """
         assert building_type in self.BUILDING_TYPES, \
             f"{building_type=} is not one of {self.BUILDING_TYPES}"

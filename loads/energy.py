@@ -1,17 +1,19 @@
 """County-level energy consumption
 
-The `Energy` class calculates the total energy consumed at the
-county level on periodic basis.  Groupings can be daily, weekly,
-monthly, quarterly, or annually. Values are stored in MWh.
+The `Energy` class calculates the total electric energy consumed at the
+county level on a periodic basis, i.e., the sum over each period of the
+`elec_total_MW` predicted by `loads.total.Total` (`samples=0`).  Groupings can
+be daily, weekly, monthly, quarterly, or annually. Values are stored in MWh,
+with one `County ST` column per county.
 
 Example
 -------
 
 To obtain the monthly energy consumptions for Alameda County for the years
-2018 through 2022 use the following:
+2018 through 2020 use the following:
 
     from loads.energy import Energy
-    Energy("CA","Alameda",year=[2018,2022])
+    Energy("CA","Alameda",year=[2018,2020])
 
 which outputs the following:
 
@@ -23,6 +25,18 @@ which outputs the following:
     2020-10-01 00:00:00+00:00  837109.013352
     2020-11-01 00:00:00+00:00  842237.369591
     2020-12-01 00:00:00+00:00  905353.692676
+
+Caveats
+-------
+
+  - Results are cached by state, year range, month, and grouping only, so a
+    cached result computed for a different set of `counties` may be returned.
+    Use `refresh=True` when changing `counties`.
+
+  - The `year` argument must be a list or tuple of the start and stop years
+    in this version.
+
+  - Counties for which `loads.total.Total` fails are reported with a warning.
 """
 
 import datetime as dt
@@ -54,24 +68,26 @@ class Energy(pd.DataFrame):
         Arguments
         ---------
 
-        - `state`: state for which energy is computed
+          - `state`: state for which energy is computed
 
-        - `county`: Use `None` for the entire state
+          - `counties`: county name or list of county names (`None` for all
+            counties in the state)
 
-        - `year`: year or year start/stop to compute energy
+          - `year`: year start/stop to compute energy
 
-        - `month`: month (`None` for all months)
+          - `month`: month (`None` for all months, only allowed with a
+            single year)
 
-        - `groupby`: grouping period (see `pandas.resample` for valid
-          grouping periods)
+          - `groupby`: grouping period (default `"1MS"`, see
+            `pandas.DataFrame.resample` for valid grouping periods)
 
-        - `datetime_format`: timestamp formatting to use (`None` to use
-          `pandas.DatetimeIndex`)
+          - `datetime_format`: timestamp formatting to use (`None` to use
+            `pandas.DatetimeIndex`)
 
-        - `progress`: callback function for progress reports (arguments are
-          `state`, `county`, `done_count`, `total_count`)
+          - `progress`: callback function for progress reports (arguments are
+            `state`, `county`, `done_count`, `total_count`)
 
-        - `refresh`: cache refresh enable flag
+          - `refresh`: cache refresh enable flag
         """
 
         if counties is None:

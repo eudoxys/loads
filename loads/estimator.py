@@ -2,8 +2,8 @@
 
 Estimates loads for target years based on sector-level load data for 2018.
 
-The list of allows values for `EstimatorConfig.weather` is given by the
-columns of [`weather.Weather`](https://www.eudoxys.com/weather/weather/weather.html#Weather.__init__).
+The list of allowed values for `EstimatorConfig.weather` is given by the
+keys of `WEATHER_CONFIG`, which are columns of [`weather.Weather`](https://www.eudoxys.com/weather/weather/weather.html#Weather.__init__).
 
 When `EstimatorConfig.log` is `True`, the fit and predict operations use the
 logarithm of the specified `EstimatorConfig.enduse` field.
@@ -11,26 +11,27 @@ logarithm of the specified `EstimatorConfig.enduse` field.
 For information on `EstimatorConfig.ar`, `EstimatorConfig.solver`, and
 `EstimatorConfig.harmonics` see [TSGAM estimator](https://github.com/nimish/estimator).
 
-If `EstimatorConfig.outlier_threshold` is specified and positive, then
-outliers are deleted from the training data when they are outside the number
-of sigmas specified by its value, i.e., a value of `2.0` will deleted training
-that is outside the 95th percentile of the training data.
+When `EstimatorConfig.outlier_threshold` is nonzero, the TSGAM outlier
+component (with regularization weight `EstimatorConfig.outlier_regularizer`)
+is included in the model. The threshold value itself is not yet applied to
+the training data.
 
-When `EstimatorConfig.keep_actual` is `True`, then the reference data is kept
+When `EstimatorConfig.keep_actuals` is `True`, then the reference data is kept
 instead of predicted data for the reference year. This is the default.
 
-If no years are specified, then holdout data is witheld from training and an
-additional column `Estimator.status` is created with the following values to
-indicated whether data is used for training or holdout testing.
+If no years are specified, then holdout data is withheld from training and an
+additional column `status` is created with the following values to
+indicate whether data is used for training or holdout testing.
 - `T`: training data
 - `H`: holdout data
 
-The columns "Estimator.actual" and "Estimator.prediction" then contain the
-reference and predictions, respectively. The `EstimatorConfig.holdout` value
-must identify a frequency, e.g., `6h` for every 6th hour, `5d` for every 5
-days, `4w` for every 4 weeks, `3m` for every 3 months. Any positive value is
-permitted for the number, and one of `h`, `d`, `w`, and `m` are allowed for
-the frequency.
+The columns `actual` and `prediction` then contain the reference and
+predictions, respectively. The `EstimatorConfig.holdout` value must identify a
+frequency, e.g., `6h` for every 6th hour, `5d` for every 5th day, `4w` for
+every 4th week, `3m` for every 3rd month. Any positive value is permitted for
+the number, and one of `h`, `d`, `w`, and `m` are allowed for the frequency.
+Alternatively `EstimatorConfig.holdout` may be a function that takes the
+training data frame and returns the index of the holdout rows.
 
 Examples
 --------
@@ -58,7 +59,7 @@ which returns the data frame
 
 The following obtains only the residential and commercial building loads
 
-    from loads.estimator import Estimator
+    from loads.estimator import Estimator, EstimatorConfig
     config = EstimatorConfig(sectors=["residential","commercial"])
     Estimator("Alameda CA",[2025],config=config)
 
@@ -100,16 +101,25 @@ which outputs the data frame
     2018-12-30 22:00:00+00:00              54.5         70.5  282.688469  287.443945      H
     2018-12-30 23:00:00+00:00              51.4         84.2  284.631369  289.012841      H
 
+The first hours of each prediction are NaN because of the exogenous variable
+lags in `WEATHER_CONFIG`.
+
 Caveats
 -------
 
-1. Future years cannot be specified.
+1. Years without weather data cannot be estimated (an `EstimatorError` is
+raised).
 
-2. Load growth is not considered for commercial buildings based on floor area
-changes over the years. However, load growth is considered for residential,
-industrial, and agricultural loads based the number of residential units, and
-industrial and agricultural estimates from NLR. See the respective `loads`
-modules for details.
+2. Load growth is not considered. The model is trained on the 2018 sector
+loads (residential and commercial loads scaled to the housing units and floor
+area used by `loads.residential` and `loads.commercial`, and the NLR
+industrial and agricultural estimates), so predictions for other years only
+reflect differences in weather and the calendar.
+
+3. `EstimatorConfig.outlier_regularizer` and
+`EstimatorConfig.outlier_threshold` are class attributes rather than
+`NamedTuple` fields, so they cannot be changed with the `EstimatorConfig`
+constructor.
 
 See also
 --------
@@ -205,13 +215,15 @@ class EstimatorConfig(NamedTuple):
     """Enable use of log values"""
 
     ar:bool|int = False
-    """Enable autoregression model"""
+    """Enable autoregression model (`True` uses lags 1 to 4, an integer `n`
+    uses lags 1 to `n`)"""
 
     outlier_regularizer = 1e-4
     """Outlier regularizer"""
 
     outlier_threshold = 5.0
-    """Outlier threshold sigmas (in space of Y or log Y depending on value `log`)"""
+    """Outlier threshold sigmas (in space of Y or log Y depending on value
+    `log`); a nonzero value enables the TSGAM outlier component"""
 
     solver:str = "CLARABEL"
     """Solver selection"""
@@ -232,7 +244,8 @@ class EstimatorConfig(NamedTuple):
     """Flag to keep actual data in reference year"""
 
     holdout:str|Callable = "5d"
-    """Holdout frequency for testing, e.g., '6h', 5d','4w', '3m'"""
+    """Holdout frequency for testing, e.g., `'6h'`, `'5d'`, `'4w'`, `'3m'`, or a
+    function returning the holdout index of a training data frame"""
 
 def _verbose(*args,**kwargs):
     """Verbose output"""
@@ -303,10 +316,18 @@ class Estimator(pd.DataFrame):
 
         Arguments
         ---------
-        - `county_st`: county and state abbreviation
+        - `county_st`: county name and state abbreviation, e.g.,
+          `"Alameda CA"`
         - `years`: list of years (default None for holdout test)
         - `config`: estimator configuration (default None for default
           configuration)
+
+        Returns
+        -------
+        The data frame contains the `EstimatorConfig.weather` columns and the
+        `EstimatorConfig.enduse` column for every hour of the requested years
+        or, when `years` is `None`, the 2018 weather columns with the
+        `actual`, `prediction`, and `status` columns.
         """
         assert isinstance(county_st,str), f"{county_st=} must be valid county name"
 
@@ -414,7 +435,10 @@ class Estimator(pd.DataFrame):
         Arguments
         ---------
         - `config`: top-level estimator configuration
-        - `variables`: input variable names
+
+        Returns
+        -------
+        - `TsgamEstimatorConfig`: TSGAM estimator configuration
         """
 
         # construct harmonics configuration

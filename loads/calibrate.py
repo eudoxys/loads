@@ -413,8 +413,8 @@ class Calibrate(pd.DataFrame):
       - `constraints`: per-block, per-constraint-family dual summary (number
         of active constraints, total, largest and summed dual) in the
         normalized units of the program; a summed peak-ceiling dual $y$
-        predicts a first-order objective change of $-y\\,P_g\\,\\delta$ for a
-        relative ceiling change $\\delta$, with $P_g$ normalized by
+        predicts a first-order objective change of $-y\,P_g\,\delta$ for a
+        relative ceiling change $\delta$, with $P_g$ normalized by
         `summary.normalization_MW`
 
       - `sweep`: per-block, per-candidate results when `search=True`

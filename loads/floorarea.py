@@ -6,11 +6,16 @@ with only a representative floor area, which may not match the actual floor area
 of a county or state.
 
 Floor area data is provided with a different set of building types than those
-available in COMstock. The `BUILDING_TYPE` column is used to determine which
-floor areas correspond to COMstock building types. In cases where more than
-one COMstock building types matches, the split is weighted equally. Floor
-areas that do not match any COMstock building type are not given any
-(i.e., `BUILDING_TYPE` is blank).
+available in COMstock. The `BUILDING_TYPE` column gives the COMstock building
+type codes that correspond to each floor area (see
+`Floorarea.BUILDING_TYPES`). In cases where more than one COMstock building
+type matches, the codes are joined with `+` (e.g., `CSO+CMO+CLO` for
+offices). Floor areas that do not match any COMstock building type have a
+blank `BUILDING_TYPE`.
+
+Note that `loads.commercial.Commercial` currently uses only the total floor
+area, excluding apartments and unmatched floor area, to scale the COMstock
+loads.
 
 Examples
 --------
@@ -67,6 +72,7 @@ class Floorarea(pd.DataFrame):
 
     SOURCE = "https://data.openei.org/files/906/{year}"\
         "%20Commercial%20Building%20Inventory%20-%20{region}.xlsb"
+    """URL template of data source"""
 
     YEAR = 2019
     """Default floor area data year"""
@@ -99,12 +105,14 @@ class Floorarea(pd.DataFrame):
         Arguments
         ---------
 
-          - `state`: specify the state abbreviation (required)
+          - `state`: specify the state abbreviation (default all states)
 
-          - `county`: specify the county name (required)
+          - `county`: specify the county name (default all counties in
+            `state`)
 
-          - `year`: specify the year on which the floor area is based
-            (default most recent in `Units()`)
+          - `year`: specify the year on which the floor area is based (only
+            `Floorarea.YEAR`, i.e., 2019, is available; other values are
+            replaced by it)
 
           - `refresh`: force refresh of cache
         """

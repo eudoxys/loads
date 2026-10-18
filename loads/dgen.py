@@ -1,6 +1,35 @@
 """Distributed generation
 
-This module processes county DG data.
+This module provides hourly county distributed generation (DG) data.
+
+The `DG` class reads the hourly DG of a county from a compiled county DG
+file, by default `wecc/county_dg.csv.gz`, which has one `County ST` column
+per WECC county with the hourly DG output in MW from 2018 through 2022. The `compile` function builds that file from the NLR dGen
+nodal DG data in `wecc/dgen.csv.gz`, allocating each node's DG to its counties
+using the monthly county energy contribution factors computed by
+`loads.energy.Energy` (see `wecc/county_mwh.csv` and `wecc/county_cf.csv`).
+
+Example
+-------
+
+To get the hourly DG of Apache County AZ for 2018 through 2022 use
+
+    import pandas as pd
+    from loads.dgen import DG
+    date_range = pd.date_range("2018-01-01 00:00:00+00:00",
+        "2022-12-31 23:00:00+00:00",freq="1h")
+    DG("AZ","Apache",date_range,source="loads/wecc/county_dg.csv.gz")
+
+Caveats
+-------
+
+  - The default `source` path is relative to the current working directory,
+    not the package folder.
+
+  - The `SolarModel` source option is not complete in this version.
+
+  - `compile` contains debugging statements that stop it before the county
+    DG file is written in this version.
 """
 
 import os
@@ -16,7 +45,11 @@ from weather import Weather
 from eia import Form861m
 
 class SolarModel(pd.DataFrame):
-    """Solar DG model"""
+    """Solar DG model
+
+    Computes `solar_Wpms` as the sum of polynomials (see `numpy.polyval`) of
+    the weather columns given in `model` (default `SolarModel.default_model`).
+    """
     default_model = {
         "global_Wpms": (0.2,0.0),
         "diffuse_Wpms": 0.0,
@@ -28,7 +61,16 @@ class SolarModel(pd.DataFrame):
         weather:pd.DataFrame,
         model = None,
         ):
-        """Default solar power model"""
+        """Construct a solar DG model
+
+        Arguments
+        ---------
+
+          - `weather`: weather data frame
+
+          - `model`: dict of weather column polynomials (default
+            `SolarModel.default_model`)
+        """
         if model is None:
             model = self.default_model
         print(len(weather.index))
@@ -44,7 +86,7 @@ class SolarModel(pd.DataFrame):
 
 
 class DG(pd.DataFrame):
-    """Distribution generation dataframe"""
+    """Distributed generation data frame"""
     eia_data = {}
     dg_data = None
 
@@ -55,6 +97,34 @@ class DG(pd.DataFrame):
         source:str="wecc/county_dg.csv.gz",
         on_missing:str="fillna"
         ):
+        """Construct a county distributed generation data frame
+
+        Arguments
+        ---------
+
+          - `state`: state abbreviation
+
+          - `county`: county name
+
+          - `date_range`: date/time index to extract (default all data in
+            `source`)
+
+          - `source`: compiled county DG file name (columns named
+            `County ST`)
+
+          - `on_missing`: `"fillna"` adds NaN rows for date/times in
+            `date_range` that are missing from `source`; `None` omits them
+
+        Returns
+        -------
+
+        The data frame contains the `elec_dg_MW` column of the county. Note
+        that the values in the bundled `wecc/county_dg.csv.gz` are DG output
+        in MW (nonnegative), unlike the negative-load sign convention of
+        `elec_dg_MW` elsewhere in the package. A zero data frame is returned
+        when the county is not found in `source`, in which case `date_range`
+        is required.
+        """
 
         assert on_missing in ["fillna",None], f"{on_missing=} is invalid"
 
@@ -139,14 +209,19 @@ def compile(
     Arguments
     ---------
 
-    - `source`: source node power DG data file
+      - `source`: source nodal DG power data file (MW)
 
-    - `target`: target county power DG data file
+      - `target`: target county DG power data file (`None` returns the
+        data frame instead of saving it)
 
-    - `county_file`: county energy DG data file
+      - `county_file`: county to network node mapping file
 
-    - `system`: system for which counties will be compiled
+      - `system`: system for which counties will be compiled
 
+    Returns
+    -------
+
+      - `pd.DataFrame`: county DG data when `target` is `None`
     """
 
     from loads.energy import Energy
