@@ -166,3 +166,28 @@ def test_invalid_inputs(system):
         Calibrate(load,energy=system["energy"].iloc[:1],peak=system["peak"].iloc[:1])
     with pytest.raises(CalibrationError):
         Calibrate(load,energy=energy,peak=peak,peak_multiple=0.5)
+
+
+def test_progress(system):
+    """The progress callback reports every solve with a fixed total"""
+    calls = []
+    august = system["load"].index.month == 8
+    grid = [(100.0,{"CAISO":0.1,"WECC":0.3}),(1000.0,{"CAISO":0.3,"WECC":0.3})]
+    Calibrate(system["load"],dg=system["dg"],energy=system["energy"],peak=system["peak"],
+        regions=system["regions"],search=grid,
+        progress=lambda done,total,info:calls.append((done,total,info["step"],info["candidate"])))
+    assert [x[0] for x in calls] == list(range(1,7))
+    assert {x[1] for x in calls} == {6} # two blocks x (two candidates + final)
+    assert [x[2] for x in calls] == ["candidate","candidate","final"]*2
+    assert [x[3] for x in calls[:2]] == [1,2]
+    calls.clear()
+    Calibrate(system["load"][august],dg=system["dg"][august],energy=system["energy"],
+        peak=system["peak"],regions=system["regions"],
+        progress=lambda done,total,info:calls.append((done,total,info["step"])))
+    assert calls == [(1,1,"final")]
+
+    def stop(done,total,info):
+        raise KeyboardInterrupt
+    with pytest.raises(KeyboardInterrupt):
+        Calibrate(system["load"][august],dg=system["dg"][august],energy=system["energy"],
+            peak=system["peak"],regions=system["regions"],search=True,progress=stop)

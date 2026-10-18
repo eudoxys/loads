@@ -21,6 +21,7 @@ app = marimo.App(width="full")
 @app.cell
 def _():
     import os
+    from contextlib import ExitStack
     from pathlib import Path
 
     import marimo as mo
@@ -32,7 +33,7 @@ def _():
     from cache import Cache
     from loads.calibrate import Calibrate
 
-    return Cache, Calibrate, LogNorm, Path, mo, np, os, pd, plt
+    return Cache, Calibrate, ExitStack, LogNorm, Path, mo, np, os, pd, plt
 
 
 @app.cell(hide_code=True)
@@ -107,10 +108,26 @@ def _(mo):
 
 
 @app.cell
-def _(Calibrate, dg, energy, load, mo, peak, pd, regions, report_sweep, search_button, sweep_cache):
+def _(Calibrate, ExitStack, dg, energy, load, mo, peak, pd, regions, report_sweep, search_button, sweep_cache):
     if search_button.value:
-        with mo.status.spinner(title="Solving 88 weight combinations..."):
-            _result = Calibrate(load,dg=dg,energy=energy,peak=peak,regions=regions,search=True)
+        with ExitStack() as _stack:
+            _bar = {}
+            def _progress(done,total,info):
+                # open the bar on the first solve, once the total is known
+                if not _bar:
+                    _bar["bar"] = _stack.enter_context(mo.status.progress_bar(
+                        total=total,title="Weight search",
+                        completion_title="Weight search complete"))
+                if info["step"] == "candidate":
+                    _subtitle = (f"Candidate {info['candidate']} of {info['candidates']}: "
+                        f"μ={info['energy_weight']:g}, "
+                        f"λ={info.get('lambda_caiso',0):g}/{info.get('lambda_wecc',0):g} "
+                        f"({info['status']})")
+                else:
+                    _subtitle = "Polishing the selected solution"
+                _bar["bar"].update(subtitle=_subtitle)
+            _result = Calibrate(load,dg=dg,energy=energy,peak=peak,regions=regions,
+                search=True,progress=_progress)
         sweep = _result.sweep.copy()
         sweep.to_csv(sweep_cache.pathname,index=False,compression="gzip")
     elif sweep_cache.exists():

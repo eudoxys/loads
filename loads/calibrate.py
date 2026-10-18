@@ -111,6 +111,13 @@ state energy and CAISO/WECC peak targets, searching the weight grid:
     result.states        # per-state target and achieved net-load energy
     result.constraints   # active constraints and duals by constraint family
 
+To report progress through the weight search, pass a callback that receives
+the number of solves done, the total, and details of the latest solve:
+
+    def report(done,total,info):
+        print(f"{done}/{total} {info['step']} {info['status']}")
+    Calibrate(X,dg=D,energy=...,peak=...,regions=membership,search=True,progress=report)
+
 Monthly targets may be given as data frames indexed by month start (e.g.,
 read from `energy_target.csv` and `peak_target.csv`); each month of `X` is
 then calibrated against its own row.
@@ -132,6 +139,7 @@ Caveats
 import logging
 import math
 import time
+from typing import Callable
 
 import cvxpy as cp
 import numpy as np
@@ -385,7 +393,7 @@ class _Block:
 
 
 class Calibrate(pd.DataFrame):
-    """Calibrated (shaped) load data frame
+    r"""Calibrated (shaped) load data frame
 
     The data frame contains the shaped gross load $L=sX+b$ in MW with the
     same index and columns as the input load. Calibration results are
@@ -465,6 +473,7 @@ class Calibrate(pd.DataFrame):
         relative_rmse:float|pd.Series=2.0,
         search:bool|list[tuple[float,dict[str,float]]]=False,
         verbose:bool=False,
+        progress:Callable[[int,int,dict],None]|None=None,
         ):
         r"""Construct a calibrated load data frame
 
@@ -512,6 +521,15 @@ class Calibrate(pd.DataFrame):
             that grid instead
 
           - `verbose`: log each candidate at INFO level
+
+          - `progress`: function called as `progress(done,total,info)` after
+            every solve, where `done` counts the solves completed so far,
+            `total` is the number of solves for all blocks (each weight
+            candidate plus one final solve per block), and `info` is a dict
+            with the `block`, `step` (`"candidate"` or `"final"`),
+            `candidate` number, `candidates` per block, solver `status`, and,
+            for a solved candidate, its weights and fit metrics. An exception
+            raised by `progress` aborts the calibration.
 
         Raises
         ------
@@ -565,6 +583,20 @@ class Calibrate(pd.DataFrame):
         shaped = X.values.astype(float).copy()
         parameters,state_rows,region_rows,constraint_rows,summaries,sweeps = [],[],[],[],[],[]
 
+        # count the solves so a progress callback knows the total up front
+        def candidates(block):
+            if search is False:
+                return 0
+            if search is True:
+                return len(_default_grid(list(_block_targets(peak,block,"peak"))))
+            return len(search)
+        blocks = [pd.Timestamp(month.start_time).tz_localize("UTC") for month in months.unique()]
+        counter = {"done":0,"total":sum(candidates(block) + 1 for block in blocks)}
+        def tick(info):
+            counter["done"] += 1
+            if progress is not None:
+                progress(counter["done"],counter["total"],info)
+
         for month in months.unique():
             rows = np.asarray(months == month)
             block = pd.Timestamp(month.start_time).tz_localize("UTC")
@@ -572,7 +604,7 @@ class Calibrate(pd.DataFrame):
                 X.values[rows],D.values[rows],index[rows],units,G_state,block,
                 _block_targets(energy,block,"energy"),
                 _block_targets(peak,block,"peak"),
-                regions,energy_weight,drive,shape_weight,ridge,kappa,eta,search,verbose,
+                regions,energy_weight,drive,shape_weight,ridge,kappa,eta,search,verbose,tick,
                 )
             shaped[rows] = result["load"]
             parameters.append(result["parameters"])
@@ -601,7 +633,7 @@ class Calibrate(pd.DataFrame):
     @classmethod
     def _calibrate_block(cls,
         X_raw,D_raw,times,units,G_state,block,energy,peak,
-        regions,energy_weight,drive,shape_weight,ridge,kappa,eta,search,verbose,
+        regions,energy_weight,drive,shape_weight,ridge,kappa,eta,search,verbose,tick=None,
         ) -> dict:
         """@private Calibrate one time block"""
 
@@ -664,6 +696,8 @@ class Calibrate(pd.DataFrame):
                     row["objective"] = float(model.problem.value)
                     row.update(model.metrics())
                 rows.append(row)
+                if tick is not None:
+                    tick({**row,"step":"candidate","candidates":len(grid)})
                 if verbose:
                     _logger.info(f"{block:%Y-%m} [{number}/{len(grid)}] {status} "
                         + " ".join(f"{k}={v:.4g}" for k,v in row.items()
@@ -701,6 +735,8 @@ class Calibrate(pd.DataFrame):
             candidates,qualified = 1,None
 
         status = model.solve(*weights(mu_sel,lam_sel),warm_start=True,**cls.FINAL_SOLVER_OPTIONS)
+        if tick is not None:
+            tick({"block":block,"step":"final","candidate":None,"candidates":candidates,"status":status})
         if not model.solved():
             raise CalibrationError(f"{block:%Y-%m}: calibration failed with status {status!r}")
         metrics = model.metrics()
