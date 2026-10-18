@@ -174,6 +174,7 @@ config:
   flowchart:
     wrappingWidth: 700
     rankSpacing: 40
+    nodeSpacing: 20
 ---
 %% Data flow in github.com/eudoxys/loads
 %% Orange dashed cylinders = external sources fetched over the network
@@ -182,37 +183,42 @@ flowchart TB
 
     NOTE["<b>eudoxys/loads</b> data flow · all modules cache results locally via <b>eudoxys/cache</b>"]
 
-    %% ---------- all external sources, one row ----------
-    %% Ordered left→right to match where their consumers sit; sources feeding
-    %% the deepest consumers are at the outer edges so their lines run down the sides.
+    %% ---------- all external sources, two rows ----------
+    %% Split over two rows to keep the diagram narrow. The upper row holds the
+    %% sources feeding the deepest consumers (their lines run down the sides);
+    %% the lower row holds the sources feeding the sector models directly below.
+    %% Declaration order is tuned for Mermaid 11 (which pdoc loads) to minimize
+    %% the width; changing the order can change the layout substantially.
     subgraph EXT["EXTERNAL DATA SOURCES"]
         direction LR
+        NODES[("wecc240 GitHub<br/>county_nodes.csv")]
+        EIA[("EIA Form 861M<br/>/ HS861M<br/>via eudoxys/eia")]
         FIPS[("eudoxys/fips<br/>county metadata<br/>(used everywhere)")]
         GEOJSON[("Plotly county<br/>GeoJSON")]
-        EIA[("EIA Form 861M<br/>/ HS861M<br/>via eudoxys/eia")]
+        WECCGIS[("wecc240 GitHub<br/>node GIS, Canada,<br/>Mexico")]
+        WX[("NLR weather<br/>via eudoxys/weather")]
         OEDI_RES[("NLR ResStock<br/>OEDI S3")]
         CENSUS[("US Census<br/>housing units")]
         OEDI_COM[("NLR ComStock<br/>OEDI S3")]
         OPENEI[("OpenEI #906<br/>floor area")]
         NLR97[("NLR #97<br/>industry &<br/>agriculture")]
-        WX[("NLR weather<br/>via eudoxys/weather")]
-        WECCGIS[("wecc240 GitHub<br/>node GIS, Canada,<br/>Mexico")]
-        NODES[("wecc240 GitHub<br/>county_nodes.csv")]
     end
 
-    %% Pin every external source to the top row (duplicate invisible links
-    %% outweigh each source's outgoing edges so the layout won't pull it down).
+    %% Pin the upper row of sources just below the note (duplicate invisible
+    %% links outweigh each source's outgoing edges so the layout won't pull it down).
+    NOTE ~~~ NODES & NODES
+    NOTE ~~~ EIA & EIA & EIA
     NOTE ~~~ FIPS
     NOTE ~~~ GEOJSON & GEOJSON
-    NOTE ~~~ EIA & EIA & EIA
-    NOTE ~~~ OEDI_RES & OEDI_RES
-    NOTE ~~~ CENSUS & CENSUS
-    NOTE ~~~ OEDI_COM & OEDI_COM
-    NOTE ~~~ OPENEI & OPENEI
-    NOTE ~~~ NLR97 & NLR97 & NLR97
-    NOTE ~~~ WX & WX
     NOTE ~~~ WECCGIS & WECCGIS
-    NOTE ~~~ NODES & NODES
+    NOTE ~~~ WX & WX
+
+    %% Pin the lower row of sources just below the upper row.
+    EIA ~~~ OEDI_RES & OEDI_RES
+    EIA ~~~ CENSUS & CENSUS
+    WX ~~~ OEDI_COM & OEDI_COM
+    WX ~~~ OPENEI & OPENEI
+    WX ~~~ NLR97 & NLR97 & NLR97
 
     %% ---------- sector models ----------
     RESID["residential.py"]
@@ -261,8 +267,8 @@ flowchart TB
         MWH_CF["wecc/county_mwh.csv<br/>wecc/county_cf.csv"]
         COMPILE["nodal → county DG"]
         DGOUT["wecc/county_dg.csv.gz"]
-        ENERGY --> MWH_CF
         ENERGY --> COMPILE
+        ENERGY --> MWH_CF
         DGEN_RAW --> COMPILE
         COMPILE --> DGOUT
     end

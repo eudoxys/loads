@@ -1,4 +1,5 @@
-[![validate](https://github.com/eudoxys/loads/actions/workflows/validate.yaml/badge.svg)](https://github.com/eudoxys/loads/actions/workflows/validate.yaml)
+[![Validation](https://github.com/eudoxys/loads/actions/workflows/validate.yaml/badge.svg)](https://github.com/eudoxys/loads/actions/workflows/validate.yaml)
+[![Documetation](https://github.com/eudoxys/loads/actions/workflows/deploy-pages.yaml/badge.svg)](https://github.com/eudoxys/loads/actions/workflows/deploy-pages.yaml)
 
 Electric loads data accessor and multi-sector load data tool
 
@@ -7,6 +8,13 @@ Electric loads data accessor and multi-sector load data tool
 See https://www.eudoxys.com/loads
 
 # Installation
+
+Install using Eudoxys Package Manager:
+
+    pip install --upgrade git+https://github.com/eudoxys/epm
+    epm install loads
+
+Install using `pip`.
 
     pip install git+https://github.com/eudoxys/loads
 
