@@ -53,7 +53,7 @@ flowchart LR
    sales.
 
 The rows of the output are hourly UTC timestamps. The columns are named
-`COUNTY_ST`, where `COUNTY` is the county name and `ST` is the state
+`COUNTY ST`, where `COUNTY` is the county name and `ST` is the state
 abbreviation, sorted by state and then by county name. Values are in MW
 rounded to 4 decimals.
 
@@ -369,7 +369,7 @@ def main( # pylint: disable=too-many-locals
             print(f"WARNING: no monthly energy data for {county_st},",
                 "using uncalibrated estimate",file=sys.stderr)
             target = None
-        columns[f"{county}_{state}"] = calibrate(results[(state,county)],target)
+        columns[f"{county} {state}"] = calibrate(results[(state,county)],target)
 
     result = pd.DataFrame(columns).round(PRECISION)
     result.index.name = "timestamp"

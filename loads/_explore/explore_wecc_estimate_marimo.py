@@ -36,7 +36,7 @@ def _(mo, pathlib, pd):
 @app.cell
 def _(data, mo):
     # state selection
-    _options = sorted({x.rsplit("_",1)[1] for x in data.columns})
+    _options = sorted({x.rsplit(" ",1)[1] for x in data.columns})
     state_ui = mo.ui.dropdown(options=_options,value=_options[0],label="State:")
     return (state_ui,)
 
@@ -44,7 +44,7 @@ def _(data, mo):
 @app.cell
 def _(data, mo, state_ui):
     # county selection
-    _options = sorted(x.rsplit("_",1)[0] for x in data.columns if x.endswith(f"_{state_ui.value}"))
+    _options = sorted(x.rsplit(" ",1)[0] for x in data.columns if x.endswith(f" {state_ui.value}"))
     county_ui = mo.ui.dropdown(options=_options,value=None,label="County:")
     return (county_ui,)
 
@@ -59,9 +59,9 @@ def _(county_ui, mo, state_ui):
 def _(county_ui, data, mo, state_ui):
     # county data
     if county_ui.value is None:
-        _columns = [x for x in data.columns if x.endswith(state_ui.value)]
+        _columns = [x for x in data.columns if x.endswith(f" {state_ui.value}")]
     else:
-        _columns = [f"{county_ui.value}_{state_ui.value}"]
+        _columns = [f"{county_ui.value} {state_ui.value}"]
     mo.ui.table(data[_columns],page_size=24,selection=None)
     return
 
