@@ -1,32 +1,72 @@
 name: Validation
 
+# Only run when code, test data, or dependencies change (notebooks, exploration
+# scripts, and docs don't affect the tests)
 on:
   push:
     branches: [ main ]
+    paths:
+      - "loads/**"
+      - "!loads/_explore/**"
+      - "!loads/_review/**"
+      - "!loads/_validate/**"
+      - "!**/*.md"
+      - "requirements.txt"
+      - "pyproject.toml"
+      - ".github/workflows/validate.yaml"
   pull_request:
     branches: [ main ]
+    paths:
+      - "loads/**"
+      - "!loads/_explore/**"
+      - "!loads/_review/**"
+      - "!loads/_validate/**"
+      - "!**/*.md"
+      - "requirements.txt"
+      - "pyproject.toml"
+      - ".github/workflows/validate.yaml"
+  workflow_dispatch:
+
+# A newer push to the same branch/PR cancels the run in progress
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
 
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 30 # hard stop on a hung download or solver
+
+    env:
+      # keep downloaded building/census/weather data outside site-packages
+      # so actions/cache can carry it between runs
+      LOADS_CACHEDIR: ${{ github.workspace }}/.cache-data
 
     steps:
     - uses: actions/checkout@v4
 
     - name: Setup python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: 3.12.9
-    
+        cache: pip
+        cache-dependency-path: requirements.txt
+
+    - name: Restore downloaded test data
+      uses: actions/cache@v4
+      with:
+        path: .cache-data
+        key: loads-data-v1-${{ hashFiles('loads/_test/**','requirements.txt') }}
+        restore-keys: loads-data-v1-
+
     - name: Install packages
       run: |
         pip install --upgrade pip
-        pip install .
+        pip install . pytest pylint
 
     - name: Analyse code
       run: |
-        pip install pylint
         cd loads
         pylint --fail-under 0 *.py
 
@@ -34,7 +74,6 @@ jobs:
       env:
         NSRDB_CREDENTIALS: ${{ secrets.NSRDB_CREDENTIALS }}
       run: |
-        mkdir $HOME/.nsrdb
+        mkdir -p $HOME/.nsrdb
         echo "$NSRDB_CREDENTIALS" > $HOME/.nsrdb/credentials.json
-        pip install pytest
-        pytest
+        pytest --durations=10
