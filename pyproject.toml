@@ -36,5 +36,11 @@ Documentation = "https://www.eudoxys.com/loads"
 Repository = "https://github.com/eudoxys/loads.git"
 Issues = "https://github.com/eudoxys/loads/issues"
 
+[tool.pytest.ini_options]
+testpaths = ["loads/_test"]
+markers = [
+    "network: downloads NREL, Census, and NSRDB data (slow on an empty cache)",
+    ]
+
 [project.scripts]
 loads = "loads.cli:main"

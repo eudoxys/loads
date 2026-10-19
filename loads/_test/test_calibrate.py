@@ -50,8 +50,7 @@ END = pd.Timestamp("2020-08-31 23:00:00+00:00")
 LAGS = 3 # Total trims this many hours from each end of a prediction
 DG_FILE = os.path.join(os.path.dirname(loads.__file__),"wecc","county_dg.csv.gz")
 
-if os.environ.get("LOADS_CACHEDIR"):
-    Cache.CACHEDIR = os.environ["LOADS_CACHEDIR"]
+pytestmark = pytest.mark.network
 
 
 def _read_month(name:str) -> pd.Series:

@@ -5,6 +5,14 @@ on:
   # Runs on pushes targeting the default branch
   push:
     branches: ["main"]
+    # Only rebuild when the documented package or the docs build changes
+    # (pdoc reads loads/__init__.py and the public modules' docstrings)
+    paths:
+      - "loads/*.py"
+      - "Makefile"
+      - "requirements.txt"
+      - "pyproject.toml"
+      - ".github/workflows/deploy-pages.yaml"
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
