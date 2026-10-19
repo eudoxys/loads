@@ -9,6 +9,23 @@ marimo notebook
 
 	marimo run validate_estimator_marimo.py
 
+## Calibration
+
+The `validate_calibrate_marimo.py` notebook compares the CAISO-region net
+load of the calibrated 2020 WECC county loads with the hourly load CAISO
+reported for 2020 (`loads/caiso/2020.csv`). The calibration uses the default
+settings of `loads/_explore/explore_calibrate_marimo.py`, i.e., the
+predeclared weight search and selection rule of `loads.calibrate.Calibrate`
+with the targets and memberships in `loads/_test/data`, applied month by
+month. Build the 2020 load matrix and the calibration in the local cache
+first (407 county predictions and 12 monthly weight searches)
+
+	python validate_calibrate.py
+
+then run the marimo notebook
+
+	marimo run validate_calibrate_marimo.py
+
 ## Comparison to existing models
 
 | Method | Spatial unit | Test design | MAPE (%) |
