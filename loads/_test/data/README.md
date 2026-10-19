@@ -36,3 +36,17 @@ Filled energy is 2.2% of WECC load in 2018, 3.6% in 2020, <0.3% in other years. 
 | 2020 | 718.1 | 218.0 | 140,778 | 46,643 |
 | 2021 | 724.7 | 219.2 | 135,692 | 43,615 |
 | 2022 | 744.1 | 223.7 | 143,047 | 51,104 |
+
+## Peak targets
+`peak_target.csv` holds the monthly CAISO and WECC peak targets (MW) used by `loads.calibrate.Calibrate`
+(`loads/_test/test_calibrate.py`, `loads/_validate/validate_calibrate.py`), derived from
+`WECC_CAISO_hourly_load_2018-2022.csv`:
+- each value is the maximum of `CAISO_load_MW` or `WECC_load_MW` over the month;
+- rows are indexed by UTC month start, matching the calibration's UTC monthly blocks. Hours are converted
+  from `utc_hour_ending` to UTC hour beginning (the model's convention) before grouping;
+- rows cover 2018-01 to 2022-12. January 2018 lacks its first 8 UTC hours (PST 2017-12-31 16:00–23:00),
+  which the source files do not include.
+
+The WECC target is the US BA sum, which matches the 13-state WECC county membership in `state_groups.csv`
+(no Canada or Mexico). The monthly WECC peak includes filled PSEI hours in most 2018 and 2020 months
+(about 0.6–11 GW at the peak hour, typically 3–5 GW); no monthly CAISO peak hour was filled.

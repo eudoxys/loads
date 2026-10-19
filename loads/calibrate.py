@@ -101,7 +101,7 @@ state energy and CAISO/WECC peak targets, searching the weight grid:
     result = Calibrate(X,
         dg=D,
         energy={"AZ":9843022.5,"CA":24001906.0,...},
-        peak={"CAISO":47121.0,"WECC":163459.0},
+        peak={"CAISO":46643.0,"WECC":140778.0},
         regions=membership,  # DataFrame: index=units, columns=["CAISO","WECC"]
         search=True,
         )

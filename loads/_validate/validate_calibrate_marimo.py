@@ -489,10 +489,12 @@ def _(mo, regions):
       region, so the regional energy can differ from the CAISO footprint even
       when the state energy targets are met exactly.
 
-    - The CAISO peak target in `loads/_test/data/peak_target.csv` is the same
-      annual value for every month, and the calibration drives each month's
-      CAISO net-load peak to its ceiling. Months whose reported peak is well
-      below the annual peak are therefore pushed up by construction.
+    - The CAISO peak target in `loads/_test/data/peak_target.csv` is each
+      UTC month's peak of the cleaned EIA-930 CAISO demand
+      (`loads/_test/data/WECC_CAISO_hourly_load_2018-2022.csv`), and the
+      calibration drives each month's CAISO net-load peak to that ceiling.
+      EIA-930 and `loads/caiso/2020.csv` are different sources, so the
+      ceiling can differ slightly from the reported peak shown here.
 
     - CAISO reports hour-ending values in Pacific prevailing time. They are
       assigned to UTC hour-beginning timestamps, which are the model's
