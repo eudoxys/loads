@@ -22,7 +22,7 @@ or use the buttons in the notebook.
 
 import marimo
 
-__generated_with = "0.25.1"
+__generated_with = "0.25.0"
 app = marimo.App(width="full")
 
 
@@ -66,7 +66,7 @@ def _(pd, vc):
     TZ = "America/Los_Angeles"
     MONTHS = pd.date_range(f"{YEAR}-01-01",periods=12,freq="MS")
     energy_target,peak_target = vc.targets(YEAR)
-    return MONTHS, TZ, YEAR, peak_target
+    return TZ, YEAR, peak_target
 
 
 @app.cell
@@ -145,7 +145,7 @@ def _(YEAR, dg, load, pd, regions, shaped, vc):
         })
     hourly = caiso[["CAISO"]].rename(columns={"CAISO":"reported"}).join(_model,how="inner").dropna()
     hourly["month"] = hourly.index.tz_convert("UTC").tz_localize(None).to_period("M")
-    return caiso, hourly
+    return (hourly,)
 
 
 @app.cell
@@ -273,7 +273,7 @@ def _(TZ, hourly, metrics, pd, peak_target):
 def _(fmt, mo, monthly):
     _table = fmt(monthly,{"Energy error (%)":2,"Peak error (%)":2,"MAPE (%)":2,"Input MAPE (%)":2,
         "CV(RMSE) (%)":2,"R²":3} | {x:0 for x in monthly.columns if "GWh" in x or "MW" in x})
-    _table.index = [f"{x:%b %Y}" for x in monthly.index]
+    _table.index = monthly.index
     mo.ui.table(_table.reset_index(names="Month"),selection=None,show_column_summaries=False,
         show_data_types=False,show_download=True,show_search=False,page_size=12)
     return
@@ -283,7 +283,7 @@ def _(fmt, mo, monthly):
 def _(monthly, np, plt):
     _figure,_axes = plt.subplots(1,2,figsize=(14,4.2),constrained_layout=True)
     _x = np.arange(len(monthly))
-    _labels = [f"{x:%b}" for x in monthly.index]
+    _labels = monthly.index
     for _offset,(_column,_label) in zip([-0.27,0,0.27],[
             ("Reported energy (GWh)","CAISO reported"),
             ("Input energy (GWh)","TSGAM input"),
@@ -317,7 +317,7 @@ def _(mo):
 
 @app.cell
 def _(hourly, mo):
-    _options = {"Whole year":"all"} | {f"{x:%B}":str(x) for x in hourly.month.unique()}
+    _options = {"Whole year":"all"} | {x:str(x) for x in hourly.month.unique()}
     period_ui = mo.ui.dropdown(options=_options,value="Whole year",label="Period")
     period_ui
     return (period_ui,)
@@ -405,7 +405,7 @@ def _(plt, profiles):
         _axis.plot(_data.index,_data.reported,"k-",linewidth=1.4,label="CAISO reported")
         _axis.plot(_data.index,_data.input,"-",linewidth=1.0,label="TSGAM input")
         _axis.plot(_data.index,_data.calibrated,"-",linewidth=1.2,label="Calibrated")
-        _axis.set_title(f"{_month:%B}",loc="left",fontsize=10)
+        _axis.set_title(_month,loc="left",fontsize=10)
         _axis.grid(True,linewidth=0.5,alpha=0.4)
         _axis.set_xticks([0,6,12,18,23])
     for _axis in list(_axes.flat)[len(_months):]:
@@ -424,7 +424,7 @@ def _(np, plt, profiles):
     _limit = float(np.nanmax(np.abs(_grid.values)))
     _figure,_axis = plt.subplots(figsize=(10,5.5),constrained_layout=True)
     _image = _axis.imshow(_grid.values,aspect="auto",origin="lower",cmap="RdBu_r",vmin=-_limit,vmax=_limit)
-    _axis.set_xticks(range(_grid.shape[1]),[f"{x:%b}" for x in _grid.columns])
+    _axis.set_xticks(range(_grid.shape[1]),_grid.columns)
     _axis.set_yticks(range(0,24,3),[f"{x:02d}:00" for x in range(0,24,3)])
     _axis.set_xlabel("Month (UTC)")
     _axis.set_ylabel("Hour of day (Pacific time)")
