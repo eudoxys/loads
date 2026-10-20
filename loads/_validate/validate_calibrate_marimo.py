@@ -317,7 +317,7 @@ def _(mo):
 
 @app.cell
 def _(hourly, mo):
-    _options = {"Whole year":"all"} | {x:str(x) for x in hourly.month.unique()}
+    _options = {"Whole year":"all"} | {x.to_timestamp().strftime("%B %Y"):str(x) for x in hourly.month.unique()}
     period_ui = mo.ui.dropdown(options=_options,value="Whole year",label="Period")
     period_ui
     return (period_ui,)
