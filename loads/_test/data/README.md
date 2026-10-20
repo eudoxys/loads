@@ -52,11 +52,17 @@ The WECC target is the US BA sum, which matches the 13-state WECC county members
 (about 0.6–11 GW at the peak hour, typically 3–5 GW); no monthly CAISO peak hour was filled.
 
 ## CAISO membership
-`state_groups.csv` gives each county's CAISO and WECC membership (0 to 1). Los Angeles and Riverside are
-split between CAISO and non-CAISO balancing authorities and have fractional CAISO membership:
-- Riverside 0.87: 1 − (55% of IID's 2020 demand, 3.82 TWh) / Riverside's 2020 calibrated net load (16.18 TWh).
-  55% is IID's share of customers in Riverside County (2018); the rest of IID is in Imperial County, which is
-  outside CAISO.
-- Los Angeles 0.63: the share that matches the 2020 CAISO-region net-load energy to CAISO's reported 218.9 TWh
-  given the Riverside share. Removing only the 2020 LDWP demand (26.4 TWh, which includes Burbank and Glendale)
-  gives 0.66.
+`state_groups.csv` gives each county's CAISO and WECC membership (0 to 1). Counties served by balancing
+authorities other than CAISO are set from what serves them (2020 EIA-930 demand), not fitted to CAISO energy:
+- Los Angeles 0.66: 1 − LDWP demand (26.4 TWh; LADWP, Burbank and Glendale) / Los Angeles' 2020 calibrated
+  net load (77.7 TWh).
+- Riverside 0.87: 1 − (55% of IID's demand, 3.82 TWh) / Riverside's calibrated net load (16.18 TWh). 55% is
+  IID's share of customers in Riverside County (2018); the rest of IID is in Imperial County, outside CAISO.
+- Sacramento 0: served by SMUD (BANC), whose service area covers the county (calibrated net load 10.4 TWh).
+- Stanislaus 0: served by TID (TIDC, 2.84 TWh) and Modesto ID (BANC), which together exceed the county's
+  calibrated net load (3.85 TWh); PG&E serves only rural pockets.
+
+With these shares the CAISO-region net load is expected to be about 5.5% below CAISO's reported 2020 energy, about the size of
+transmission and distribution losses, which CAISO's demand includes and the state energy targets may not.
+Placer (Roseville, BANC), Shasta (Redding, BANC), Merced (TID) and San Joaquin (Modesto ID) are also partly
+outside CAISO but remain full members.
