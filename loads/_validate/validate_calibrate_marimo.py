@@ -482,12 +482,14 @@ def _(mo, regions):
     ## Caveats
 
     - The CAISO region is the county membership in
-      `loads/_test/data/state_groups.csv` ({len(_members)} counties, all
-      with full membership). County boundaries do not follow balancing
-      authority boundaries: counties served partly by LADWP, IID, SMUD/BANC,
-      TID or other utilities are either wholly in or wholly out of the
-      region, so the regional energy can differ from the CAISO footprint even
-      when the state energy targets are met exactly.
+      `loads/_test/data/state_groups.csv` ({len(_members)} counties).
+      County boundaries do not follow balancing authority boundaries. Los
+      Angeles (0.63, excluding LADWP, Burbank and Glendale) and Riverside
+      (0.87, excluding the IID Coachella Valley load) have fractional
+      membership; other counties served partly by SMUD/BANC, TID or other
+      utilities are either wholly in or wholly out of the region, so the
+      regional energy can differ from the CAISO footprint even when the
+      state energy targets are met exactly.
 
     - The CAISO peak target in `loads/_test/data/peak_target.csv` is each
       UTC month's peak of the cleaned EIA-930 CAISO demand

@@ -50,3 +50,13 @@ Filled energy is 2.2% of WECC load in 2018, 3.6% in 2020, <0.3% in other years. 
 The WECC target is the US BA sum, which matches the 13-state WECC county membership in `state_groups.csv`
 (no Canada or Mexico). The monthly WECC peak includes filled PSEI hours in most 2018 and 2020 months
 (about 0.6–11 GW at the peak hour, typically 3–5 GW); no monthly CAISO peak hour was filled.
+
+## CAISO membership
+`state_groups.csv` gives each county's CAISO and WECC membership (0 to 1). Los Angeles and Riverside are
+split between CAISO and non-CAISO balancing authorities and have fractional CAISO membership:
+- Riverside 0.87: 1 − (55% of IID's 2020 demand, 3.82 TWh) / Riverside's 2020 calibrated net load (16.18 TWh).
+  55% is IID's share of customers in Riverside County (2018); the rest of IID is in Imperial County, which is
+  outside CAISO.
+- Los Angeles 0.63: the share that matches the 2020 CAISO-region net-load energy to CAISO's reported 218.9 TWh
+  given the Riverside share. Removing only the 2020 LDWP demand (26.4 TWh, which includes Burbank and Glendale)
+  gives 0.66.
