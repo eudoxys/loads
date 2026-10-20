@@ -484,12 +484,13 @@ def _(mo, regions):
     - The CAISO region is the county membership in
       `loads/_test/data/state_groups.csv` ({len(_members)} counties).
       County boundaries do not follow balancing authority boundaries. Los
-      Angeles (0.63, excluding LADWP, Burbank and Glendale) and Riverside
+      Angeles (0.66, excluding LADWP, Burbank and Glendale) and Riverside
       (0.87, excluding the IID Coachella Valley load) have fractional
-      membership; other counties served partly by SMUD/BANC, TID or other
-      utilities are either wholly in or wholly out of the region, so the
-      regional energy can differ from the CAISO footprint even when the
-      state energy targets are met exactly.
+      membership, and Sacramento (SMUD) and Stanislaus (TID, Modesto ID)
+      are excluded. Other counties served partly by non-CAISO utilities
+      (e.g., Placer, Shasta, Merced, San Joaquin) are wholly in the region,
+      so the regional energy can differ from the CAISO footprint even when
+      the state energy targets are met exactly.
 
     - The CAISO peak target in `loads/_test/data/peak_target.csv` is each
       UTC month's peak of the cleaned EIA-930 CAISO demand

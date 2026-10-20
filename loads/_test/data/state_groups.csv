@@ -32,7 +32,7 @@ Kern CA,1,1
 Kings CA,1,1
 Lake CA,1,1
 Lassen CA,0,1
-Los Angeles CA,0.63,1
+Los Angeles CA,0.66,1
 Madera CA,1,1
 Marin CA,1,1
 Mariposa CA,1,1
@@ -47,7 +47,7 @@ Orange CA,1,1
 Placer CA,1,1
 Plumas CA,1,1
 Riverside CA,0.87,1
-Sacramento CA,1,1
+Sacramento CA,0,1
 San Benito CA,1,1
 San Bernardino CA,1,1
 San Diego CA,1,1
@@ -63,7 +63,7 @@ Sierra CA,1,1
 Siskiyou CA,0,1
 Solano CA,1,1
 Sonoma CA,1,1
-Stanislaus CA,1,1
+Stanislaus CA,0,1
 Sutter CA,1,1
 Tehama CA,1,1
 Trinity CA,1,1
