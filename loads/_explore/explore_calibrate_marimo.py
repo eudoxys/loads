@@ -6,7 +6,7 @@ Run with
 
 The notebook uses the same inputs as `loads/_test/test_calibrate.py`: the
 assembled August 2020 county load matrix from the local cache, DG from
-`loads/wecc/county_dg.csv.gz`, and the targets and CAISO/WECC membership in
+`loads/wecc/county_dg_scaled.csv.gz`, and the targets and CAISO/WECC membership in
 `loads/_test/data`. Build the load matrix first with
 
     python loads/_test/test_calibrate.py
@@ -78,7 +78,7 @@ def _(DATA, PACKAGE, START, load_cache, mo, pd):
         return _data.loc[_data.index == START].iloc[0].dropna()
 
     load = pd.read_csv(load_cache.pathname,index_col=[0],parse_dates=[0])
-    dg = pd.read_csv(PACKAGE / "wecc" / "county_dg.csv.gz",index_col=[0],parse_dates=[0])
+    dg = pd.read_csv(PACKAGE / "wecc" / "county_dg_scaled.csv.gz",index_col=[0],parse_dates=[0])
     dg.index = pd.DatetimeIndex(dg.index).tz_convert("UTC")
     dg = dg.reindex(index=load.index,columns=load.columns).fillna(0.0).abs()
     energy = _month_row("energy_target.csv")
