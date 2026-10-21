@@ -109,6 +109,30 @@ is 3.18 (5.48 to 17.41 TWh, peak about 8.5 GW).
 The same inputs drive `loads/_test/test_calibrate.py`, which calibrates
 August 2020 only.
 
+### Results (2020)
+
+All 12 months pass the selection tolerances, every state's energy is within
+0.5% of its target, and the CAISO and WECC peaks reach their targets. Fit of
+the CAISO-region net load to the CAISO reported load over 8,776 hours, with
+the EIA-scaled DG (CAISO-region DG 15.5 TWh, peak 7.5 GW) and, for
+reference, the unscaled `county_dg.csv` DG (4.4 TWh, 2.1 GW):
+
+| Model | Energy error | Peak error | MAPE | CV(RMSE) | R² | Correlation |
+| ----- | ------------ | ---------- | ---- | -------- | -- | ----------- |
+| TSGAM input, unscaled DG | +25.7% | +21.7% | 26.7% | 31.5% | −1.44 | 0.775 |
+| Calibrated, unscaled DG | −3.8% | −0.7% | 14.5% | 17.1% | 0.28 | 0.771 |
+| TSGAM input, scaled DG | +20.7% | +15.3% | 21.6% | 24.4% | −0.47 | 0.854 |
+| **Calibrated, scaled DG** | **−3.7%** | **−0.7%** | **11.2%** | **13.9%** | **0.53** | **0.844** |
+
+The scaled DG reproduces the reported midday dip; the calibrated net load is
+within about 1.6 GW of the reported load between 10:00 and 16:00 Pacific in
+April and August. The largest remaining errors are at night, when the
+calibrated load is about 2–5 GW (April) and 8–10 GW (August) below the
+reported load between midnight and 04:00 Pacific,
+and in February, August and November, whose energy is 11–14% low. The peak
+error is the difference between the EIA-930 CAISO peak target and the peak in
+`loads/caiso/2020.csv`.
+
 ### Known gaps
 
 - **Losses.** Peak targets and the CAISO reference include transmission and
