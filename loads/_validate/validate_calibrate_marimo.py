@@ -8,7 +8,7 @@ The notebook compares the CAISO-region net load of the calibrated 2020 WECC
 county loads with the hourly load CAISO reported for 2020
 (`loads/caiso/2020.csv`). The calibration uses the default settings of
 `loads/_explore/explore_calibrate_marimo.py`: DG from
-`loads/wecc/county_dg.csv.gz`, the monthly state energy and CAISO/WECC peak
+`loads/wecc/county_dg_scaled.csv.gz`, the monthly state energy and CAISO/WECC peak
 targets and the CAISO/WECC membership in `loads/_test/data`, and the
 predeclared weight search and selection rule of `loads.calibrate.Calibrate`.
 
@@ -503,8 +503,11 @@ def _(mo, regions):
       assigned to UTC hour-beginning timestamps, which are the model's
       convention, and only the hours common to both years are compared.
 
-    - DG is the fixed county rooftop PV of `loads/wecc/county_dg.csv.gz`;
-      errors in it appear directly as net-load errors during daylight hours.
+    - DG is the fixed county rooftop PV of
+      `loads/wecc/county_dg_scaled.csv.gz`, scaled by state and year to EIA's
+      estimated small-scale solar generation (see
+      `loads/wecc/county_dg_scale.py`); errors in its hourly shape or county
+      distribution appear directly as net-load errors during daylight hours.
     """)
     return
 

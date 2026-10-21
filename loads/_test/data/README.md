@@ -66,3 +66,16 @@ With these shares the CAISO-region net load is expected to be about 5.5% below C
 transmission and distribution losses, which CAISO's demand includes and the state energy targets may not.
 Placer (Roseville, BANC), Shasta (Redding, BANC), Merced (TID) and San Joaquin (Modesto ID) are also partly
 outside CAISO but remain full members.
+
+## Distributed generation
+The calibration and validation use `loads/wecc/county_dg_scaled.csv.gz`, built by `loads/wecc/county_dg_scale.py`
+from `loads/wecc/county_dg.csv`:
+- the 39 WECC counties missing from `county_dg.csv` (e.g., Kern, San Bernardino, Ada, Canyon, Bernalillo,
+  Clackamas) get their state's DG profile in proportion to their share of the state's 2020 gross load;
+- each state's DG is scaled, year by year, to EIA's estimated small-scale solar generation
+  (`loads/wecc/eia_smallscale_pv.csv`, Electric Power Annual Table 3.21, all sectors), times the WECC share of
+  the state for Texas (El Paso) and South Dakota (Custer, Fall River, Lawrence) by 2020 Census population.
+
+The factors are in `loads/wecc/county_dg_scaling.csv`. `county_dg.csv` has no year-to-year growth, so the
+factors rise each year; for 2020 California's is 3.18 (5.48 to 17.41 TWh, peak about 8.5 GW).
+

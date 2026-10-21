@@ -9,7 +9,7 @@ Builds and caches the inputs used by `validate_calibrate_marimo.py`:
 
   - the calibrated load $L$: `Calibrate(...,search=True)` month by month,
     with the default settings of `loads/_explore/explore_calibrate_marimo.py`
-    (DG from `loads/wecc/county_dg.csv.gz`, the monthly state energy and
+    (DG from `loads/wecc/county_dg_scaled.csv.gz`, the monthly state energy and
     CAISO/WECC peak targets and the CAISO/WECC membership in
     `loads/_test/data`, and the predeclared 88-point weight grid and
     selection rule);
@@ -48,7 +48,7 @@ from fips import Counties
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(PACKAGE,"_test","data")
 CAISO = os.path.join(PACKAGE,"caiso")
-DG_FILE = os.path.join(PACKAGE,"wecc","county_dg.csv.gz")
+DG_FILE = os.path.join(PACKAGE,"wecc","county_dg_scaled.csv.gz")
 YEAR = 2020
 LAGS = 3 # Total trims this many hours from each end of a prediction
 REGIONS = ["CAISO","WECC"]
