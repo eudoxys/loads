@@ -9,6 +9,8 @@ State borders are downloaded once into the `loads` cache.
 Counties that contain WECC240 load busses are split among those busses' nodes
 in proportion to the bus loads (`bus`). All other counties are assigned to
 their nearest load node from `wecc240` `county_node_map.csv` (`nearest`).
+The loads of the Canadian and Mexican nodes (`foreign`) are taken from the
+`wecc240` node load files.
 """
 
 import marimo
@@ -26,7 +28,7 @@ def _(mo):
 
 
 @app.cell
-def _(mo, pathlib, pd):
+def _(importlib, mo, pathlib, pd):
     # load the node estimate and contribution factors
     _folder = pathlib.Path(*pathlib.Path(__file__).parts[:-2],"wecc")
     _file = _folder / "node_estimate.csv.gz"
@@ -35,7 +37,11 @@ def _(mo, pathlib, pd):
     with mo.status.spinner("Loading node estimate"):
         data = pd.read_csv(_file,index_col=[0],parse_dates=[0])
         cf = pd.read_csv(_folder / "node_estimate_cf.csv")
-    return cf, data
+    _spec = importlib.util.spec_from_file_location("node_estimate",_folder / "node_estimate.py")
+    _module = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_module)
+    foreign = _module.FOREIGN
+    return cf, data, foreign
 
 
 @app.cell
@@ -74,7 +80,7 @@ def _(Cache, json, mo, urllib):
 
 
 @app.cell
-def _(cf, data, mo, node_map):
+def _(cf, data, foreign, mo, node_map):
     # summary
     _total = data.sum(axis=1)
     _energy = (_total.resample("YS").sum()/1e6).round(1)
@@ -82,7 +88,7 @@ def _(cf, data, mo, node_map):
     _nearest = cf.groupby("county_st").apply(
         lambda x: x.loc[x.cf.idxmax(),"node"],include_groups=False)
     _changed = (_nearest != node_map.reindex(_nearest.index)).sum()
-    _new = sorted(set(data.columns) - set(node_map))
+    _new = sorted(set(data.columns) - set(node_map) - set(foreign))
     _cfsum = cf.groupby("county_st").cf.sum()
     mo.vstack([
         mo.hstack([
@@ -92,11 +98,16 @@ def _(cf, data, mo, node_map):
                 caption=f"{(_split>1).sum()} split among several nodes"),
             mo.stat(f"{_changed}",label="Counties remapped",
                 caption="largest share not on nearest node"),
+            mo.stat(f"{len(foreign)}",label="Foreign nodes",
+                caption=", ".join(f"{x} ({y})" for x,y in foreign.items())),
             mo.stat(f"{_total.max()/1e3:.1f} GW",label="WECC peak",
                 caption=f"{_total.idxmax():%Y-%m-%d %H:%M} UTC"),
         ],justify="start"),
         mo.md("**Annual WECC energy (TWh):** "
             + ", ".join(f"{t:%Y}: {e}" for t,e in _energy.items())
+            + "  \n**Annual foreign energy (TWh):** "
+            + ", ".join(f"{t:%Y}: {e}" for t,e in
+                (data[list(foreign)].sum(axis=1).resample("YS").sum()/1e6).round(1).items())
             + f"  \n**Contribution factor sums:** min {_cfsum.min():.6f}, max {_cfsum.max():.6f}"
             + f"  \n**Data:** {data.index[0]} to {data.index[-1]}, {len(data)} hours,"
             + f" missing values {int(data.isna().sum().sum())}, negative values {int((data<0).sum().sum())}"),
@@ -105,7 +116,7 @@ def _(cf, data, mo, node_map):
 
 
 @app.cell
-def _(cf, counties, data, nodes, node_map, plt, states):
+def _(cf, counties, data, foreign, nodes, node_map, pd, plt, states):
     # map of county-to-node allocations
     def _map():
         fig,ax = plt.subplots(figsize=(10,10))
@@ -126,17 +137,26 @@ def _(cf, counties, data, nodes, node_map, plt, states):
         ax.scatter(counties.LON,counties.LAT,s=4,color="k",label="County centroid")
         _mean = data.mean()
         _xy = nodes.reindex(_mean.index)
-        _old = _mean.index.isin(set(node_map))
+        _ext = _mean.index.isin(set(foreign))
+        _old = _mean.index.isin(set(node_map)) & ~_ext
         ax.scatter(_xy.LON[_old],_xy.LAT[_old],s=_mean[_old]/10,alpha=0.6,
             color="tab:blue",label="Node in nearest-node map")
-        ax.scatter(_xy.LON[~_old],_xy.LAT[~_old],s=_mean[~_old]/10,alpha=0.6,
+        _add = ~_old & ~_ext
+        ax.scatter(_xy.LON[_add],_xy.LAT[_add],s=_mean[_add]/10,alpha=0.6,
             color="tab:red",label="Node added by bus split")
+        ax.scatter(_xy.LON[_ext],_xy.LAT[_ext],s=_mean[_ext]/10,alpha=0.6,
+            color="tab:green",label="Foreign node")
+        for _node in _mean.index[_ext]:
+            ax.annotate(f"{_node} ({foreign[_node]})",(_xy.LON[_node],_xy.LAT[_node]),
+                textcoords="offset points",xytext=(8,-12),fontsize=8)
         ax.plot([],[],color="tab:orange",label="bus allocation")
         ax.plot([],[],color="tab:gray",label="nearest allocation")
         ax.set_xlabel("Longitude")
         ax.set_ylabel("Latitude")
-        ax.set_xlim(counties.LON.min()-1,counties.LON.max()+1)
-        ax.set_ylim(counties.LAT.min()-1,counties.LAT.max()+1)
+        _lon = pd.concat([counties.LON,_xy.LON])
+        _lat = pd.concat([counties.LAT,_xy.LAT])
+        ax.set_xlim(_lon.min()-1,_lon.max()+1)
+        ax.set_ylim(_lat.min()-1,_lat.max()+1)
         ax.set_aspect(1.25)
         ax.grid(alpha=0.3)
         ax.legend(loc="lower left")
@@ -147,7 +167,7 @@ def _(cf, counties, data, nodes, node_map, plt, states):
 
 
 @app.cell
-def _(cf, data, mo, node_map, pd):
+def _(cf, data, foreign, mo, node_map, pd):
     # tables
     _mean = data.mean()
     _split = cf[cf.groupby("county_st").node.transform("count")>1].copy()
@@ -162,11 +182,13 @@ def _(cf, data, mo, node_map, pd):
     node_table = pd.DataFrame({
         "counties":cf.groupby("node").county_st.apply(lambda x:", ".join(x)),
         "county_count":cf.groupby("node").county_st.count(),
+        "foreign":pd.Series(foreign),
         "mean_MW":_mean.round(1),
         "peak_MW":data.max().round(1),
         "min_MW":data.min().round(1),
         }).rename_axis("node")
-    node_table.insert(2,"in_nearest_map",node_table.index.isin(set(node_map)))
+    node_table["county_count"] = node_table["county_count"].fillna(0).astype(int)
+    node_table.insert(3,"in_nearest_map",node_table.index.isin(set(node_map)))
     node_table = node_table.sort_values("mean_MW",ascending=False).reset_index()
     mo.md("")
     return node_table, remap_table, split_table
@@ -201,7 +223,7 @@ def _(data, mo):
 
 
 @app.cell
-def _(cf, data, mo, node_ui, plt, resample_ui, year_ui):
+def _(cf, data, foreign, mo, node_ui, plt, resample_ui, year_ui):
     # node load profile and contributing counties
     _series = data[node_ui.value]
     if year_ui.value != "All":
@@ -221,9 +243,12 @@ def _(cf, data, mo, node_ui, plt, resample_ui, year_ui):
     _ax.set_title(f"Node {node_ui.value}")
     _ax.grid(alpha=0.3)
     _counties = cf[cf.node==node_ui.value][["county_st","cf","method"]].round({"cf":4})
+    _foreign = (f"Includes the {foreign[node_ui.value]} load from `wecc240`"
+        f" `{foreign[node_ui.value]}/{node_ui.value}.csv`."
+        if node_ui.value in foreign else "")
     mo.vstack([
         _fig,
-        mo.md(f"**Counties contributing to node {node_ui.value}**"),
+        mo.md(f"**Counties contributing to node {node_ui.value}**  \n{_foreign}"),
         mo.ui.table(_counties.reset_index(drop=True),selection=None),
     ])
     return
@@ -232,6 +257,7 @@ def _(cf, data, mo, node_ui, plt, resample_ui, year_ui):
 @app.cell
 def _():
     import marimo as mo
+    import importlib.util
     import json
     import pathlib
     import urllib.request
@@ -239,7 +265,7 @@ def _():
     import matplotlib.pyplot as plt
     from cache import Cache
 
-    return Cache, json, mo, pathlib, pd, plt, urllib
+    return Cache, importlib, json, mo, pathlib, pd, plt, urllib
 
 
 if __name__ == "__main__":
