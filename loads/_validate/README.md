@@ -26,6 +26,100 @@ then run the marimo notebook
 
 	marimo run validate_calibrate_marimo.py
 
+### Inputs
+
+All loads are hourly, indexed by UTC hour beginning. Calibration blocks are
+UTC calendar months.
+
+| Input | File | Basis |
+| ----- | ---- | ----- |
+| Gross county load $X$ | cache `loads/0/_validate/calibrate_X_2020.csv.gz` | TSGAM prediction of `elec_total_MW` for each of the 407 WECC counties with 2020 weather; excludes rooftop PV |
+| Rooftop PV (DG) $D$ | `loads/wecc/county_dg_scaled.csv.gz` | county rooftop PV output (MW, positive), scaled to EIA small-scale solar generation (see below) |
+| State energy targets | `loads/_test/data/energy_target.csv` | monthly net-load energy (MWh) of the 13 WECC states |
+| Regional peak targets | `loads/_test/data/peak_target.csv` | monthly CAISO and WECC peak demand (MW) from EIA-930 (see below) |
+| Region membership | `loads/_test/data/state_groups.csv` | each county's CAISO and WECC membership, 0 to 1 (see below) |
+| Validation reference | `loads/caiso/2020.csv` | CAISO reported hourly load, Pacific prevailing time, hour ending |
+
+**Peak targets.** `peak_target.csv` holds each UTC month's maximum hourly
+demand of CAISO and of the 28 US Western Interconnection balancing
+authorities (BAs), from the cleaned EIA-930 series in
+`loads/_test/data/WECC_CAISO_hourly_load_2018-2022.csv` (2018-01 to
+2022-12). The WECC target excludes BC Hydro, AESO and CFE Baja California,
+matching the 13-state US county membership. EIA-930 demand is load served
+from the grid, so it is net of rooftop PV and includes transmission and
+distribution losses. See `loads/_test/data/README.md`.
+
+**CAISO membership.** County boundaries do not follow BA boundaries, so
+counties served by non-CAISO BAs are set from what serves them, using 2020
+EIA-930 demand:
+
+| County | CAISO share | Reason |
+| ------ | ----------- | ------ |
+| Los Angeles | 0.66 | excludes the LADWP BA (LADWP, Burbank, Glendale; 26.4 TWh) |
+| Riverside | 0.87 | excludes the IID Coachella Valley load (55% of IID's 3.82 TWh) |
+| Sacramento | 0 | SMUD (BANC) |
+| Stanislaus | 0 | TID (TIDC) and Modesto ID (BANC) |
+| Alpine, Del Norte, Imperial, Inyo, Lassen, Modoc, Mono, Siskiyou | 0 | not served by CAISO |
+
+Placer (Roseville, BANC), Shasta (Redding, BANC), Merced (TID) and San
+Joaquin (Modesto ID) are partly outside CAISO but remain full members.
+
+**Rooftop PV.** `loads/wecc/county_dg.csv` has about a third of EIA's
+estimated California small-scale solar generation, no year-to-year growth,
+and no DG for 39 WECC counties (e.g., Kern, San Bernardino, Ada, Canyon,
+Bernalillo, Clackamas). `loads/wecc/county_dg_scale.py` builds
+`county_dg_scaled.csv.gz` from it:
+
+1. Each missing county gets its state's DG profile in proportion to its
+   share of the state's 2020 gross load.
+2. Each state's DG is scaled, year by year, so its annual energy equals EIA's
+   estimated small-scale solar generation (`loads/wecc/eia_smallscale_pv.csv`,
+   Electric Power Annual Table 3.21, all sectors, 2018-2022), times the WECC
+   share of the state for Texas (El Paso) and South Dakota (Custer, Fall
+   River, Lawrence) by 2020 Census population.
+
+The hourly shapes and the county distribution within each state are kept.
+The factors are in `loads/wecc/county_dg_scaling.csv`; for 2020 California's
+is 3.18 (5.48 to 17.41 TWh, peak about 8.5 GW).
+
+### Procedure
+
+1. **Gross load.** `validate_calibrate.gross_load()` predicts $X$ for every
+   WECC county and caches it; negative predictions are clipped to zero.
+2. **DG.** `validate_calibrate.distributed_generation()` aligns
+   `county_dg_scaled.csv.gz` with $X$.
+3. **Calibration.** `validate_calibrate.calibrated_load()` runs
+   `Calibrate(X,dg=D,energy=...,peak=...,regions=...,search=True)`. For each
+   UTC month it finds a per-county scale and offset of the gross load so
+   that the shaped net load $L-D$ meets each state's energy target and
+   reaches, without exceeding, the CAISO and WECC peak targets, where the
+   regional net load is $\sum_j g_j(L_{tj}-D_{tj})$ with $g_j$ the county's
+   membership. It searches the predeclared 88-point weight grid and applies
+   the selection rule. Results are cached as `calibrate_L_2020.csv.gz`,
+   `calibrate_summary_2020.csv`, `calibrate_regions_2020.csv` and
+   `calibrate_states_2020.csv`.
+4. **Comparison.** The notebook compares the CAISO-region net load of the
+   calibrated load, $\sum_j g_j(L_{tj}-D_{tj})$, and of the uncalibrated
+   prediction, $\sum_j g_j(X_{tj}-D_{tj})$, with the CAISO reported load,
+   which is net of rooftop PV. CAISO hour-ending Pacific times are converted
+   to UTC hour beginning, and only hours common to both are compared. It
+   reports energy and peak error, MAPE, CV(RMSE), bias, R² and correlation,
+   overall and by month, and the average daily profiles.
+
+The same inputs drive `loads/_test/test_calibrate.py`, which calibrates
+August 2020 only.
+
+### Known gaps
+
+- **Losses.** Peak targets and the CAISO reference include transmission and
+  distribution losses. The state energy targets are not adjusted for losses,
+  so the calibrated regional energy may fall short of the reported energy by
+  about the loss rate (EIA estimates about 5% nationally).
+- **DG shape.** Only DG energy is scaled to EIA. Errors in its hourly shape or
+  county distribution appear directly as net-load errors in daylight hours.
+- **Membership.** Shares are annual and based on 2020; partly non-CAISO
+  counties listed above remain full members.
+
 ## Comparison to existing models
 
 | Method | Spatial unit | Test design | MAPE (%) |
