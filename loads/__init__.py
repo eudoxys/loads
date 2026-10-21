@@ -277,6 +277,7 @@ flowchart TB
     DGFILE --> DG
     EIA -- "state sales" --> CAL
     DG --> CAL
+    DG -. "dg=True" .-> NET
 
     %% ---------- offline build of county DG ----------
     subgraph BUILD["Offline build · dgen.compile()"]

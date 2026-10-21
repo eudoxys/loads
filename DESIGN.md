@@ -86,7 +86,8 @@ loads/
   industry.py        Industry(state=None,county=None,loadshape=None,refresh=False)
   agriculture.py     Agriculture(state=None,county=None,loadshape=None,refresh=False)
   transportation.py  Transportation() -> NotImplementedError
-  dgen.py            DG(state,county,date_range=None,source=...,on_missing="fillna"); compile()
+  dgen.py            DG(state,county,date_range=None,profile="weather",source=None,refresh=False);
+                     DG.merge(data,state,county); SmallScaleSolar(year,state=None,source=None); compile()
   _solar_estimator.py SolarEstimator (private, unused by DG default)
   # models
   total.py           Total(state,county,*,Y,X,dg,date_range,samples,percentile,holdout,refresh)
@@ -102,7 +103,6 @@ loads/
   # planned
   normalize.py       import arbitrary load data into a standard frame (#35, PR #36)
   growth            load growth for commercial floor area and beyond (#8, PR #19)
-  dgen.py            DG from EIA-861M small-scale solar; Total(dg=...) (PR #43)
   estimator.py       holdout folds (#24, PR #38)
   transportation.py  transportation load (no issue yet)
 ```
@@ -140,7 +140,8 @@ and `Y`, not the sector breakdown.
 | commercial scale | OpenEI #906 floor area | zero load (logged) | — |
 | industrial, agricultural | NREL county inventories (#97), 2019 | — | not checked against EIA |
 | weather | NSRDB via `eudoxys/weather` | — | — |
-| DG | NREL dGen nodal DG → `wecc/county_dg.csv.gz` | `on_missing="fillna"` | scaled to EIA small-scale PV (`county_dg_scale.py`) for calibration |
+| DG (`DG`, `Total(dg=True)`) | EIA-861M small-scale PV by state and month (`eia.Form861m`), allocated by county share of state load (`wecc/county_mwh.csv`), shaped by NSRDB GHI or dGen county profiles | state dGen profile for counties missing or all zero in dGen; NaN for months without EIA data | monthly county DG = EIA × load share |
+| DG (calibration) | NREL dGen nodal DG → `wecc/county_dg.csv.gz` | — | scaled to EIA small-scale PV (`county_dg_scale.py`) |
 | county monthly energy | EIA 861M retail sales (`HS861m`), allocated by `Energy` | — | state sales |
 | regional peaks | EIA-930 BA demand, cleaned (`_test/data`) | — | CAISO, WECC |
 | node map | `eudoxys/wecc240` bus GIS and county–node map | nearest load node | WECC240 bus loads |
@@ -152,7 +153,9 @@ and `Y`, not the sector breakdown.
 2. **Prediction.** Fit TSGAM on the training frame (log `Y`, yearly/weekly/
    daily harmonics, temperature and humidity); predict or sample `Y` for the
    requested `date_range` from that period's weather.
-3. **DG and net load.** Read county DG (negative) and add it to total load.
+3. **DG and net load.** With `Total(dg=True)`, allocate the state's monthly
+   EIA-861M small-scale PV to the county by load share, shape it hourly,
+   and add it (negative) to total load; `dg=False` (default) adds none.
 4. **Calibration (optional).** For a panel of counties, solve decision 12
    month by month. State energy is soft (reported, not forced); regional
    peaks are hard ceilings.
@@ -224,8 +227,10 @@ they bear on the version 1 contract.
 - **`Total`.** No `year` argument; CLI `-Y` only reaches `weather` (#26);
   non-contiguous `date_range` is bridged and sampling isn't seeded (#32);
   first/last hours of a prediction are NaN.
-- **`DG`.** Default `source` is cwd-relative; missing-county fallback and
-  `SolarModel` branch broken (#30).
+- **`DG`.** Months are taken in UTC (EIA's are local, well under 1% of
+  monthly energy); `profile="weather"` ignores panel orientation and
+  temperature; `profile="dgen"` covers 2018–2022 only. The EIA-861M rewrite
+  (PR #43) replaces the cwd-relative source and broken `SolarModel` of #30.
 - **`Calibrate`.** Issues #27, #28.
 - **Commercial scaling.** Under-scaling by an extra building-type share (#3);
   equal weighting of overloaded building types (#1); no floor-area growth (#8).

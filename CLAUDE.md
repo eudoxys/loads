@@ -140,14 +140,16 @@ make docs                           # pdoc → ./docs (creates its own .venv)
   literal) instead of `case _:`, so `plot` draws nothing for the sector
   datasets.
 - `Total` has no year argument; the CLI's `-Y` only reaches `Weather`, and
-  `Total`'s `dg` and `holdout` arguments are unused. `Total` imports `DG`
-  but doesn't use it (training DG comes from RESstock/COMstock PV).
+  `Total`'s `holdout` argument is unused.
 - `dgen.DG` allocates EIA-861M state small-scale PV to counties by
   `wecc/county_mwh.csv` load share and shapes it hourly (NSRDB GHI or dGen),
   returning `elec_dg_MW <= 0`; `DG.merge` adds it to a `Total` frame.
   `dgen.compile` writes nonnegative MW (as `Calibrate` expects), and the
   checked-in `wecc/county_dg*.csv.gz` files are also nonnegative, opposite to
-  the `elec_dg_MW` sign convention. `Total` still ignores its `dg` argument.
+  the `elec_dg_MW` sign convention. `Total(...,dg=True)` (CLI `-G`) merges
+  this DG into its result (replacing the RESstock/COMstock PV in training
+  data); the default `dg=False` leaves results unchanged. TSGAM training
+  never uses it.
 - `Energy` requires a list/tuple `year` (the cache name uses `min(year)`),
   its cache ignores `counties`, and a failing county appends the previous
   county's result.

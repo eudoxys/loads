@@ -96,8 +96,8 @@ Caveats
 
   - The county shares come from the bundled `wecc/county_mwh.csv`, which
     covers 2018 through 2022. Months outside that range use the share of the
-    same calendar month in the nearest year. Counties not in that file
-    (e.g., Santa Cruz AZ) get no DG and a warning.
+    same calendar month in the nearest year. Counties not in that file get
+    no DG and a warning.
 
   - The `"weather"` profile treats DG output as proportional to global
     horizontal irradiance, i.e., it ignores panel orientation and
@@ -411,7 +411,7 @@ class DG(pd.DataFrame):
         """@private Monthly county share of the state energy use"""
         if cls._county_mwh is None:
             mwh = pd.read_csv(COUNTY_MWH,index_col=[0])
-            # drop columns duplicated by pandas (e.g., "Pinal AZ.1")
+            # drop columns duplicated by pandas (e.g., "Pinal AZ.1"), if any
             mwh = mwh[[x for x in mwh.columns if not x.rsplit(".",1)[-1].isdigit()]]
             mwh.index = pd.PeriodIndex(pd.to_datetime(mwh.index,format="%b %Y"),freq="M")
             cls._county_mwh = mwh
