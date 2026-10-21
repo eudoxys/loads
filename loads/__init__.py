@@ -270,10 +270,10 @@ flowchart TB
     TRANS -.-> FIT
     WX --> FIT
 
-    DGFILE["wecc/county_dg.csv.gz<br/>(built offline, see below)"]
-    DG["dgen.py · DG<br/>county solar"]
+    DGFILE["wecc/county_mwh.csv<br/>county load shares"]
+    DG["dgen.py · DG<br/>county hourly solar"]
 
-    EIA -- "solar" --> DG
+    EIA -- "861M small-scale PV" --> DG
     DGFILE --> DG
     EIA -- "state sales" --> CAL
     DG --> CAL
@@ -282,10 +282,10 @@ flowchart TB
     subgraph BUILD["Offline build · dgen.compile()"]
         direction TB
         ENERGY["energy.py · Energy<br/>monthly MWh"]
-        DGEN_RAW["wecc/dgen.csv.gz<br/>NLR dGen nodal DG"]
+        DGEN_RAW["wecc/county_dg.csv.gz<br/>NLR dGen hourly shapes<br/>(profile=dgen)"]
         MWH_CF["wecc/county_mwh.csv<br/>wecc/county_cf.csv"]
-        COMPILE["nodal → county DG"]
-        DGOUT["wecc/county_dg.csv.gz"]
+        COMPILE["state monthly → county hourly DG"]
+        DGOUT["county DG file<br/>(nonnegative MW)"]
         ENERGY --> COMPILE
         ENERGY --> MWH_CF
         DGEN_RAW --> COMPILE

@@ -142,10 +142,12 @@ make docs                           # pdoc → ./docs (creates its own .venv)
 - `Total` has no year argument; the CLI's `-Y` only reaches `Weather`, and
   `Total`'s `dg` and `holdout` arguments are unused. `Total` imports `DG`
   but doesn't use it (training DG comes from RESstock/COMstock PV).
-- `dgen.SolarModel` has a stray `print(len(weather.index))`; `dgen.compile`
-  has debugging `print`/`quit()` calls that stop it before writing; the
-  `SolarModel` branch of `DG` uses undefined names. `wecc/county_dg.csv.gz`
-  holds positive DG output, opposite to the `elec_dg_MW` sign convention.
+- `dgen.DG` allocates EIA-861M state small-scale PV to counties by
+  `wecc/county_mwh.csv` load share and shapes it hourly (NSRDB GHI or dGen),
+  returning `elec_dg_MW <= 0`; `DG.merge` adds it to a `Total` frame.
+  `dgen.compile` writes nonnegative MW (as `Calibrate` expects), and the
+  checked-in `wecc/county_dg*.csv.gz` files are also nonnegative, opposite to
+  the `elec_dg_MW` sign convention. `Total` still ignores its `dg` argument.
 - `Energy` requires a list/tuple `year` (the cache name uses `min(year)`),
   its cache ignores `counties`, and a failing county appends the previous
   county's result.
