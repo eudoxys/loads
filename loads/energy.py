@@ -36,7 +36,10 @@ Caveats
   - The `year` argument must be a list or tuple of the start and stop years
     in this version.
 
-  - Counties for which `loads.total.Total` fails are reported with a warning.
+  - Counties for which `loads.total.Total` fails are reported with a warning
+    and omitted from the result, so downstream users (e.g.,
+    `loads/wecc/wecc_estimate.py`) treat them as having no energy data. A
+    `RuntimeError` is raised if every county fails.
 """
 
 import datetime as dt
@@ -121,17 +124,18 @@ class Energy(pd.DataFrame):
                 if progress:
                     progress(state,county,n+1,len(counties))
 
+                # a failed county is omitted rather than filled, so it can't
+                # be mistaken for real data (see issue #44)
                 try:
                     total = Total(state,county,date_range=date_range,samples=0)
-                    energy = total.drop(Total.EXOGENOUS_VARIABLES["elec_total_MW"],axis=1).resample(groupby).sum()
-                    energy.columns = [f"{county} {state}"]
-                except Exception as err:
-                    warn(f"{county} {state}: no total load -- {err}")
-                    total = pd.DataFrame(
-                        data={f"{county} {state}": [0]*len(date_range)},
-                        index=date_range,
-                        )
-                result.append(energy)
+                    county_energy = total.drop(Total.EXOGENOUS_VARIABLES["elec_total_MW"],axis=1).resample(groupby).sum()
+                    county_energy.columns = [f"{county} {state}"]
+                except Exception as err: # pylint: disable=broad-exception-caught
+                    warn(f"{county} {state}: no total load, county omitted -- {err}")
+                    continue
+                result.append(county_energy)
+            if not result:
+                raise RuntimeError(f"no total load for any county in {state}")
             energy = pd.concat(result,axis=1)
             energy.to_csv(cache.pathname,index=True,header=True,compression="gzip" if cache.pathname.endswith(".gz") else None)
 

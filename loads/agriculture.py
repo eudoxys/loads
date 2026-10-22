@@ -42,6 +42,9 @@ Caveat
   - Any agriculture for which a county FIPS code in the NREL data does not match a
     valid county FIPS code is matched to the previous county FIPS code, e.g.,
     `2270` is aggregated with `2265` and not `2275`.
+
+  - A county that has no agricultural data in the NREL source, e.g., San
+    Juan CO, has zero agricultural load.
 """
 
 import os
@@ -161,8 +164,12 @@ class Agriculture(pd.DataFrame):
                 how="outer",
                 )\
                 .drop({"FIPS","fips_matching"},axis=1)\
-                .rename({"ST":"state","COUNTY":"county"},axis=1)\
-                .ffill()\
+                .rename({"ST":"state","COUNTY":"county"},axis=1)
+            # fold unmatched NREL FIPS into the previous county, but don't
+            # copy the previous county's load into counties missing from the
+            # NREL data (see issue #44)
+            data[["state","county"]] = data[["state","county"]].ffill()
+            data = data.fillna(0.0)\
                 .groupby(["state","county"])\
                 .sum()
             CACHE = data.copy()

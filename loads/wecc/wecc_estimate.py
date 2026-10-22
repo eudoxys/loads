@@ -171,7 +171,6 @@ def get_targets() -> pd.DataFrame:
     """
     retail = pd.read_csv(os.path.join(HERE,"county_mwh.csv"),index_col=[0])
     retail.index = pd.DatetimeIndex(pd.to_datetime(retail.index,format="%b %Y"),tz="UTC")
-    retail = retail[[x for x in retail.columns if "." not in x]] # drop duplicated columns
 
     dg = pd.read_csv(os.path.join(HERE,"county_dg.csv.gz"),index_col=[0],parse_dates=[0])
     dg = dg.loc[START:STOP].resample("MS").sum()
