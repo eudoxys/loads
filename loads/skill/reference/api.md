@@ -18,7 +18,7 @@ Public exports (`from loads import ...`): `Aggregator`, `Agriculture`,
 ## Total
 
 ```python
-Total(state: str, county: str, *, Y="elec_total_MW", X=None, dg=None,
+Total(state: str, county: str, *, Y="elec_total_MW", X=None, dg: bool = False,
       date_range: pd.DatetimeIndex = None, samples: int = None,
       percentile: float = 96, holdout=None, refresh: bool = False)
 ```
@@ -41,7 +41,17 @@ used to predict or sample other periods from weather.
   temperature + humidity for residential/commercial/total (elec and
   nonelec), direct + diffuse irradiance for `elec_dg_MW`. Any other `Y`
   needs `X`.
-- `dg` and `holdout` are accepted and unused (documented as such).
+- `dg=True` (#43) merges `loads.dgen.DG` (EIA-861M small-scale solar,
+  see [DG](#dg)) with `DG.merge`: `elec_dg_MW` is added, or replaces the
+  building-stock PV in the training frame and the predicted DG when
+  `Y="elec_dg_MW"`, and `elec_net_MW = elec_total_MW + elec_dg_MW` is set
+  whenever `elec_total_MW` is present. So `samples=0, dg=True` returns
+  `X`, `elec_total_MW`, `elec_dg_MW`, `elec_net_MW`; the net inherits the
+  NaN lag-window edges of the total. `dg=True` raises `ValueError` for a
+  `nonelec_` `Y` and for a predicted `Y="elec_net_MW"`. The profile and
+  EIA file come from the class attributes `DG_PROFILE` (`"weather"`) and
+  `DG_SOURCE` (`None` = download). CLI: `loads print ... -G`.
+- `holdout` is accepted and unused (use `Total.test`).
 - Not calibrated to EIA or any reported total, in any year.
 - Output index is converted to UTC and named `timestamp`. The first and
   last 3 rows of each predicted column are NaN.
@@ -120,12 +130,24 @@ Annual county energy from NLR submission #97 converted to average MW.
 ## Units / Floorarea
 
 ```python
-Units(state: str, county: str = None, year: int = None, refresh=False, aggregate=sum)  # -> float
+Units(state: str, county: str = None, year: int = None, refresh=False, aggregate=sum,
+      backcast: bool = False)  # -> float
 Floorarea(state=None, county=None, year=None, refresh=False)
 ```
 
 Census housing units (2020–2024 estimates) and OpenEI commercial floor area
 (2019) by building type. Scaling inputs for the sector models.
+
+Load growth (#19): `Units` extrapolates years after 2024 at
+`Units.GROWTH_RATE` (1%/yr) and, with `backcast=True`, years before 2020
+(otherwise it uses 2020 and logs a warning). `Floorarea` scales its 2019
+data to any other `year` at `Floorarea.GROWTH_RATE` (1.75%/yr), forward or
+back. Both rates are class attributes; set them before constructing. The
+sector models do **not** use the growth: `Residential` asks for
+`Units(year=2018)` without `backcast` (so 2020 units) and `Commercial` for
+the 2019 floor area, so `Total` predictions for any year carry no growth.
+Apply growth yourself (e.g. scale a predicted residential series by
+`Units(st, co, 2030) / Units(st, co, 2020)`) and say so.
 
 ## Estimator
 
@@ -241,18 +263,41 @@ fails is omitted with a warning (its column is absent, not zero);
 ## DG
 
 ```python
-DG(state: str, county: str, date_range=None, source="wecc/county_dg.csv.gz", on_missing="fillna")
+DG(state: str, county: str, date_range: pd.DatetimeIndex = None, profile="weather",
+   source: str = None, refresh=False)
+DG.merge(data, state, county, **kwargs)        # add DG to a frame, recompute net
+SmallScaleSolar(year, state=None, source=None, refresh=False)
+compile(years=(2018, 2022), target="county_dg_eia.csv.gz", profile="weather", system="WECC")
 ```
 
-County rooftop-solar series from a precompiled WECC CSV, in a column
-named `elec_dg_MW` but holding **positive** generation (the file's
-convention, opposite to `elec_dg_MW` everywhere else). `source` is relative
-to the **current directory**; pass
-`os.path.join(os.path.dirname(loads.__file__), "wecc", "county_dg.csv.gz")`.
-Counties absent from the file need `date_range` (otherwise it fails). The
-file starts at 2018-01-01 07:00 UTC. Prefer `loads.skill.wecc_dg`, which
-reads either bundled DG file in the `loads` sign convention. For non-WECC
-counties use `Total`'s `elec_dg_MW` (training or predicted).
+Hourly county rooftop PV (#43), following the REGROW EIA-861M procedure:
+for each UTC month, the state's EIA-861M small-scale solar generation
+(all sectors) times the county's share of the state's energy use
+(`loads/wecc/county_mwh.csv`), spread over the hours by a profile, so
+monthly county DG energy matches EIA. Returns one column `elec_dg_MW`,
+**≤ 0** (negative load), indexed by UTC `timestamp`.
+
+- `date_range` defaults to 2018; naive times are taken as UTC.
+- `profile="weather"`: NSRDB global horizontal irradiance (needs NSRDB
+  credentials; ignores panel orientation and temperature). `"dgen"`: the
+  bundled `county_dg.csv.gz` dGen shape, 2018–2022 only; counties missing
+  or all zero there use their state's total dGen shape.
+- `source`: a local EIA-861M file ("Monthly Totals- States" layout);
+  `None` downloads with `eia.Form861m`. Hours of months EIA has not
+  published are NaN (and not cached).
+- Shares exist only for counties in `county_mwh.csv`, i.e. every county of
+  the 13 WECC states, 2018–2022; other years use the same month of the
+  nearest year. Any other county gets **zero DG with a `UserWarning`**
+  **[tested]**.
+- Months are UTC; EIA's are local (less than 1% energy shift).
+- `compile` (`python3 -m loads.dgen --target=...`) writes every WECC
+  county as **positive** output, the convention `Calibrate(dg=...)`
+  expects.
+
+This replaces the earlier `DG(..., source="wecc/county_dg.csv.gz")` file
+reader. The bundled `county_dg.csv.gz`/`county_dg_scaled.csv.gz` files
+still hold positive dGen output; `loads.skill.wecc_dg` reads them in the
+`loads` convention.
 
 ## Aggregator / aggregate
 

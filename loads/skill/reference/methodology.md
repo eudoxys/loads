@@ -78,9 +78,9 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
   unless calibration is applied afterwards (`Calibrate`, or the
   precomputed `wecc_estimate`).
 - Industrial/agricultural shape.
-- Load growth: predicted years inherit 2018 scaling, so growth only enters
-  through what the stock and inventory data encode (commercial floor area
-  has no annual growth, issue #8).
+- Load growth: predicted years inherit the 2018 stock scaling. `Units` and
+  `Floorarea` can extrapolate growth (#19), but the sector models don't
+  use it, so it must be applied separately.
 - The full sector breakdown in predictions (one column per call).
 - Coverage outside years with NSRDB weather; most exercise has been
   2018–2022 in WECC states. Future years need future weather that NSRDB

@@ -155,16 +155,82 @@ def test_energy_int_year_fails(tmp_path, monkeypatch):
         loads.Energy("NV", "Esmeralda", 2019)
 
 
-def test_dg_default_source_is_cwd_relative(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    with pytest.raises(FileNotFoundError):
-        loads.DG("CA", "Alameda")
+def _stub_dg(monkeypatch, tmp_path, state="CA", tot_mwh=1000.0):
+    """Stub the EIA download and the NSRDB profile of `loads.dgen.DG`"""
+    import loads.dgen as dgen
+    from cache import Cache
+    monkeypatch.setattr(Cache, "CACHEDIR", str(tmp_path))
+    monkeypatch.setattr(dgen.SmallScaleSolar, "_data", {})
+
+    def eia(cls, year, refresh):
+        months = pd.period_range(f"{year}-01", f"{year}-12", freq="M")
+        index = pd.MultiIndex.from_product([months, [state]], names=["month", "state"])
+        frame = pd.DataFrame(0.0, index=index, columns=dgen.SmallScaleSolar.COLUMNS)
+        frame["tot_mwh"] = tot_mwh
+        return frame
+
+    def profile(cls, state, county, year, profile):
+        index = dgen.DG._year_range(year)
+        hour = index.hour.to_numpy()
+        return pd.Series(np.clip(np.sin(np.pi * (hour - 14) / 12), 0, None), index=index)
+
+    monkeypatch.setattr(dgen.SmallScaleSolar, "_get_eia", classmethod(eia))
+    monkeypatch.setattr(dgen.DG, "_get_profile", classmethod(profile))
+    return dgen
 
 
-def test_dg_bundled_file_is_positive_output():
+def test_dg_signature():
+    p = params(loads.DG.__init__)
+    assert list(p)[1:4] == ["state", "county", "date_range"]
+    assert p["profile"].default == "weather" and p["source"].default is None
+    assert loads.DG.PROFILES == ["weather", "dgen"]
+
+
+def test_dg_is_eia_allocated_negative_load(monkeypatch, tmp_path):
+    # #43: DG allocates EIA-861M state small-scale PV by county share of state energy use
+    dgen = _stub_dg(monkeypatch, tmp_path)
+    july = pd.date_range("2020-07-01", "2020-07-31 23:00", freq="1h", tz="UTC")
+    dg = dgen.DG("CA", "Alameda", date_range=july)
+    assert list(dg.columns) == ["elec_dg_MW"] and len(dg) == len(july)
+    assert (dg.elec_dg_MW <= 0).all() and dg.elec_dg_MW.min() < 0
+    share = dgen.DG._get_share("CA", "Alameda", pd.PeriodIndex(["2020-07"], freq="M")).iloc[0]
+    assert np.isclose(-dg.elec_dg_MW.sum(), 1000.0 * share, rtol=1e-4)
+
+
+def test_dg_outside_county_mwh_is_zero(monkeypatch, tmp_path):
+    dgen = _stub_dg(monkeypatch, tmp_path, state="IL")
+    with pytest.warns(UserWarning, match="no DG allocated"):
+        dg = dgen.DG("IL", "Cook", date_range=pd.date_range("2020-07-01", periods=48, freq="1h", tz="UTC"))
+    assert (dg.elec_dg_MW == 0).all()
+
+
+def test_total_dg_option_rules():
+    p = params(loads.Total.__init__)
+    assert p["dg"].default is False
+    assert "dg" in loads.Total.makeargs(state="CA", county="Alameda", dg=True)  # CLI -G reaches Total
+    assert loads.Total.DG_PROFILE == "weather" and loads.Total.DG_SOURCE is None
+    with pytest.raises(ValueError):
+        loads.Total("CA", "Alameda", Y="nonelec_total_MW", dg=True)
+    with pytest.raises(ValueError):
+        loads.Total("CA", "Alameda", Y="elec_net_MW", samples=0, dg=True,
+                    date_range=pd.date_range("2020-01-01", periods=24, freq="1h", tz="UTC"))
+
+
+def test_growth_not_wired_into_sector_models():
+    # #19: Units/Floorarea grow outside their data years, but the sector models
+    # still ask for the 2018/2019 base, so Total predictions carry no growth
+    import loads.residential as res
+    import loads.commercial as com
+    assert "year=2018)" in inspect.getsource(res.Residential.__init__)
+    assert "backcast" not in inspect.getsource(res.Residential.__init__)
+    assert "Floorarea(state=state,county=county)" in inspect.getsource(com.Commercial.__init__)
+    assert loads.Units.GROWTH_RATE == 0.01 and loads.Floorarea.GROWTH_RATE == 0.0175
+    assert params(loads.Units.__new__)["backcast"].default is False
+
+
+def test_bundled_dg_files_are_positive_output():
     source = os.path.join(os.path.dirname(loads.__file__), "wecc", "county_dg.csv.gz")
     if not os.path.exists(source):
         pytest.skip("loads/wecc data files are not installed")
-    day = pd.date_range("2020-07-01 12:00", "2020-07-02 11:00", freq="1h", tz="UTC")
-    dg = loads.DG("CA", "Alameda", date_range=day, source=source)
-    assert list(dg.columns) == ["elec_dg_MW"] and dg.elec_dg_MW.max() > 0  # opposite to elec_dg_MW <= 0
+    head = pd.read_csv(source, index_col=0, nrows=24 * 200)
+    assert (head.values >= 0).all() and head.values.max() > 0  # opposite to elec_dg_MW <= 0

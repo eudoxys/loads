@@ -57,10 +57,33 @@ ls.to_csv(df, "out/maricopa_2019_2021.csv.gz")
 ```
 
 Choices to state in the write-up: `total="sum"` vs `"direct"`, `edges`,
-and that 2018 rows (if any) are training data.
+the DG source, and that 2018 rows (if any) are training data.
 
 Only the total (no sectors) is cheaper: `county_loads(c, years)` fits two
 models (total, DG) instead of four.
+
+DG: by default `elec_dg_MW` is the TSGAM prediction of the building-stock
+rooftop PV. For DG that matches EIA's reported small-scale solar each
+month (WECC states only; needs EIA access and NSRDB), use
+
+```python
+df = ls.county_loads(c, [2019, 2020, 2021], sectors=True, dg_source="eia")
+```
+
+which takes `elec_dg_MW` from `loads.dgen.DG` (what `Total(dg=True)`
+merges) and fits one model fewer.
+
+Load growth: predictions keep 2020 housing units and 2019 commercial floor
+area in every year. To show growth, scale the predicted sector series, e.g.
+
+```python
+from loads import Units, Floorarea
+g_res = Units(c.state, c.county, 2030) / Units(c.state, c.county, 2020)   # 1%/yr after 2024
+g_com = (1 + Floorarea.GROWTH_RATE) ** (2030 - Floorarea.YEAR)             # 1.75%/yr from 2019
+```
+
+and recompute the total and net; record the rates in the provenance
+(`ls.to_csv(..., extra={...})`).
 
 ## 3. Sweep a state or interconnection
 
@@ -291,6 +314,6 @@ state the assumed heat-pump COP explicitly.
 
 When results go to a person, include: county list (and any ambiguous or
 failed ones), years, mode (`prediction`/`sample`/`percentile`/training),
-total convention (`direct`/`sum`), edge handling, calibration targets, and
-the provenance sidecar. Quote the scope limits from
+total convention (`direct`/`sum`), DG source (model or EIA), any growth
+applied, edge handling, calibration targets, and the provenance sidecar. Quote the scope limits from
 [methodology.md](methodology.md#not-promised) that matter for the question.

@@ -107,7 +107,8 @@ every part.
 |---|---|
 | `Total`, `Residential`, `Commercial`, `loads.skill` frames (`elec_dg_MW`) | ≤ 0 (negative load) |
 | `Calibrate(dg=...)`, `Calibrate.net = L − D` | ≥ 0 (generation) |
-| `loads/wecc/county_dg*.csv.gz`, `DG(...)` (column still named `elec_dg_MW`) | ≥ 0 (generation) |
+| `loads.dgen.DG(...)`, `Total(..., dg=True)` | ≤ 0 |
+| `loads/wecc/county_dg*.csv.gz`, `loads.dgen.compile()` output | ≥ 0 (generation) |
 | `ls.wecc_dg(convention="load")` (default) | ≤ 0 |
 
 ## Precomputed WECC files (`loads/wecc/`)

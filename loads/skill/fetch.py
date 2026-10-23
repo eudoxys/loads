@@ -253,6 +253,7 @@ def county_loads(
     when,
     *,
     dg: bool = True,
+    dg_source: Literal["model", "eia"] = "model",
     sectors: bool = False,
     total: Literal["direct", "sum"] | None = None,
     use_training_actuals: bool = True,
@@ -272,8 +273,18 @@ def county_loads(
     sector identity holds exactly. Default: `"sum"` when `sectors` else
     `"direct"`. The two differ by a few percent; never mix them in one study.
 
+    `dg_source="model"` (default, what `Total` does with `dg=False`)
+    predicts `elec_dg_MW` from the TSGAM model of the ResStock/ComStock
+    rooftop PV. `"eia"` uses `loads.dgen.DG` instead (what `Total(dg=True)`
+    merges): EIA-861M state small-scale solar allocated to the county by its
+    share of state energy use and shaped by NSRDB irradiance, so monthly DG
+    energy matches EIA. It needs EIA access and covers only counties in
+    `loads/wecc/county_mwh.csv` (the 13 WECC states); other counties get zero
+    DG with a warning, and months EIA has not published are NaN.
+
     Hours in the training year (2018) are taken from `training()` when
-    `use_training_actuals` (mirrors `Estimator`'s `keep_actuals`).
+    `use_training_actuals` (mirrors `Estimator`'s `keep_actuals`); with
+    `dg_source="eia"` the EIA DG is kept for those hours.
     """
     c = place if isinstance(place, County) else resolve(place)
     index = when if isinstance(when, pd.DatetimeIndex) else hourly_range(when)
@@ -289,9 +300,17 @@ def county_loads(
     if sectors:
         for s in schema.WEATHER_DRIVEN_SECTORS:
             frames.append(series(c, index, f"elec_{s}_MW", edges=edges, refresh=refresh)[[f"elec_{s}_MW"]])
-    if dg:
+    if dg_source not in ("model", "eia"):
+        raise ValueError(f"dg_source must be 'model' or 'eia', not {dg_source!r}")
+    if dg and dg_source == "model":
         frames.append(series(c, index, "elec_dg_MW", edges=edges, refresh=refresh)[["elec_dg_MW"]])
     out = pd.concat(frames, axis=1)
+    if dg and dg_source == "eia":
+        from loads.dgen import DG
+
+        eia = pd.DataFrame(DG(c.state, c.county, date_range=index, refresh=refresh))
+        out["elec_dg_MW"] = eia["elec_dg_MW"].reindex(out.index).to_numpy()
+        notes.append("elec_dg_MW from loads.dgen.DG (EIA-861M small-scale solar, NSRDB shape)")
     out = out.loc[:, ~out.columns.duplicated()]
 
     if sectors:
@@ -307,6 +326,8 @@ def county_loads(
         hit = out.index.isin(ref.index)
         if hit.any():
             for col in out.columns:
+                if col == "elec_dg_MW" and dg_source == "eia":
+                    continue
                 if col in ref.columns:
                     out.loc[hit, col] = ref.loc[out.index[hit], col].values
             notes.append(f"{int(hit.sum())} hours replaced by 2018 training data")
@@ -317,7 +338,8 @@ def county_loads(
     weather = [c_ for c_ in schema.WEATHER_COLUMNS if c_ in out.columns]
     loads_cols = [c_ for c_ in out.columns if c_ not in weather]
     out = out[loads_cols + weather].rename_axis("timestamp")
-    prov = Provenance(county=c.county_st, mode=f"county_loads(total={total})",
+    mode = f"county_loads(total={total}" + (", dg_source=eia)" if dg and dg_source == "eia" else ")")
+    prov = Provenance(county=c.county_st, mode=mode,
                       columns=list(out.columns), start=str(index[0]), end=str(index[-1]),
                       edges=edges, notes=notes)
     return _stamp(out, prov)

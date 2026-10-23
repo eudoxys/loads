@@ -6,11 +6,11 @@ the workaround. Items marked **[tested]** are reproduced offline in
 `loads` changed: update this file in the same change, do not just delete the
 test.
 
-Tracking: #26 (items 1, 3), #29 (16), #30 (19), #32 (7, 9), #33 (17), #15
+Tracking: #26 (items 1, 3), #29 (16), #32 (7, 9), #33 (17), #15
 (22), #12 (DG sign, lag trimming), all at
 https://github.com/eudoxys/loads/issues. #27 and #28 described the
-calibration API that the `Calibrate` rewrite (#20) replaced; #31 and #44 are
-fixed. Check whether an issue is closed before relying on a workaround
+calibration API that the `Calibrate` rewrite (#20) replaced, and #30
+described the `DG` file reader that #43 replaced; #31 and #44 are fixed. Check whether an issue is closed before relying on a workaround
 below.
 
 Do not silently "fix" these in `loads` from inside a workflow. Work around
@@ -34,7 +34,8 @@ the tracking issues above or open a new one.
    `python3 -m loads.skill county`.
 
 4. **Prediction frames hold one target.** `samples>=0` returns `X` + `Y`
-   only. Sector columns, DG and net need separate calls. → `county_loads`.
+   only (plus the EIA DG and net with `dg=True`). Sector columns and the
+   model DG need separate calls. → `county_loads`.
 
 5. **Industrial/agricultural cannot be predicted by default.** They are
    absent from `EXOGENOUS_VARIABLES` (`KeyError` without `X`), and are flat
@@ -102,7 +103,9 @@ the tracking issues above or open a new one.
 
 15. **Nothing in `Total` is calibrated.** Neither the 2018 training frame
     nor predictions are adjusted to EIA sales; scaling only enters through
-    Census housing units and OpenEI floor area. → calibrate explicitly
+    Census housing units and OpenEI floor area. Only the DG can be
+    EIA-based (`dg=True`), and then net load mixes uncalibrated load with
+    EIA-matched DG. → calibrate explicitly
     (above), or for WECC 2018–2022 use `wecc_estimate`, whose monthly
     energy matches EIA-861M retail allocations plus rooftop PV; state which
     figures you matched.
@@ -124,12 +127,23 @@ the tracking issues above or open a new one.
 18. **Two location formats.** `Total`/sector classes: `state=, county=`.
     `Estimator`, `Cluster`, CSV maps: `"County ST"`.
 
-19. **`DG` default source is relative to the working directory**
-    (`"wecc/county_dg.csv.gz"`) **[tested]**, WECC only, and needs
-    `date_range` for counties missing from the file. Its `elec_dg_MW`
-    column holds **positive** generation, the opposite of `elec_dg_MW`
-    everywhere else **[tested]**. → `ls.wecc_dg` (absolute path, `loads`
-    sign convention), or `Total`'s DG.
+19. **Two DGs, and `Total(dg=True)` changes which one you get.** By
+    default `elec_dg_MW` is the ResStock/ComStock rooftop PV (training) or
+    its TSGAM prediction; `dg=True` (#43) replaces it with `loads.dgen.DG`,
+    EIA-861M small-scale solar allocated by county energy share, which is
+    several times larger in California. `DG` gives **zero with only a
+    warning** for counties outside the 13 WECC states **[tested]**, needs
+    EIA access, and NaN for months EIA has not published. →
+    `county_loads(dg_source="model"|"eia")`, and report which DG you used;
+    don't mix them across counties or years. (The earlier footgun about a
+    cwd-relative, positive-valued `DG` file reader is gone with #43.)
+
+19b. **Load growth (#19) is not in `Total`.** `Units` (1%/yr after
+    2024; before 2020 only with `backcast=True`) and `Floorarea`
+    (1.75%/yr from 2019) now extrapolate, but `Residential` and `Commercial`
+    still request their 2018/2019 bases, so a `Total` prediction for 2030 has
+    2020 housing units and 2019 floor area **[tested]**. → apply growth to
+    the predicted sector series yourself and state the rate.
 
 20. **`Industry`/`Agriculture` `loadshape` must average 1.0** (values are
     `shape × average MW`) and is ignored unless both `state` and `county`

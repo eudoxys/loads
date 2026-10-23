@@ -35,7 +35,7 @@ ln -s "$PWD/loads/skill" ~/.claude/skills/loads     # or a project's .claude/ski
 | OpenEI commercial floor area (#906) | `Floorarea` | `data.openei.org` |
 | NLR county industry/agriculture (#97) | `Industry`, `Agriculture` | `data.nlr.gov` |
 | NSRDB PSM4 hourly weather (via pvlib) | `weather.Weather` → every `Total` | NSRDB API (key) |
-| EIA-861M sales / small-scale solar | `eia.HS861m`, `Form861m` | `www.eia.gov` |
+| EIA-861M sales / small-scale solar | `eia.HS861m`, `Form861m` → `loads.dgen.DG`, `Total(dg=True)` | `www.eia.gov` |
 | WECC240 node GIS (optional) | your aggregation | `github.com/eudoxys/wecc240` |
 
 Bundled (offline, in a clone): `fips` county/state metadata,

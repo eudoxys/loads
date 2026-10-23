@@ -55,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("years", help="e.g. 2020, 2019-2021, 2018,2020")
     c.add_argument("--sectors", action="store_true")
     c.add_argument("--no-dg", action="store_true")
+    c.add_argument("--dg-source", choices=["model", "eia"], default="model",
+                   help="elec_dg_MW from the TSGAM stock-PV model or loads.dgen.DG (EIA-861M)")
     c.add_argument("--total", choices=["direct", "sum"])
     c.add_argument("--edges", choices=["fill", "pad", "nan"], default="fill")
     c.add_argument("--cachedir")
@@ -106,7 +108,8 @@ def main(argv: list[str] | None = None) -> int:
         from .validate import validate
         fetch.configure(a.cachedir)
         if a.cmd == "county":
-            df = fetch.county_loads(a.place, _years(a.years), dg=not a.no_dg, sectors=a.sectors,
+            df = fetch.county_loads(a.place, _years(a.years), dg=not a.no_dg, dg_source=a.dg_source,
+                                    sectors=a.sectors,
                                     total=a.total, edges=a.edges)
         else:
             df = fetch.series(a.place, _years(a.years), a.column, mode=a.mode, samples=a.samples,

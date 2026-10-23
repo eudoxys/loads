@@ -121,3 +121,20 @@ def test_batch_collects_errors():
 
     res = fetch.batch(["Alameda CA"], boom)
     assert res.errors == {"Alameda CA": "RuntimeError: no data"}
+
+
+def test_county_loads_eia_dg(monkeypatch):
+    import loads.dgen
+
+    class FakeDG(pd.DataFrame):
+        def __init__(self, state, county, date_range=None, refresh=False, **_):
+            super().__init__({"elec_dg_MW": -5.0}, index=date_range)
+
+    monkeypatch.setattr(loads.dgen, "DG", FakeDG)
+    df = fetch.county_loads("Alameda CA", [2018, 2020], dg_source="eia")
+    assert (df["elec_dg_MW"] == -5.0).all()  # EIA DG kept in 2018 hours, not replaced by stock PV
+    assert np.allclose(df["elec_net_MW"], df["elec_total_MW"] - 5.0)
+    assert df.attrs["loadskill"]["mode"].endswith("dg_source=eia)")
+    assert not any(c["Y"] == "elec_dg_MW" for c in FakeTotal.calls)  # no TSGAM DG model fitted
+    with pytest.raises(ValueError, match="dg_source"):
+        fetch.county_loads("Alameda CA", 2020, dg_source="dgen")

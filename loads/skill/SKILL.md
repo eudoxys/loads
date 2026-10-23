@@ -122,8 +122,13 @@ Facts that follow from the source:
   `date_range`**. There is no `year` argument: `Total("CA", "Alameda",
   2020)` raises `TypeError`, and `loads print -Y 2020` silently prints 2018.
 - Predict/sample modes return **only** the exogenous weather columns and the
-  one target `Y`. For total + DG + net + sectors in a year other than 2018,
+  one target `Y` (plus `elec_dg_MW`, and `elec_net_MW` when `Y` is
+  `elec_total_MW`, with `dg=True`). For total + DG + net + sectors in a year other than 2018,
   call once per target; `county_loads` does that and assembles them.
+- `dg=True` adds the EIA-based `loads.dgen.DG` as `elec_dg_MW` (replacing
+  the model's DG) and recomputes `elec_net_MW` where `elec_total_MW` is
+  present; `county_loads(dg_source="eia")` does the same for the assembled
+  frame.
 - Predictable targets: `elec_total_MW`, `elec_residential_MW`,
   `elec_commercial_MW`, `elec_dg_MW` and their `nonelec_` analogues.
   Industrial and agricultural are flat at the 2018 level (no shape, no
@@ -181,10 +186,13 @@ These fail silently or late. The full list with source references is in
 
 - **Wrong mode.** Training data returned where a year was intended (see
   above). Check `df.index.year.unique()` and `df.attrs["loadskill"]["mode"]`.
-- **DG sign.** `loads` frames use `elec_dg_MW <= 0`; `Calibrate(dg=...)`
-  and the bundled `loads/wecc/county_dg*.csv.gz` files (and `DG()` reading
-  them) use positive generation. `wecc_dg` and `shape_to_targets` convert;
-  anything else, convert yourself and say which convention a file uses.
+- **Which DG, which sign.** `elec_dg_MW` is the building-stock PV model by
+  default, or EIA-861M small-scale solar with `Total(dg=True)` /
+  `county_loads(dg_source="eia")` (zero, with a warning, outside the 13
+  WECC states). Say which. `loads` frames and `loads.dgen.DG` use
+  `elec_dg_MW <= 0`; `Calibrate(dg=...)`, the bundled
+  `loads/wecc/county_dg*.csv.gz` files and `dgen.compile` output use
+  positive generation. `wecc_dg` and `shape_to_targets` convert.
 - **`Calibrate` shapes, it does not rescale.** It fits a scale and an
   offset per unit per UTC month to *net-load* state energy and regional
   peak targets, needs at least one peak region, and rejects NaN. See
@@ -205,6 +213,9 @@ These fail silently or late. The full list with source references is in
   `state="CA", county="Alameda"`; `Estimator`, `Cluster`, `Calibrate`
   columns, `clusters.csv` and the WECC files use `"Alameda CA"`.
   `County.kwargs` and `County.county_st` give both.
+- **No growth in predictions.** `Units`/`Floorarea` can extrapolate growth,
+  but `Total` predictions keep 2020 housing units and 2019 floor area for
+  every year. Apply growth separately and state the rate.
 - **Scope.** Large loads (data centers) and EV/transportation load are not
   modeled; industrial and agricultural load are flat annual averages. Say so
   when results feed decisions.
