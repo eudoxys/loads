@@ -18,6 +18,12 @@ from the most recent year at the annual rate `Units.GROWTH_RATE`, e.g.,
     Units.GROWTH_RATE = 0.01 # 1% annual growth
     print(Units("CA","Alameda",2030))
 
+Years before the earliest Census data (currently 2020) use the 2020 data
+unless `backcast=True`, in which case they are extrapolated backward at the
+same rate, e.g.,
+
+    print(Units("CA","Alameda",2018,backcast=True))
+
 References
 ----------
 
@@ -54,7 +60,8 @@ class Units(float):
         county:str=None,
         year:str|int=None,
         refresh:bool=False,
-        aggregate:Callable=sum
+        aggregate:Callable=sum,
+        backcast:bool=False,
         ):
         """Load housing units from Census Bureau
 
@@ -68,12 +75,16 @@ class Units(float):
           - `year`: year for which to read data (default most recent). Years
             after the most recent year for which county-level data is
             available are extrapolated from that year using `GROWTH_RATE`.
-            Years prior to the earliest data use the earliest data.
+            Years prior to the earliest data use the earliest data unless
+            `backcast` is `True`.
 
           - `refresh`: force refresh of cache data
 
           - `aggregate`: function to call when multiple values are found
             (must return a float)
+
+          - `backcast`: extrapolate years prior to the earliest data
+            backward from that year using `GROWTH_RATE` (default `False`)
         """
 
         if cls.CACHEDIR:
@@ -124,14 +135,19 @@ class Units(float):
                 compression="gzip" if cache.pathname.endswith(".gz") else None,
                 )
 
-        # apply annual growth rate to years after the most recent data
+        # apply annual growth rate to years outside the available data
         growth = 1.0
         if year is None:
             year = data.columns[-1]
         else:
             year = type(data.columns[-1])(year)
         if year < min(data.columns):
-            _logger.warning(f"Units({state=},{county=},{year=}) is prior to {min(data.columns)}, using year={min(data.columns)} instead")
+            if backcast:
+                growth = (1+cls.GROWTH_RATE)**(int(year)-int(min(data.columns)))
+                _logger.debug(f"Units({state=},{county=},{year=}) is prior to {min(data.columns)}, "\
+                    f"applying {cls.GROWTH_RATE*100:.2f}% annual growth ({growth=:.4f})")
+            else:
+                _logger.warning(f"Units({state=},{county=},{year=}) is prior to {min(data.columns)}, using year={min(data.columns)} instead")
             year = min(data.columns)
         elif year > max(data.columns):
             growth = (1+cls.GROWTH_RATE)**(int(year)-int(max(data.columns)))

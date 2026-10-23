@@ -216,11 +216,6 @@ if __name__ == '__main__':
     pd.options.display.max_columns = None
     pd.options.display.max_rows = None
 
-    print(Floorarea("CA","Alameda"))
-    print(Floorarea("CA","Alameda",2020))
-    
-    quit()
-
     logging.basicConfig(level=logging.DEBUG)
     from fips import Counties
 
