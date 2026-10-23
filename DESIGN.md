@@ -44,7 +44,6 @@ reversed decision in place and note the date.
 | 8 | Columns encode fuel, category and unit: `{elec\|nonelec}_{baseload\|cooling\|heating\|total\|dg\|net}_MW`; `Total` reports `elec_{sector}_MW`. Weather columns keep `weather.Weather` names. |
 | 9 | Time index is hourly, tz-aware UTC, named `timestamp`, hour-beginning. |
 | 10 | DG is a negative load in `elec_dg_MW`; `elec_net_MW = elec_total_MW + elec_dg_MW`. |
-| 11 | Calibration to published totals is a separate step (`Calibrate`), not part of the sector or total classes. (#7 tracks removing the remaining in-class calibration.) |
 | 12 | Calibration solves the Meyers–Chassin hierarchical net-load shaping SOCP: per-unit affine map $L=sX+b$, soft per-state energy targets, hard regional peak ceilings, DG fixed; solved independently per UTC calendar month. |
 | 12b | Calibration weights are not tuned per run: with `search=True` a predeclared grid (`Calibrate.GRID`) is solved and a fixed rule selects the result (peak shortfall ≤ `PEAK_SHORTFALL_TOL`, state energy error ≤ `STATE_ENERGY_TOL`, nonnegative load, then least shape RMSE). |
 | 13 | Counties are clustered by SVD + k-means on `elec_total_MW`; k = 6 (`loads/clusters.csv`). A cluster's medoid stands in for its members when per-county tuning is too costly. |
