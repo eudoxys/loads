@@ -141,6 +141,50 @@ def test_estimator_uses_county_st():
     assert list(p)[1] == "county_st"
     from loads.estimator import EstimatorConfig
     assert EstimatorConfig().log is True and EstimatorConfig().holdout == "5d"
+    assert EstimatorConfig().fold == 0 and "fold" in EstimatorConfig._fields  # #38 folds
+
+
+def test_estimator_fold_groups():
+    # #38: fold=0 is the old every-Nth-interval holdout; fold=k shifts it by k
+    from loads.estimator import EstimatorError, _get_holdout
+    idx = pd.date_range("2018-01-01", "2018-01-10 23:00", freq="1h", tz="UTC")
+    frame = pd.DataFrame({"x": 0.0}, index=idx)
+    days = lambda k: sorted({t.day for t in _get_holdout(frame, "5d", k)})
+    assert days(0) == [4, 9] and days(1) == [5, 10]  # ndx is the 1-based day of year
+    with pytest.raises(EstimatorError):
+        _get_holdout(frame, "5d", 5)
+
+
+# --- Normalize ---------------------------------------------------------------------
+
+def _meters():
+    t = pd.date_range("2020-01-01", periods=8, freq="15min")  # two hours of 15-min kWh
+    return pd.DataFrame({"t": list(t) * 2, "m": ["a"] * 8 + ["b"] * 8, "kwh": [1.0] * 8 + [3.0] * 8})
+
+
+def test_normalize_signature_and_required_args():
+    p = params(loads.Normalize.__init__)
+    assert list(p)[1] == "source"
+    assert all(p[k].kind is inspect.Parameter.KEYWORD_ONLY
+               for k in ("timestamps", "timezone", "scales", "mapping", "groups", "weather"))
+    with pytest.raises(ValueError):
+        loads.Normalize(_meters(), mapping={"elec_net_MW": "kwh"})
+    with pytest.raises(ValueError):
+        loads.Normalize(_meters(), timestamps={"t": pd.DatetimeIndex})
+
+
+def test_normalize_averages_rows_within_an_hour():
+    # footguns.md #31/#32: ungrouped rows are averaged across units, and
+    # sub-hourly energy is averaged per interval (not summed to hourly energy)
+    args = dict(timestamps={"t": pd.DatetimeIndex}, mapping={"elec_net_MW": "kwh"}, scales={"kwh": 1e-3})
+    flat = loads.Normalize(_meters(), **args)
+    assert str(flat.index.tz) == "UTC" and len(flat) == 2
+    assert np.allclose(flat.elec_net_MW, 0.002)       # mean of meters (sum would be 0.004)
+    grouped = loads.Normalize(_meters(), groups={"kwh": "m"}, **args)
+    assert grouped.index.names == ["m", "timestamp"]
+    assert np.allclose(grouped.xs("a").elec_net_MW, 0.001)  # 4 kWh/h is 0.004 MW
+    total = grouped.groupby(level="timestamp").sum()
+    assert np.allclose(total.elec_net_MW, 0.004)       # sum of per-meter means"
 
 
 def test_energy_needs_year_sequence():

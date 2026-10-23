@@ -8,8 +8,8 @@ mentions.
 
 Public exports (`from loads import ...`): `Aggregator`, `Agriculture`,
 `Calibrate`, `COMstock`, `Cluster`, `Commercial`, `DG`, `Energy`,
-`Estimator`, `Floorarea`, `Industry`, `RESstock`, `Residential`, `Total`,
-`Transportation`, `Units`, `main` (CLI). `aggregate()` lives in
+`Estimator`, `Floorarea`, `Industry`, `Normalize`, `RESstock`,
+`Residential`, `Total`, `Transportation`, `Units`, `main` (CLI). `aggregate()` lives in
 `loads.aggregate` (`loads.aggregate` is the module, not the function);
 `CalibrationError` in `loads.calibrate`; `EstimatorConfig` and
 `EstimatorError` in `loads.estimator`. `import loads` does not import
@@ -157,7 +157,7 @@ EstimatorConfig(verbose=False, debug=False, log=True, ar=False,
                 solver="CLARABEL", harmonics=[4, 4, 6],
                 sectors=["residential","commercial","industrial","agricultural"],
                 enduse="elec_total_MW", weather=["temperature_degF","humidity_pc"],
-                keep_actuals=True, holdout="5d")
+                keep_actuals=True, holdout="5d", fold=0)
 ```
 
 `outlier_regularizer` (1e-4) and `outlier_threshold` (5.0) are class
@@ -169,6 +169,15 @@ Newer TSGAM front end, one string location (`"Alameda CA"`).
 - `years=None` → hold-out test on 2018: columns weather, `actual`,
   `prediction`, `status` (`T` train / `H` held out). `holdout` is `"<N>h|d|w|m"`
   (every N-th hour/day/week/month) or a callable `frame -> index`.
+- Folds (#38): a `"<N>…"` holdout splits the intervals into N groups,
+  `(ndx + 1) % N`, and `fold` picks the withheld group. `fold=0` (default)
+  is the old every-Nth-interval holdout; `0 < k < N` shifts it by k;
+  `fold=True` fits N models, so `prediction` holds each row's
+  **out-of-fold** prediction, every valid row has `status == "H"`, a `fold`
+  column says which fit withheld it, and `attrs["folds"]` holds per-fold
+  `MAE`, `RMSE`, `MAPE` (%) and their `mean` row. Costs N fits. A nonzero
+  `fold` with a callable `holdout` raises `EstimatorError`. `attrs` are
+  dropped by most pandas operations: read `attrs["folds"]` right away.
 - `years=[...]` → weather + `enduse` for those years, predicting every year
   from min to max then dropping the unrequested ones. 2018 rows are the
   actual training data when `keep_actuals`.
@@ -183,6 +192,45 @@ Newer TSGAM front end, one string location (`"Alameda CA"`).
 different predictions. Use one per study and say which.
 `loads/wecc/wecc_estimate.csv.gz` is built from `Estimator` with per-medoid
 harmonics (see [workflows.md](workflows.md)).
+
+## Normalize
+
+```python
+Normalize(source: str | pd.DataFrame, *, timestamps: dict, timezone: str = None,
+          scales: dict[str, float] = None, mapping: dict[str, str] = None,
+          groups: dict = None, weather: str = None)
+Normalize.STANDARD_COLUMNS   # elec_{baseload,heating,cooling,dg,total,net}_MW,
+                             # nonelec_{baseload,heating,total}_MW
+```
+
+Imports measured or third-party load data (AMI, SCADA, a utility CSV) as an
+hourly `loads`-style frame (#36), for comparison with or calibration of
+model output.
+
+- `source`: a DataFrame, or a CSV path or URL.
+- `timestamps` (required): exactly one source column mapped to
+  `pd.DatetimeIndex` (the primary time) plus columns mapped to callables
+  returning a `TimedeltaIndex` that are added to it (e.g. hour-ending →
+  hour-beginning, a UTC offset column). Naive times are localized to
+  `timezone` (default `"UTC"`, an IANA name otherwise; DST handled by
+  `DST_STRATEGY`); the result is converted to UTC.
+- `mapping` (required): standard column → source column, one to one.
+  `scales`: source column → factor (e.g. `1e-3` for kW → MW).
+- `groups`: source column → grouping column(s); the result gets a
+  MultiIndex `(group..., timestamp)`. Select one group (`.xs(...)`) to get
+  a plain hourly frame.
+- `weather="County ST"` merges `weather.Weather` columns (NSRDB
+  credentials).
+- Aggregation: rows are averaged (`mean()`) within each hour **and across
+  all rows sharing that hour**. So without `groups` the result is the
+  *average* source unit (e.g. average meter), not their sum **[tested]**,
+  and sub-hourly *energy* readings (kWh per 15 min) come out as the
+  per-interval mean, not hourly energy, so scale them by intervals per hour
+  **[tested]**. Power readings (kW) need no such factor. Super-hourly data
+  is not upsampled.
+- The module docstring's example call is ungrouped, but its output
+  (about 21.7 MW) is the *meter-summed* total; the call as written returns
+  the average meter (0.0215 MW) for `loads/_test/ami.csv.gz`.
 
 ## Calibrate
 

@@ -261,10 +261,49 @@ rmse = ((h.prediction - h.actual) ** 2).mean() ** 0.5
 mape = ((h.prediction - h.actual).abs() / h.actual).mean() * 100
 ```
 
+Cross-validated over all five 5-day folds (#38; five fits, so five times
+the cost), with every 2018 row predicted by a model that did not see it:
+
+```python
+from loads.estimator import EstimatorConfig
+cv = Estimator(c.county_st, config=EstimatorConfig(holdout="5d", fold=True))
+folds = cv.attrs["folds"]                      # MAE, RMSE, MAPE per fold + "mean" row
+print(folds.loc["mean"])
+```
+
+Report the fold mean and spread rather than a single holdout. For a quick
+check, `sectors=["residential"]` in the config skips the national
+commercial, industrial and agricultural downloads.
+
 `Estimator` uses its own configuration (log space, no AR). For the `Total`
 model, use `Total.test(state, county, holdout_index, X=[...], Y=...)` with
 a holdout index such as the last week of each month (the upstream
 convention: `idx[idx.month != (idx + pd.Timedelta(days=7)).month]`).
+
+### Compare with measured load (`Normalize`)
+
+To check the model against AMI, SCADA or utility data, import it with
+`loads.Normalize`, then compare hourly net load over the hours both
+cover. Example for hourly meter kWh with an hour-ending column and a
+UTC-offset column (the layout of `loads/_test/ami.csv.gz`):
+
+```python
+import numpy as np
+from loads import Normalize
+meters = Normalize("ami.csv",
+    timestamps={"date": pd.DatetimeIndex,
+                "hour": lambda x: pd.TimedeltaIndex((np.array(x) - 1) * 3600e9),
+                "tz_offset": lambda x: pd.TimedeltaIndex(np.array(x) * 3600e9)},
+    mapping={"elec_net_MW": "kwh_delta"},       # metered deliveries are net of PV
+    scales={"kwh_delta": 1e-3},                 # hourly kWh -> MW
+    groups={"kwh_delta": "meter_id"})
+measured = meters.groupby(level="timestamp").sum()   # sum meters; ungrouped would average them
+ls.validate(measured)                                # hourly UTC, no gaps
+```
+
+See [footguns.md](footguns.md#imported-data-normalize) before trusting
+magnitudes: ungrouped data is averaged, and sub-hourly energy needs an
+intervals-per-hour factor.
 
 ## 8. Hand off to other tools
 

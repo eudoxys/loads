@@ -201,3 +201,23 @@ the tracking issues above or open a new one.
     (`node_estimate_cf.csv`); its county loads are the raw `Estimator`
     output, not `wecc_estimate`. → say so, or allocate calibrated county
     loads yourself with `ls.allocate`.
+
+## Imported data (`Normalize`)
+
+31. **Ungrouped `Normalize` averages, it doesn't sum.** Rows sharing an
+    hour are averaged, so meter-level data without `groups` gives the
+    average meter (for `loads/_test/ami.csv.gz`, 0.0215 MW instead of about
+    19 MW for 960 meters) **[tested]**, while the docstring says grouped
+    data is summed. → to get a feeder or system total, group by meter and
+    sum: `Normalize(..., groups={"kwh": "meter_id"}).groupby(level="timestamp").sum()`;
+    check the result's magnitude against a known total.
+
+32. **Sub-hourly energy is averaged per interval.** 15-minute kWh readings
+    become the 15-minute mean, a quarter of the hourly MWh **[tested]**. →
+    scale energy readings by intervals per hour
+    (`scales={"kwh": 4e-3}` for 15-minute kWh → MW); power readings (kW)
+    only need the unit factor.
+
+33. **Meter data is net of rooftop PV.** Map AMI or feeder deliveries to
+    `elec_net_MW`, not `elec_total_MW`, and compare with model net load
+    (and say which DG the model used).

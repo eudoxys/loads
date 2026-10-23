@@ -175,7 +175,9 @@ Read [workflows.md](reference/workflows.md) for complete recipes:
   shaping to state energy and regional peak targets with
   `loads.calibrate.Calibrate` (`shape_to_targets`);
 - uncertainty bands and peak distributions from sample ensembles;
-- hold-out skill testing (`Estimator(county_st)`, `Total.test`);
+- hold-out skill testing (`Estimator(county_st)`, cross-validated with
+  `EstimatorConfig(fold=True)`, `Total.test`) and comparison with measured
+  load imported with `loads.Normalize`;
 - handing loads to GridLAB-D players, PyPSA/production-cost CSVs, or
   cvx-sd signal decomposition.
 
@@ -213,6 +215,9 @@ These fail silently or late. The full list with source references is in
   `state="CA", county="Alameda"`; `Estimator`, `Cluster`, `Calibrate`
   columns, `clusters.csv` and the WECC files use `"Alameda CA"`.
   `County.kwargs` and `County.county_st` give both.
+- **`Normalize` averages.** Without `groups`, rows sharing an hour are
+  averaged (the average meter, not the total), and sub-hourly energy
+  readings need an intervals-per-hour factor. Group by meter and sum.
 - **No growth in predictions.** `Units`/`Floorarea` can extrapolate growth,
   but `Total` predictions keep 2020 housing units and 2019 floor area for
   every year. Apply growth separately and state the rate.
