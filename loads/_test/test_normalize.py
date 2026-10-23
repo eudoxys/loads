@@ -1,10 +1,11 @@
 """Test `loads.normalize` module"""
 
+import os
 import pandas as pd
 import numpy as np
 from loads.normalize import Normalize
 
-TEST_FILE = "ami.csv.gz"
+TEST_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),"ami.csv.gz")
 TIMESTAMPS={
 	"date":pd.DatetimeIndex,
 	"hour":lambda x: pd.TimedeltaIndex((np.array(x)-1)*3600e9),
