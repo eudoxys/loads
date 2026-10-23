@@ -132,6 +132,12 @@ class Normalize(pd.DataFrame):
 		- `weather`: optional county for weather data
 		"""
 
+		if timestamps is None:
+			raise ValueError("timestamps must specify the source columns used to construct the date/time index")
+		if mapping is None:
+			raise ValueError("mapping must specify at least one standard column")
+		if scales is None:
+			scales = {}
 		if groups is None:
 			groups = []
 
@@ -150,7 +156,7 @@ class Normalize(pd.DataFrame):
 			if dt_index is None:
 				dt_index = value(source[key])
 			else:
-				raise ValueError(f"{timestamp=} can only contain one primary datetime index")
+				raise ValueError(f"{timestamps=} can only contain one primary datetime index")
 		for key,value in [(x,y) for x,y in timestamps.items() if y is not pd.DatetimeIndex]:
 			dt_index += value(source[key])
 		try: # force to tz if not tz-aware

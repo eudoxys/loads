@@ -39,7 +39,6 @@ def test_list1group():
 	print(Normalize(**testargs,groups={"kwh_delta":"meter_id"}).iloc[[0,-1]]["elec_net_MW"].round(6).values.tolist())
 
 def test_nogroups():
-	Normalize(ami,)
 	for groups in [
 		None,
 		{"kwh_delta": "meter_id",},
@@ -63,6 +62,3 @@ def test_nogroups():
 			weather="Orange CA"
 			)
 		print(df,flush=True)
-
-# test_source()
-test_strgroup()
