@@ -350,6 +350,9 @@ flowchart TB
 
   - `loads.resstock`: 2018 residential building end-use load data
 
+  - `loads.skill`: agent skill (`SKILL.md`) and workflow helpers for using
+    `loads` in larger analyses
+
   - `loads.total`: total loads by sector
 
   - `loads.transportation`: transportation load data (not implemented)

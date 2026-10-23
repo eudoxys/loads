@@ -158,6 +158,34 @@ and `loads.dgen.DG.merge` adds it to any hourly load data frame.
 See https://www.eudoxys.com/loads for the `Estimator`, `Calibrate`, `Cluster`,
 and `Aggregator` tools.
 
+# Agent skill
+
+[`loads/skill/`](loads/skill/) is an agent skill and helper package
+(`loads.skill`) for using `loads` inside larger workflows run by a language
+model agent such as Claude Code. [`SKILL.md`](loads/skill/SKILL.md) and
+[`reference/`](loads/skill/reference/) describe how the package works, which
+`Total` mode answers which question, the invariants to check, and the rough
+edges to avoid; the helpers resolve place names, call `Total` in an explicit
+mode, validate results, read the precomputed WECC estimates, calibrate,
+aggregate counties onto nodes, and export with provenance.
+
+To make the skill available to Claude Code, link the folder into a skills
+folder from a clone installed with `pip install -e .` (the precomputed
+`loads/wecc/` files are not installed by a non-editable install):
+
+    ln -s "$PWD/loads/skill" ~/.claude/skills/loads
+
+The helpers also work without an agent:
+
+    import loads.skill as ls
+    ls.wecc_estimate(["Alameda CA","Washoe NV"],2021)  # precomputed WECC county load, MW
+
+    python3 -m loads.skill wecc "Alameda CA" --years 2021 -o alameda_2021.csv
+
+The skill's tests (`loads/_test/test_skill_*.py`) check that what it says
+about `loads` is still true, so a change to `loads` that breaks one of them
+should update the skill documentation in the same pull request.
+
 # Caveat
 
 - Although a data cache is used extensively to avoid multiple/slow queries, the
