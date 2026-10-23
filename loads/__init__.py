@@ -451,6 +451,7 @@ from loads.dgen import DG
 from loads.energy import Energy
 from loads.floorarea import Floorarea
 from loads.industry import Industry
+from loads.normalize import Normalize
 from loads.residential import Residential
 from loads.resstock import RESstock
 from loads.total import Total

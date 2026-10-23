@@ -47,6 +47,7 @@ Update this file in the same PR that adds, moves, or deletes a file.
 | `loads/energy.py` | `Energy`: periodic county energy (MWh); `__main__` writes `wecc/county_mwh.csv`, `county_cf.csv` | tested by `_test/test_energy.py` (stubbed `Total`) |
 | `loads/calibrate.py` | `Calibrate`: convex net-load shaping to state energy + regional peaks (cvxpy) | tested by `_test/test_calibrate*.py` |
 | `loads/cluster.py` | `Cluster`: SVD + k-means of county loads → medoids | used by `_explore/explore_clusters*.py` |
+| `loads/normalize.py` | `Normalize`: imported (e.g. AMI) data → hourly `elec_*_MW` with optional groups and weather | tested by `_test/test_normalize.py` |
 | `loads/aggregate.py` | `Aggregator`, `aggregate()`: counties → WECC240 nodes | reads `eudoxys/wecc240` over the network; see issue #15 |
 | `loads/clusters.csv` | county → medoid map (`county_st,medoid`), k=6 on `elec_total_MW` | curated; written by `_explore/explore_clusters_marimo.py` |
 | `loads/.gitignore` | ignores cache and scratch output | |
@@ -90,6 +91,9 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/_test/test_calibrate.py` | `Calibrate` on all WECC counties, August 2020 | network; skipped unless the cache holds the inputs |
 | `loads/_test/test_energy.py` | `Energy` with a stubbed `Total` | fast, offline |
 | `loads/_test/test_estimator.py` | `Estimator` holdout and year handling | network (weather, stock data) |
+| `loads/_test/test_normalize.py` | `Normalize` sources, groupings, weather merge | `test_nogroups` needs NSRDB (weather) |
+| `loads/_test/ami.csv.gz` | anonymized hourly AMI meter data for `test_normalize.py` | curated; 44 MB gzip, don't open |
+| `loads/_test/make_data.py` | builds `ami.csv.gz` from a raw AMI export (anonymizes ids) | needs the raw file; not a test |
 | `loads/_test/data/README.md` | provenance of test data | |
 | `loads/_test/data/*_target.csv` | monthly state energy and CAISO/WECC peak targets | curated |
 | `loads/_test/data/state_groups.csv` | county CAISO/WECC membership (0–1) | curated |
