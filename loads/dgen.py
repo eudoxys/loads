@@ -1,101 +1,261 @@
 """Distributed generation
 
-This module provides hourly county distributed generation (DG) data.
+This module provides the hourly distributed generation (DG) of a county, i.e.,
+the small-scale (behind-the-meter) solar output that is not included in the
+EIA Form 860 and Form 923 data, as the `elec_dg_MW` column used by
+`loads.total.Total`.
 
-The `DG` class reads the hourly DG of a county from a compiled county DG
-file, by default `wecc/county_dg.csv.gz`, which has one `County ST` column
-per WECC county with the hourly DG output in MW from 2018 through 2022. The `compile` function builds that file from the NLR dGen
-nodal DG data in `wecc/dgen.csv.gz`, allocating each node's DG to its counties
-using the monthly county energy contribution factors computed by
-`loads.energy.Energy` (see `wecc/county_mwh.csv` and `wecc/county_cf.csv`).
+The method follows the REGROW EIA-861M small-scale solar procedure
+(`data/EIA861M_SmallScaleSolar.md` in `slacgismo/regrow`), which allocates
+the monthly state small-scale PV generation reported by EIA to network busses
+in proportion to load. Here the manual download, concatenation and filtering
+steps of that procedure are automated with `eia.Form861m`, the allocation is
+made to counties instead of busses, and the monthly energy is given an hourly
+shape.
 
-Example
--------
+Data Flow
+---------
 
-To get the hourly DG of Apache County AZ for 2018 through 2022 use
+```mermaid
+flowchart LR
+    EIA[("EIA Form 861M<br/>small-scale PV")] -->|state MWh/month| SSS[SmallScaleSolar]
+    MWH[("wecc/county_mwh.csv")] -->|county share of state load| DG
+    SSS --> DG
+    NSRDB[("NSRDB GHI")] -->|profile=weather| DG
+    DGEN[("wecc/county_dg.csv.gz")] -->|profile=dgen| DG
+    DG -->|elec_dg_MW| Total
+    DG -->|compile| FILE[county DG file]
+```
+
+Description
+-----------
+
+For state $s$, county $c$, month $m$, and hour $h \\in m$ the DG is
+
+$$
+    D_{ch} = - E_{sm} w_{cm} \\frac{p_{ch}}{\\sum_{k \\in m} p_{ck}}
+$$
+
+where
+
+  - $E_{sm}$ is the EIA-861M total small-scale PV generation of the state
+    (MWh, all sectors),
+
+  - $w_{cm}$ is the county's share of the state's monthly electric energy
+    use (`wecc/county_mwh.csv`), which is the county counterpart of the bus
+    `load_fraction` used by REGROW, and
+
+  - $p_{ch} \\geq 0$ is the hourly profile of the county, either the NSRDB
+    global horizontal irradiance (`profile="weather"`, the default) or the
+    NLR dGen rooftop PV output (`profile="dgen"`, `wecc/county_dg.csv.gz`).
+
+The monthly county DG energy therefore matches EIA exactly, and the hourly
+shape follows the county's sunshine. The sign follows the package convention
+that DG is a negative load, i.e., $D_{ch} \\leq 0$ and
+`elec_net_MW = elec_total_MW + elec_dg_MW`.
+
+Examples
+--------
+
+To get the hourly DG of Alameda County CA in 2020 use
 
     import pandas as pd
     from loads.dgen import DG
-    date_range = pd.date_range("2018-01-01 00:00:00+00:00",
-        "2022-12-31 23:00:00+00:00",freq="1h")
-    DG("AZ","Apache",date_range,source="loads/wecc/county_dg.csv.gz")
+    date_range = pd.date_range("2020-01-01 00:00:00+00:00",
+        "2020-12-31 23:00:00+00:00",freq="1h")
+    DG("CA","Alameda",date_range)
+
+which returns 8784 hourly rows with the single column `elec_dg_MW`.
+
+To add the DG to a total load data frame, e.g., a `loads.total.Total`
+prediction, and recompute the net load use
+
+    from loads.total import Total
+    total = Total("CA","Alameda",date_range=date_range,samples=0)
+    total = DG.merge(total,"CA","Alameda")
+
+which replaces (or adds) `elec_dg_MW` and, when `elec_total_MW` is present,
+sets `elec_net_MW = elec_total_MW + elec_dg_MW`.
+
+To compile the DG of every WECC county for 2018 through 2022 into a single
+file (one `County ST` column per county, nonnegative MW as expected by the
+`dg` argument of `loads.calibrate.Calibrate`) use
+
+    python3 -m loads.dgen --target=county_dg_eia.csv.gz
+
+To use a local copy of the EIA data instead of downloading it, e.g., the
+REGROW `data/wecc_dg_solar.csv` file, add `--source=wecc_dg_solar.csv`.
 
 Caveats
 -------
 
-  - The default `source` path is relative to the current working directory,
-    not the package folder.
+  - EIA reports calendar months in local time, but months are taken in UTC
+    here. This moves a few early-evening hours on the last day of each month
+    into the next month, which changes the monthly energy by much less than
+    1%.
 
-  - The `SolarModel` source option is not complete in this version.
+  - The county shares come from the bundled `wecc/county_mwh.csv`, which
+    covers 2018 through 2022. Months outside that range use the share of the
+    same calendar month in the nearest year. Counties not in that file get
+    no DG and a warning.
 
-  - `compile` contains debugging statements that stop it before the county
-    DG file is written in this version.
+  - The `"weather"` profile treats DG output as proportional to global
+    horizontal irradiance, i.e., it ignores panel orientation and
+    temperature derating. The `"dgen"` profile is only available for 2018
+    through 2022, and counties that are missing or all zero in the dGen file
+    (e.g., Garfield WA) use the total profile of the dGen counties in their
+    state.
+
+  - Wind DG is not included.
+
+References
+----------
+
+  - https://www.eia.gov/electricity/data/eia861m/
+
+  - https://github.com/slacgismo/regrow/blob/main/data/EIA861M_SmallScaleSolar.md
 """
 
 import os
+import sys
+import logging
 from warnings import warn
 
-import numpy as np
 import pandas as pd
-from scipy.interpolate import CubicSpline
-import matplotlib.pyplot as plt
 
-from fips import Counties
+from fips import States, Counties
 from weather import Weather
 from eia import Form861m
+from cache import Cache
 
-class SolarModel(pd.DataFrame):
-    """Solar DG model
+_logger = logging.getLogger(__file__)
 
-    Computes `solar_Wpms` as the sum of polynomials (see `numpy.polyval`) of
-    the weather columns given in `model` (default `SolarModel.default_model`).
+PACKAGEDIR = os.path.dirname(os.path.abspath(__file__))
+"""@private Package folder"""
+
+COUNTY_MWH = os.path.join(PACKAGEDIR,"wecc","county_mwh.csv")
+"""Monthly county energy use (MWh) used to allocate state DG to counties"""
+
+DGEN_PROFILES = os.path.join(PACKAGEDIR,"wecc","county_dg.csv.gz")
+"""Hourly NLR dGen county rooftop PV output (MW) used by `profile="dgen"`"""
+
+
+class SmallScaleSolar(pd.DataFrame):
+    """EIA-861M monthly small-scale solar data frame
+
+    The data frame is indexed by `month` (a monthly `pd.Period`) and `state`,
+    and has the capacity columns `res_mw`, `com_mw`, `ind_mw`, `tot_mw` (MW),
+    and the generation columns `res_mwh`, `com_mwh`, `ind_mwh`, `tot_mwh`
+    (MWh) of the residential, commercial, industrial and all sectors.
     """
-    default_model = {
-        "global_Wpms": (0.2,0.0),
-        "diffuse_Wpms": 0.0,
-        "direct_Wpms" : 0.0,
-        "temperature_degF": 0.0,
-    }
+    COLUMNS = ["res_mw","com_mw","ind_mw","tot_mw","res_mwh","com_mwh","ind_mwh","tot_mwh"]
+    """Data columns"""
+
+    _data = {}
 
     def __init__(self,
-        weather:pd.DataFrame,
-        model = None,
+        year:int|list[int],
+        state:str|list[str]|None=None,
+        source:str|None=None,
+        refresh:bool=False,
         ):
-        """Construct a solar DG model
+        """Construct an EIA-861M small-scale solar data frame
 
         Arguments
         ---------
 
-          - `weather`: weather data frame
+          - `year`: year or list of years (EIA-861M data starts in 2017)
 
-          - `model`: dict of weather column polynomials (default
-            `SolarModel.default_model`)
+          - `state`: state or list of states (default all states)
+
+          - `source`: local EIA-861M data file (CSV or Excel) laid out as the
+            EIA "Monthly Totals- States" sheet, i.e., the columns `Year`,
+            `Month`, `State`, `Data Status`, followed by the residential,
+            commercial, industrial and total capacity (MW), and the same
+            for generation (MWh). The default `None` downloads the data from
+            EIA using `eia.Form861m`.
+
+          - `refresh`: refresh the data downloaded from EIA
         """
-        if model is None:
-            model = self.default_model
-        print(len(weather.index))
-        data = pd.DataFrame(
-            data={"solar_Wpms":[0.0]*len(weather.index)},
-            index=weather.index,
-            )
-        data.index.name = "timestamp"
-        for column,polynomial in model.items():
-            if polynomial != 0.0:
-                data["solar_Wpms"] += np.polyval(polynomial,weather[column])
-        super().__init__(data)
+        years = [year] if isinstance(year,int) else sorted(set(year))
+        if source is None:
+            data = pd.concat([self._get_eia(x,refresh) for x in years])
+        else:
+            data = self._get_source(source,refresh)
+            data = data[data.index.get_level_values("month").year.isin(years)]
+        if state is not None:
+            states = [state] if isinstance(state,str) else list(state)
+            data = data[data.index.get_level_values("state").isin(states)]
+        super().__init__(data.sort_index())
+
+    @classmethod
+    def _get_eia(cls,year:int,refresh:bool) -> pd.DataFrame:
+        """@private Get a year of EIA-861M data from EIA"""
+        if year not in cls._data or refresh:
+            data = []
+            for month in range(1,13):
+                try:
+                    data.append(Form861m(year,month,refresh=refresh))
+                except (AssertionError,KeyError) as err:
+                    # month not published yet
+                    _logger.debug(f"Form861m({year},{month}) {err}")
+            if not data:
+                raise ValueError(f"EIA-861M has no small-scale solar data for {year=}")
+            data = pd.concat(data)
+            data["month"] = pd.DatetimeIndex(data["date"]).tz_localize(None).to_period("M")
+            cls._data[year] = data.set_index(["month","state"])[cls.COLUMNS]
+        return cls._data[year]
+
+    @classmethod
+    def _get_source(cls,source:str,refresh:bool) -> pd.DataFrame:
+        """@private Get EIA-861M data from a local file"""
+        if source not in cls._data or refresh:
+            if source.endswith((".xls",".xlsx")):
+                data = pd.read_excel(source,sheet_name="Monthly Totals- States",
+                    skiprows=3,header=None)
+            else:
+                data = pd.read_csv(source,encoding="utf-8-sig",dtype=str)
+            data = data.iloc[:,:12]
+            data.columns = ["year","month","state","status"] + cls.COLUMNS
+            data = data.dropna(subset=["year","month","state"])
+            data = data[pd.to_numeric(data["year"],errors="coerce").notna()]
+            for column in cls.COLUMNS:
+                data[column] = pd.to_numeric(data[column].astype(str).str.replace(",",""),
+                    errors="coerce").fillna(0.0)
+            data["month"] = pd.PeriodIndex.from_fields(
+                year=data["year"].astype(float).astype(int),
+                month=data["month"].astype(float).astype(int),
+                freq="M")
+            data["state"] = data["state"].str.strip()
+            cls._data[source] = data.set_index(["month","state"])[cls.COLUMNS]
+        return cls._data[source]
 
 
 class DG(pd.DataFrame):
-    """Distributed generation data frame"""
-    eia_data = {}
-    dg_data = None
+    """Distributed generation data frame
+
+    The data frame is indexed by the UTC `timestamp` and has the single column
+    `elec_dg_MW` (never positive).
+    """
+    CACHEDIR = None
+    """Folder in which results are cached (default is the `cache` package default)"""
+
+    PROFILES = ["weather","dgen"]
+    """Valid hourly profile sources"""
+
+    TRAINING_YEAR = 2018
+    """Year used when no `date_range` is given (same as `loads.total.Total`)"""
+
+    _county_mwh = None
+    _dgen = None
 
     def __init__(self,
         state:str,
         county:str,
         date_range:pd.DatetimeIndex|None=None,
-        source:str="wecc/county_dg.csv.gz",
-        on_missing:str="fillna"
+        profile:str="weather",
+        source:str|None=None,
+        refresh:bool=False,
         ):
         """Construct a county distributed generation data frame
 
@@ -106,250 +266,282 @@ class DG(pd.DataFrame):
 
           - `county`: county name
 
-          - `date_range`: date/time index to extract (default all data in
-            `source`)
+          - `date_range`: hourly date/time index (default is all of
+            `DG.TRAINING_YEAR`; naive times are taken as UTC)
 
-          - `source`: compiled county DG file name (columns named
-            `County ST`)
+          - `profile`: hourly profile source, `"weather"` (NSRDB global
+            horizontal irradiance) or `"dgen"` (NLR dGen rooftop PV output
+            in `wecc/county_dg.csv.gz`, 2018-2022 only)
 
-          - `on_missing`: `"fillna"` adds NaN rows for date/times in
-            `date_range` that are missing from `source`; `None` omits them
+          - `source`: local EIA-861M data file (see `SmallScaleSolar`); the
+            default `None` downloads it from EIA
+
+          - `refresh`: regenerate the cached county DG
 
         Returns
         -------
 
-        The data frame contains the `elec_dg_MW` column of the county. Note
-        that the values in the bundled `wecc/county_dg.csv.gz` are DG output
-        in MW (nonnegative), unlike the negative-load sign convention of
-        `elec_dg_MW` elsewhere in the package. A zero data frame is returned
-        when the county is not found in `source`, in which case `date_range`
-        is required.
+        The data frame contains the `elec_dg_MW` column of the county for the
+        hours in `date_range`. DG is a negative load, so values are zero or
+        negative. Hours in months for which EIA has no data are `NaN`.
         """
+        assert state in States()["ST"].values, f"{state=} is not valid"
+        assert county in Counties().set_index(["ST","COUNTY"]).loc[state].index, \
+            f"{county=} is not valid in {state=}"
+        assert profile in self.PROFILES, f"{profile=} is not valid"
 
-        assert on_missing in ["fillna",None], f"{on_missing=} is invalid"
+        if self.CACHEDIR:
+            Cache.CACHEDIR = self.CACHEDIR
 
-        if self.dg_data is None:
-
-            # get default solar model if needed
-            if source == SolarModel:
-
-                # get total
-
-                # get monthly solar production from EIA
-                for year,month in sorted(set((x.year,x.month) for x in dates)):
-                    if (year,month) not in self.eia_data:
-                        self.eia_data[(year,month)] = Form861m(year,month).set_index("state")
-                eia = pd.concat(self.eia_data.values()).reset_index().set_index(["state"])
-                eia = eia.loc[state].set_index("date").sort_index()[["tot_mwh"]]
-
-                # get hourly weather
-                weather = []
-                for year in sorted(set(x.year for x in dates)):
-                    weather.append(Weather(state,county,year))
-                weather = pd.concat(weather)
-                weather.index = pd.DatetimeIndex(weather.index)
-
-                # get hourly solar production from weather
-                solar = model(weather.loc[date_range])
-
-                # compute monthly solar production from weather
-                energy = solar.resample("1MS").sum()
-
-                # compute monthly scaling from weather to EIA
-                scale = (eia.tot_mwh/energy.solar_Wpms).to_frame(name="solar_puMW")
-
-                # compute hourly spline of monthly scaling
-                x = [x.timestamp() for x in scale.index.to_pydatetime()]
-                y = scale.solar_puMW.values
-                spline = CubicSpline(x,y)
-                hourly = solar.solar_Wpms * spline([x.timestamp() for x in date_range.to_pydatetime()])
-
-            elif isinstance(source,str):
-
-                # use specified data source
-                hourly = pd.read_csv(source,index_col=["timestamp"],parse_dates=["timestamp"])
-
-                # extract date_range
-                if isinstance(date_range,pd.DatetimeIndex):
-
-                    # isolate missing date/times
-                    missing = [x for x in date_range if x not in hourly.index]
-
-                    # reduce to date/times founds
-                    hourly = hourly.loc[[x for x in date_range if x in hourly.index]]
-
-                    # fill missing, if desired
-                    if on_missing == "fillna":
-                        hourly = pd.concat([hourly,pd.DataFrame(index=missing)],axis=0).sort_index()
-            
-            else:
-            
-                raise ValueError(f"{source} is not valid")
-
-            self.dg_data = hourly
-
-        county_st = f"{county} {state}"
-        if county_st in self.dg_data.columns:
-            result = self.dg_data[[county_st]].rename({county_st:"elec_dg_MW"},axis=1)
+        if date_range is None:
+            date_range = self._year_range(self.TRAINING_YEAR)
+        date_range = pd.DatetimeIndex(date_range)
+        if date_range.tz is None:
+            date_range = date_range.tz_localize("UTC")
         else:
-            result = pd.DataFrame(
-                data=(0 for x in date_range),
-                index=date_range,
-                )
-        super().__init__(result)
+            date_range = date_range.tz_convert("UTC")
 
-def compile(
-    source:str="wecc/dgen.csv.gz",
-    target:str="wecc/county_dg.csv.gz",
-    county_file:str="https://github.com/eudoxys/wecc240/raw/refs/heads/main/wecc240/data/county_nodes.csv",
+        data = pd.concat([self._get_year(state,county,year,profile,source,refresh)
+            for year in sorted(set(date_range.year))])
+        data = data[~data.index.duplicated()].reindex(date_range)
+
+        super().__init__(data.rename_axis("timestamp"))
+
+    @classmethod
+    def merge(cls,
+        data:pd.DataFrame,
+        state:str,
+        county:str,
+        **kwargs,
+        ) -> pd.DataFrame:
+        """Add the county DG to a load data frame
+
+        Arguments
+        ---------
+
+          - `data`: hourly load data frame indexed by timestamp, e.g., a
+            `loads.total.Total` result
+
+          - `state`: state abbreviation
+
+          - `county`: county name
+
+          - `**kwargs`: other `DG` arguments (`profile`, `source`, `refresh`)
+
+        Returns
+        -------
+
+          - `pd.DataFrame`: a copy of `data` in which `elec_dg_MW` is replaced
+            (or added) and, when `elec_total_MW` is present, `elec_net_MW` is
+            set to `elec_total_MW + elec_dg_MW`
+        """
+        result = data.copy()
+        dg = cls(state,county,date_range=pd.DatetimeIndex(result.index),**kwargs)
+        result["elec_dg_MW"] = dg["elec_dg_MW"].values
+        if "elec_total_MW" in result.columns:
+            result["elec_net_MW"] = result["elec_total_MW"] + result["elec_dg_MW"]
+        return result
+
+    @staticmethod
+    def _year_range(year:int) -> pd.DatetimeIndex:
+        """@private Hourly UTC index of a year"""
+        return pd.date_range(f"{year}-01-01 00:00:00+00:00",
+            f"{year}-12-31 23:00:00+00:00",freq="1h",name="timestamp")
+
+    @classmethod
+    def _get_year(cls,
+        state:str,
+        county:str,
+        year:int,
+        profile:str,
+        source:str|None,
+        refresh:bool,
+        ) -> pd.DataFrame:
+        """@private Get a year of county DG (cached)"""
+        cache = Cache(package="loads",version=0,path=[state,county,f"DG_{profile}_{year}.csv.gz"])
+        data = None
+        if cache.exists() and not refresh:
+            try:
+                data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
+                data.index = pd.DatetimeIndex(data.index).tz_convert("UTC")
+                _logger.debug(f"{cache=} ok")
+            except Exception as err: # pylint: disable=broad-exception-caught
+                data = None
+                cache.delete()
+                _logger.debug(f"{cache=} {err}")
+        else:
+            _logger.debug(f"{cache=} (re)generation required")
+
+        if data is None:
+
+            # hourly profile and the month of each hour
+            hourly = cls._get_profile(state,county,year,profile)
+            month = hourly.index.tz_localize(None).to_period("M")
+            months = month.unique()
+
+            # monthly state small-scale solar generation
+            eia = SmallScaleSolar(year,state=state,source=source)["tot_mwh"]
+            eia = eia.droplevel("state").reindex(months)
+            if eia.isna().any():
+                warn(f"EIA-861M has no {state} data for "
+                    f"{', '.join(str(x) for x in eia.index[eia.isna()])}")
+
+            # monthly county DG energy
+            energy = eia * cls._get_share(state,county,months)
+
+            # hourly DG shaped by the profile
+            total = hourly.groupby(month).transform("sum")
+            dg = hourly / total.where(total > 0) * energy.reindex(month).values
+            data = pd.DataFrame({"elec_dg_MW":0.0 - dg.round(6)},index=hourly.index)
+            data.index.name = "timestamp"
+
+            # incomplete years are not cached so missing EIA data is retried later
+            if data["elec_dg_MW"].notna().all():
+                data.to_csv(cache.pathname,index=True,header=True,
+                    compression="gzip" if cache.pathname.endswith(".gz") else None)
+
+        return data
+
+    @classmethod
+    def _get_share(cls,
+        state:str,
+        county:str,
+        months:pd.PeriodIndex,
+        ) -> pd.Series:
+        """@private Monthly county share of the state energy use"""
+        if cls._county_mwh is None:
+            mwh = pd.read_csv(COUNTY_MWH,index_col=[0])
+            # drop columns duplicated by pandas (e.g., "Pinal AZ.1"), if any
+            mwh = mwh[[x for x in mwh.columns if not x.rsplit(".",1)[-1].isdigit()]]
+            mwh.index = pd.PeriodIndex(pd.to_datetime(mwh.index,format="%b %Y"),freq="M")
+            cls._county_mwh = mwh
+
+        mwh = cls._county_mwh
+        county_st = f"{county} {state}"
+        if county_st not in mwh.columns:
+            warn(f"{county_st} is not in {os.path.basename(COUNTY_MWH)} (no DG allocated)")
+            return pd.Series(0.0,index=months)
+        members = [x for x in mwh.columns if x.rsplit(" ",1)[1] == state]
+        share = mwh[county_st] / mwh[members].sum(axis=1)
+
+        # months outside the data use the same month of the nearest year
+        first,last = share.index.min().year,share.index.max().year
+        lookup = [pd.Period(year=min(max(x.year,first),last),month=x.month,freq="M")
+            for x in months]
+        return pd.Series(share.reindex(lookup).values,index=months)
+
+    @classmethod
+    def _get_profile(cls,
+        state:str,
+        county:str,
+        year:int,
+        profile:str,
+        ) -> pd.Series:
+        """@private Hourly nonnegative profile of a county for a year"""
+        index = cls._year_range(year)
+
+        if profile == "weather":
+            data = Weather(state,county,year)["global_Wpms"]
+
+        elif profile == "dgen":
+            if cls._dgen is None:
+                dgen = pd.read_csv(DGEN_PROFILES,index_col=[0],parse_dates=[0])
+                dgen.index = pd.DatetimeIndex(dgen.index).tz_convert("UTC")
+                cls._dgen = dgen
+            dgen = cls._dgen
+            if year not in set(dgen.index.year):
+                raise ValueError(f"{os.path.basename(DGEN_PROFILES)} has no data for {year=}")
+            dgen = dgen[dgen.index.year == year]
+            county_st = f"{county} {state}"
+            if county_st in dgen.columns and dgen[county_st].sum() > 0:
+                data = dgen[county_st]
+            else:
+                members = [x for x in dgen.columns if x.rsplit(" ",1)[1] == state]
+                if not members:
+                    raise ValueError(f"{os.path.basename(DGEN_PROFILES)} has no data for {state=}")
+                _logger.debug(f"{county_st} has no dGen profile in {year}, using {state} total")
+                data = dgen[members].sum(axis=1)
+
+        else:
+            raise ValueError(f"{profile=} is not valid")
+
+        data.index = pd.DatetimeIndex(data.index)
+        data.index = data.index.tz_localize("UTC") if data.index.tz is None \
+            else data.index.tz_convert("UTC")
+        data = data[~data.index.duplicated()]
+        return data.reindex(index).fillna(0.0).clip(lower=0.0)
+
+
+def compile( # pylint: disable=redefined-builtin
+    years:list[int]|tuple[int,int]=(2018,2022),
+    target:str|None="county_dg_eia.csv.gz",
+    profile:str="weather",
     system:str="WECC",
-    ):
-    """Compile DG data
+    source:str|None=None,
+    refresh:bool=False,
+    ) -> pd.DataFrame|None:
+    """Compile the hourly DG of all the counties in a system
 
     Arguments
     ---------
 
-      - `source`: source nodal DG power data file (MW)
+      - `years`: first and last year to compile
 
-      - `target`: target county DG power data file (`None` returns the
-        data frame instead of saving it)
+      - `target`: output file name (`None` returns the data frame instead of
+        saving it)
 
-      - `county_file`: county to network node mapping file
+      - `profile`: hourly profile source (see `DG`)
 
-      - `system`: system for which counties will be compiled
+      - `system`: system for which counties are compiled
+
+      - `source`: local EIA-861M data file (see `SmallScaleSolar`)
+
+      - `refresh`: regenerate the cached county DG
 
     Returns
     -------
 
-      - `pd.DataFrame`: county DG data when `target` is `None`
+      - `pd.DataFrame`: hourly DG output (MW, nonnegative) with one
+        `County ST` column per county, when `target` is `None`
+
+    Counties that fail are logged and omitted.
     """
+    date_range = pd.date_range(f"{min(years)}-01-01 00:00:00+00:00",
+        f"{max(years)}-12-31 23:00:00+00:00",freq="1h",name="timestamp")
+    counties = Counties(use_index=["SYSTEM"],selection=[system])[["ST","COUNTY"]]
 
-    from loads.energy import Energy
-
-    years = [2018,2022] # year start/stop
-
-    # read the raw from NREL
-    dgen = pd.read_csv(source,index_col=[0],parse_dates=[0])
-    dgen.columns = [x.split("_")[0] for x in dgen.columns]
-
-    # setup the date/time index
-    dates = pd.date_range(f"{min(years)}-01-01 00:00:00+0000",f"{max(years)}-12-31 23:59:59+0000",freq="1h")
-
-    # get the counties in the system
-    counties = Counties(use_index=["SYSTEM"],selection=[system]).sort_values(["ST","COUNTY"])
-    counties["COUNTY"] = [f"{y} {x}" for x,y in counties[["ST","COUNTY"]].values]
-    counties.set_index("GEOHASH",inplace=True)
-
-    # read the nodes list
-    county_nodes = pd.read_csv(county_file,index_col=[0],names=["NODE"])
-
-    # merge counties and nodes to get the mapping
-    nodes = pd.merge(counties,county_nodes,left_index=True,right_index=True)\
-        .reset_index()\
-        .set_index(["NODE","ST","COUNTY"])
-    mapping = nodes.reset_index()[["COUNTY","NODE"]].set_index("COUNTY")["NODE"].to_dict()
-
-    # collate the energy data
-    energy = []
-    keep = set(counties["COUNTY"])
-    for state in counties.ST.unique():
-        data = Energy(state,counties=None,year=years)
-        data.drop([x for x in data.columns if x not in keep],inplace=True,axis=1)
-        energy.append(data)
-    energy = pd.concat(energy,axis=1).stack().to_frame("COUNTY_MWH").round(3)
-    energy["NODE"] = [mapping[x] for x in energy.index.get_level_values(1)]
-    energy.index.names = ("MONTH","COUNTY")
-    energy = energy.reset_index().set_index(["NODE","MONTH","COUNTY"])
-
-    # calculate the totals
-    totals = energy.groupby(["NODE","MONTH"]).sum().rename({"COUNTY_MWH":"NODE_MWH"},axis=1)
-
-    # merge the totals with the energy data
-    energy = pd.merge(energy,totals,left_index=True,right_index=True).sort_index()
-    energy["COUNTY_CF"] = energy["COUNTY_MWH"] / energy["NODE_MWH"]
-
-    # get the set of nodes
-    system_nodes = set(energy.index.get_level_values(0).unique())
-
-    # read WECC nodal DG
-    system_dg = pd.read_csv(source,index_col=[0],dtype=float,parse_dates=[0])\
-        .resample("MS").sum().unstack().to_frame("NODE_DG_MWH")
-    dg_nodes = set([x.split("_")[0] for x in system_dg.index.get_level_values(0).unique()])
-    # print(totals.loc["9qndpr"])
-    # print(energy.loc["9qndpr"])
-    # print("9qndpr" in system_nodes)
-    print("9myzug" in dg_nodes)
-    quit()
-
-    # identify nodes to drop because they have no DG data
-    dropset = system_nodes - dg_nodes
-    if dropset:
-        warn(f"the following {len(dropset)} nodes have no DG: {', '.join(dropset)}")
-        energy.drop([x for x in energy.index if x[0] in dropset],inplace=True)
-
-    # setup the result index
-    energy.reset_index(inplace=True)
-    energy.set_index(["COUNTY","NODE","MONTH"],inplace=True)
-    energy.sort_index(inplace=True)
-
-    # finalize county-level DG
-    result = []
-    for county,node in energy.reset_index().set_index(["COUNTY","NODE"]).index.unique():
-        print(county,'->',node,end="...",flush=True)
-        county_cf = energy.loc[(county,node),["COUNTY_CF"]]
-        dg = dgen[[node]]
-        dg["MONTH"] = pd.to_datetime(dg.index.to_period("M").astype(str),utc=True)
-        print(dg)
-        quit()
-        df = pd.merge(dg,county_cf,how="left",left_on="MONTH",right_index=True).ffill()
-        df[county] = df[node] * df["COUNTY_CF"]
-        result.append(pd.DataFrame(
-            data={county:df[county]},
-            ))
-        print("ok")
-
-    result = (pd.concat(result,axis=1)/1000).round(3)
+    result = {}
+    for state,county in sorted(counties.values.tolist()):
+        try:
+            result[f"{county} {state}"] = -DG(state,county,date_range,
+                profile=profile,source=source,refresh=refresh)["elec_dg_MW"]
+            _logger.info(f"{county} {state} ok")
+        except Exception as err: # pylint: disable=broad-exception-caught
+            _logger.error(f"{county} {state} {err}")
+    result = pd.DataFrame(result,index=date_range).round(3)
 
     if target is None:
         return result
-    else:
-        result.to_csv(target,
-            index=True,
-            header=True,
-            compression="gzip" if target.endswith(".gz") else None,
-            )
+    result.to_csv(target,index=True,header=True,
+        compression="gzip" if target.endswith(".gz") else None)
+    return None
+
 
 if __name__ == "__main__":
 
-    refresh = True # force recompile of county-level DG data
+    def _option(name,default=None):
+        for arg in sys.argv[1:]:
+            if arg.startswith(f"--{name}="):
+                return arg.split("=",1)[1]
+        return default
 
-    # pd.options.display.max_rows = None
-    pd.options.display.max_columns = None
-    pd.options.display.width = None
+    logging.basicConfig(level=logging.DEBUG if "--debug" in sys.argv else logging.INFO)
 
-    # output = "wecc/county_dg.csv.gz"
-    output = "wecc/county_dg.csv"
-    if not os.path.exists(output) or refresh:
-        compile(target=output)
-
-    # date_range = pd.date_range(
-    #     start=f"2018-01-01 00:00:00+0000",
-    #     end=f"2022-12-31 23:59:59+0000",
-    #     freq="1h")
-
-    # def dump(x):
-    #     print(f"{x}{str(globals()[x])[len(x):]}")
-
-    # dg_MW = DG("AZ","Apache",date_range)
-    # dg_MWh = dg_MW.resample("MS").sum()
-    # dump("dg_MWh")
-    # dg_MWh = dg_MW.resample("YS").sum()
-    # dump("dg_MWh")
-    
-    # peak_MW = dg_MW.max().tolist()[0]
-    # peak_dt = dg_MW[dg_MW.elec_dg_MW==peak_MW]
-    # dump("peak_dt")
-
-
-    # pd.read_csv(output,index_col=["timestamp"],parse_dates=["timestamp"]).resample("ME").sum()["San Diego CA"].plot(grid=True)
-    # plt.show()
+    compile(
+        years=[int(x) for x in _option("years","2018,2022").split(",")],
+        target=_option("target","county_dg_eia.csv.gz"),
+        profile=_option("profile","weather"),
+        system=_option("system","WECC"),
+        source=_option("source"),
+        refresh="--refresh" in sys.argv,
+        )

@@ -85,7 +85,8 @@ Outputs
     2018-12-31 23:00:00+00:00,38.226,1.382,-3.725,1.664,37.548,41.272,8.399,0.0,30.819,39.218
 
 Without `-D`, the command prints the 2018 county load by sector (see
-`loads.total.Total`).
+`loads.total.Total`). Add `-G` to use the county's EIA-861M distributed
+generation (see `loads.dgen`) in place of the building stock PV.
 
 ## Python code
 
@@ -142,6 +143,17 @@ Predict the total load of Alameda County CA for 2020 from 2020 weather.
     from loads import Total
     date_range = pd.date_range("2020-01-01 00:00:00+00:00","2020-12-31 23:00:00+00:00",freq="1h")
     print(Total("CA","Alameda",date_range=date_range,samples=0))
+
+Distributed generation (DG) is not included by default. To add the county's
+hourly 2020 DG, i.e., EIA-861M small-scale solar allocated to the county by
+load share and shaped by weather (see `loads.dgen`), and the resulting net
+load use
+
+    print(Total("CA","Alameda",date_range=date_range,samples=0,dg=True))
+
+which adds the `elec_dg_MW` (never positive) and `elec_net_MW` columns. The
+same DG is available on its own with `loads.dgen.DG("CA","Alameda",date_range)`,
+and `loads.dgen.DG.merge` adds it to any hourly load data frame.
 
 See https://www.eudoxys.com/loads for the `Estimator`, `Calibrate`, `Cluster`,
 and `Aggregator` tools.

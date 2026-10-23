@@ -5,7 +5,7 @@ The test assembles the county form of the shaping problem for August 2020:
   - gross load $X$: `Total(...,samples=0)` TSGAM predictions of
     `elec_total_MW` for every WECC county, driven by 2020 weather;
 
-  - fixed DG $D$: `loads/wecc/county_dg.csv.gz`;
+  - fixed DG $D$: `loads/wecc/county_dg_scaled.csv.gz`;
 
   - state energy targets: `data/energy_target.csv` (August 2020 row);
 
@@ -48,10 +48,9 @@ MONTH = "2020-08"
 START = pd.Timestamp(f"{MONTH}-01 00:00:00+00:00")
 END = pd.Timestamp("2020-08-31 23:00:00+00:00")
 LAGS = 3 # Total trims this many hours from each end of a prediction
-DG_FILE = os.path.join(os.path.dirname(loads.__file__),"wecc","county_dg.csv.gz")
+DG_FILE = os.path.join(os.path.dirname(loads.__file__),"wecc","county_dg_scaled.csv.gz")
 
-if os.environ.get("LOADS_CACHEDIR"):
-    Cache.CACHEDIR = os.environ["LOADS_CACHEDIR"]
+pytestmark = pytest.mark.network
 
 
 def _read_month(name:str) -> pd.Series:

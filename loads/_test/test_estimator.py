@@ -1,9 +1,21 @@
-"""Estimator tests"""
+"""Estimator tests
+
+These tests check row counts and holdout labels, which don't depend on which
+load sectors are modeled, so they use the residential sector only. This
+avoids downloading the national commercial floor-area, industrial, and
+agricultural inventories, which dominate the cost of a run on an empty cache.
+
+The holdout fold tests are fast unit tests of `_get_holdout` on a synthetic
+hourly index. The remaining tests build a full estimate and are marked
+`network`.
+"""
 
 import pandas as pd
 import pytest
 
 from loads.estimator import Estimator, EstimatorConfig, EstimatorError, _get_holdout
+
+CONFIG = EstimatorConfig(sectors=["residential"])
 
 def _hours(year=2018):
 	index = pd.date_range(f"{year}-01-01",f"{year+1}-01-01",freq="h",tz="UTC",inclusive="left")
@@ -35,28 +47,33 @@ def test_fold_invalid(fold):
 	with pytest.raises(EstimatorError):
 		_get_holdout(_hours(),"5d",fold)
 
+@pytest.mark.network
 def test_holdout():
 
-	df = Estimator("Alameda CA",None)
+	df = Estimator("Alameda CA",None,config=CONFIG)
 	assert len(df) == 8760
 	assert "status" in df.columns
 	assert "H" in df["status"].unique()
 
+@pytest.mark.network
 def test_reference_year():
 
-	df = Estimator("Alameda CA",[2018])
+	df = Estimator("Alameda CA",[2018],config=CONFIG)
 	assert len(df) == 8760
 
+@pytest.mark.network
 def test_contiguous_years():
-	df = Estimator("Alameda CA",[2019,2020])
+	df = Estimator("Alameda CA",[2019,2020],config=CONFIG)
 	assert len(df) == 8760 + 8784
 
+@pytest.mark.network
 def test_split_years():
-	df = Estimator("Alameda CA",[2019,2021])
+	df = Estimator("Alameda CA",[2019,2021],config=CONFIG)
 	assert len(df) == 8760 + 8760
 
+@pytest.mark.network
 def test_all_folds():
-	df = Estimator("Alameda CA",None,config=EstimatorConfig(holdout="3m",fold=True))
+	df = Estimator("Alameda CA",None,config=EstimatorConfig(sectors=["residential"],holdout="3m",fold=True))
 	assert len(df) == 8760
 	assert "fold" in df.columns
 	assert set(df["fold"].dropna().unique()) == {0,1,2}

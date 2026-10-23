@@ -15,34 +15,15 @@ onto network nodes (e.g. WECC240 busses).
 - Author/maintainer: David P. Chassin
 - CLI entry point: `loads` → `loads.cli:main`
 
-## Layout
+## Where things are
 
-```
-loads/                     package source (flat; one module per concept)
-  resstock.py comstock.py  raw NREL building-stock end-use data (per building type)
-  units.py floorarea.py    Census housing units / OpenEI commercial floor area (scaling)
-  residential.py           RESstock → consolidated MW columns, scaled by Units
-  commercial.py            COMstock → consolidated MW columns, scaled by Floorarea
-  industry.py agriculture.py  NREL county inventories (flat load shape by default)
-  transportation.py        stub; raises NotImplementedError (loads set to 0 in Total)
-  dgen.py _solar_estimator.py  county distributed generation (rooftop PV) data
-  cast.py                  back/forecast a 2018 load to another year by weather
-  calibrate.py             convex net-load shaping to state energy / regional peak targets (cvxpy)
-  total.py                 2018 sector sum + TSGAM fit/predict/sample (the core model)
-  estimator.py             newer TSGAM front end (`Estimator`, `EstimatorConfig`)
-  energy.py                periodic (monthly etc.) county energy in MWh
-  cluster.py               SVD + k-means clustering of counties → medoids
-  aggregate.py             sum county series onto geographic target nodes
-  cli.py                   argparse CLI (`loads print|plot ...`)
-  clusters.csv configs.csv county→medoid map, best TSGAM config per medoid
-  review_*.py evaluate_lag.py  marimo notebooks
-  tsgam_evaluate.py        TSGAM config search script (writes to tests/)
-  caiso/ isone/ wecc/      checked-in reference data
-  wecc/wecc_estimate.py    hourly 2018-2022 estimate of every WECC county
-  _test/ _validate/        pytest tests, estimator validation notebook
-  _explore/ _review/       exploration scripts/notebooks, result review notebooks
-examples/                  marimo notebook + county CSV outputs
-```
+- `MANIFEST.md`: map of every file, a task index, and what not to read.
+  Read it first instead of listing folders. Update it in the same PR that
+  adds, moves, or deletes a file; `python .github/check_manifest.py` checks it.
+- `DESIGN.md`: design, numbered decisions, planned modules, and the version 1
+  open questions. Follow its decisions; ask before departing from one.
+- General Eudoxys package conventions are in the `eudoxys-package` skill
+  (`github.com/eudoxys/claude`).
 
 Sibling eudoxys packages are core dependencies (installed from GitHub via
 `requirements.txt`): `cache` (local data cache), `fips` (state/county lookups),
@@ -159,12 +140,16 @@ make docs                           # pdoc → ./docs (creates its own .venv)
   literal) instead of `case _:`, so `plot` draws nothing for the sector
   datasets.
 - `Total` has no year argument; the CLI's `-Y` only reaches `Weather`, and
-  `Total`'s `dg` and `holdout` arguments are unused. `Total` imports `DG`
-  but doesn't use it (training DG comes from RESstock/COMstock PV).
-- `dgen.SolarModel` has a stray `print(len(weather.index))`; `dgen.compile`
-  has debugging `print`/`quit()` calls that stop it before writing; the
-  `SolarModel` branch of `DG` uses undefined names. `wecc/county_dg.csv.gz`
-  holds positive DG output, opposite to the `elec_dg_MW` sign convention.
+  `Total`'s `holdout` argument is unused.
+- `dgen.DG` allocates EIA-861M state small-scale PV to counties by
+  `wecc/county_mwh.csv` load share and shapes it hourly (NSRDB GHI or dGen),
+  returning `elec_dg_MW <= 0`; `DG.merge` adds it to a `Total` frame.
+  `dgen.compile` writes nonnegative MW (as `Calibrate` expects), and the
+  checked-in `wecc/county_dg*.csv.gz` files are also nonnegative, opposite to
+  the `elec_dg_MW` sign convention. `Total(...,dg=True)` (CLI `-G`) merges
+  this DG into its result (replacing the RESstock/COMstock PV in training
+  data); the default `dg=False` leaves results unchanged. TSGAM training
+  never uses it.
 - `Energy` requires a list/tuple `year` (the cache name uses `min(year)`),
   its cache ignores `counties`, and a failing county appends the previous
   county's result.

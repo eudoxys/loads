@@ -1,0 +1,59 @@
+name: Assign issues
+
+# Assigns new issues, and any open issue left without an assignee, to the
+# repository owner, so every issue has someone responsible for triage.
+#
+# The owner is the GitHub login in the ISSUE_OWNER Actions variable, set once
+# at the organization level and overridable per repository; it defaults to
+# dchassin. Several logins may be given, separated by commas.
+#
+# Triggers:
+#   - issues opened, reopened, transferred in, or unassigned: assign that issue
+#     if it has no assignee;
+#   - daily schedule and manual run: sweep all open issues (not PRs) that
+#     have no assignee.
+
+on:
+  issues:
+    types: [opened, reopened, transferred, unassigned]
+  schedule:
+    - cron: "17 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+concurrency:
+  group: assign-issues-${{ github.event.issue.number || 'sweep' }}
+  cancel-in-progress: false
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          ISSUE_OWNER: ${{ vars.ISSUE_OWNER || 'dchassin' }}
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const assignees = process.env.ISSUE_OWNER.split(",").map(s => s.trim()).filter(Boolean);
+
+            async function assign(issue) {
+              if (issue.pull_request || issue.state !== "open") return;
+              if (issue.assignees && issue.assignees.length > 0) return;
+              await github.rest.issues.addAssignees({owner, repo, issue_number: issue.number, assignees});
+              core.info(`Assigned #${issue.number} to ${assignees.join(", ")}`);
+            }
+
+            if (context.eventName === "issues") {
+              // re-read the issue: an unassigned event may leave other assignees
+              const issue = (await github.rest.issues.get(
+                {owner, repo, issue_number: context.payload.issue.number})).data;
+              await assign(issue);
+            } else {
+              const issues = await github.paginate(github.rest.issues.listForRepo,
+                {owner, repo, state: "open", assignee: "none", per_page: 100});
+              for (const issue of issues) await assign(issue);
+            }
