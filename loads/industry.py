@@ -10,6 +10,11 @@ impose a load shape, use the `loadshape` argument of the
 
 All industries in each county are aggregated. 
 
+The data frame also contains the columns `elec_cooling_MW`,
+`elec_heating_MW`, `elec_dg_MW`, `nonelec_cooling_MW`, and
+`nonelec_heating_MW`, which are always zero (see Caveats). These columns are
+omitted from the example outputs below.
+
 Examples
 --------
 
@@ -114,6 +119,9 @@ Caveats
     a valid county FIPS code is matched to the previous county FIPS code,
     e.g., `2270` is aggregated with `2265` and not `2275`.
 
+  - A county that has no industrial data in the NREL source has zero
+    industrial load.
+
   - Many industries have cooling and heating loads that are weather sensitive.
     However there is no data available to enable computing this sensitivity.
     Consequently the `(non)elec_heating_MW` and `(non)elec_cooling_MW` data
@@ -183,14 +191,16 @@ class Industry(pd.DataFrame):
         Description
         -----------
 
-        By default the Industry loads data frame contains on the annual total
+        By default the Industry loads data frame contains the annual total
         non-electric and net electric energy consumed by industry in US counties,
-        rescaled to a average hourly power in MW.
+        rescaled to an average hourly power in MW.
 
-        The load can be shaped using the `loadshape` parameter. Loadshapes can be
+        The load can be shaped for a single county using the `loadshape`
+        parameter, which multiplies the average hourly power. Loadshapes can be
         a Pandas data frame or a dict. If a data frame is used it must have only
-        1 column for the scaling of the load data and the index must be a Pandas
-        date/time index.  If a dict is used, the following must be included
+        1 column named `0` for the scaling of the load data and the index must
+        be a Pandas date/time index.  If a dict is used, the following must be
+        included
 
           - `shape`: the load scaling vector, which may be shorter than the
             date/time index implied by the start/end/freq values given, in
@@ -206,9 +216,12 @@ class Industry(pd.DataFrame):
         Caveats
         -------
 
-          - The load shape must total 1.0 and fit evenly into the date/time
-            index for the total annual energy use to match the original
-            industry energy use data.
+          - The load shape must average 1.0 over a year for the total annual
+            energy use to match the original industry energy use data, e.g.,
+            a flat load shape is all ones.
+
+          - The `loadshape` argument is ignored unless both `state` and
+            `county` are specified.
         """
 
         # set cache location
@@ -273,8 +286,12 @@ class Industry(pd.DataFrame):
                 how="outer",
                 )\
                 .drop({"FIPS","fips_matching"},axis=1)\
-                .rename({"ST":"state","COUNTY":"county"},axis=1)\
-                .ffill()\
+                .rename({"ST":"state","COUNTY":"county"},axis=1)
+            # fold unmatched NREL FIPS into the previous county, but don't
+            # copy the previous county's load into counties missing from the
+            # NREL data (see issue #44)
+            data[["state","county"]] = data[["state","county"]].ffill()
+            data = data.fillna(0.0)\
                 .groupby(["state","county"])\
                 .sum()
             CACHE = data.copy()

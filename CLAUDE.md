@@ -15,32 +15,15 @@ onto network nodes (e.g. WECC240 busses).
 - Author/maintainer: David P. Chassin
 - CLI entry point: `loads` → `loads.cli:main`
 
-## Layout
+## Where things are
 
-```
-loads/                     package source (flat; one module per concept)
-  resstock.py comstock.py  raw NREL building-stock end-use data (per building type)
-  units.py floorarea.py    Census housing units / OpenEI commercial floor area (scaling)
-  residential.py           RESstock → consolidated MW columns, scaled by Units
-  commercial.py            COMstock → consolidated MW columns, scaled by Floorarea
-  industry.py agriculture.py  NREL county inventories (flat load shape by default)
-  transportation.py        stub; raises NotImplementedError (loads set to 0 in Total)
-  dgen.py _solar_estimator.py  distributed generation (rooftop PV) model
-  cast.py                  back/forecast a 2018 load to another year by weather
-  calibrate.py             rescale loads to EIA energy / peak (uses `eia` package)
-  total.py                 sector sum + TSGAM fit/predict/sample (the core model)
-  estimator.py             newer TSGAM front end (`Estimator`, `EstimatorConfig`)
-  energy.py                periodic (monthly etc.) county energy in MWh
-  cluster.py               SVD + k-means clustering of counties → medoids
-  aggregate.py             sum county series onto geographic target nodes
-  cli.py                   argparse CLI (`loads print|plot ...`)
-  clusters.csv configs.csv county→medoid map, best TSGAM config per medoid
-  review_*.py evaluate_lag.py  marimo notebooks
-  tsgam_evaluate.py        TSGAM config search script
-  caiso/ isone/ wecc/      checked-in reference data
-  _test/ _validate/ _explore/  pytest tests, validation notebook, exploration scripts
-examples/                  marimo notebook + county CSV outputs
-```
+- `MANIFEST.md`: map of every file, a task index, and what not to read.
+  Read it first instead of listing folders. Update it in the same PR that
+  adds, moves, or deletes a file; `python .github/check_manifest.py` checks it.
+- `DESIGN.md`: design, numbered decisions, planned modules, and the version 1
+  open questions. Follow its decisions; ask before departing from one.
+- General Eudoxys package conventions are in the `eudoxys-package` skill
+  (`github.com/eudoxys/claude`).
 
 Sibling eudoxys packages are core dependencies (installed from GitHub via
 `requirements.txt`): `cache` (local data cache), `fips` (state/county lookups),
@@ -82,7 +65,8 @@ must match the CLI option's dest name (`state`, `county`, `year`, `building_type
 
 **Column naming.** Columns are `{elec|nonelec}_{category}_MW` with categories
 `baseload`, `cooling`, `heating`, `total`, `dg`, `net`. `Total` uses
-`elec_{sector}_MW`. Invariants:
+`elec_{sector}_MW` (training data only; predictions return just the `X`
+weather columns and the `Y` column). Invariants:
 - `elec_total_MW = baseload + cooling + heating`
 - `elec_net_MW = elec_total_MW + elec_dg_MW` and `elec_dg_MW <= 0`
   (DG is a negative load)
@@ -149,14 +133,34 @@ make docs                           # pdoc → ./docs (creates its own .venv)
 ## Known rough edges (don't "fix" silently; mention or ask)
 
 - `Makefile` `test` target runs `./test/test.sh`, which doesn't exist; tests
-  live in `loads/_test/`. The README's `make cache` target also doesn't exist.
+  live in `loads/_test/`.
 - `help`/`info` reference undefined `webbrowser` and `_URLS`; `viewer`/`test`
   point at `viewer.py`/`tests.py`, which aren't in the package; there's a
-  duplicate `viewer` case.
-- `dgen.SolarModel` has a stray `print(len(weather.index))`.
-- Several docstrings refer to `tests/` (`tests/clusters.csv`), but the
-  checked-in files are `loads/clusters.csv` and `loads/configs.csv`; `tests/`
-  is a gitignored scratch output folder.
+  duplicate `viewer` case. `_plot`/`_getdata` use `case "_":` (a string
+  literal) instead of `case _:`, so `plot` draws nothing for the sector
+  datasets.
+- `Total` has no year argument; the CLI's `-Y` only reaches `Weather`, and
+  `Total`'s `holdout` argument is unused.
+- `dgen.DG` allocates EIA-861M state small-scale PV to counties by
+  `wecc/county_mwh.csv` load share and shapes it hourly (NSRDB GHI or dGen),
+  returning `elec_dg_MW <= 0`; `DG.merge` adds it to a `Total` frame.
+  `dgen.compile` writes nonnegative MW (as `Calibrate` expects), and the
+  checked-in `wecc/county_dg*.csv.gz` files are also nonnegative, opposite to
+  the `elec_dg_MW` sign convention. `Total(...,dg=True)` (CLI `-G`) merges
+  this DG into its result (replacing the RESstock/COMstock PV in training
+  data); the default `dg=False` leaves results unchanged. TSGAM training
+  never uses it.
+- `Energy` requires a list/tuple `year` (the cache name uses `min(year)`),
+  its cache ignores `counties`, and a failing county appends the previous
+  county's result.
+- `EstimatorConfig.outlier_regularizer`/`outlier_threshold` lack annotations,
+  so they are class attributes, not `NamedTuple` fields; the threshold is
+  never applied (`TODO` in `_get_model`).
+- `tsgam_evaluate.py` writes `tests/test_config.csv` but then reads
+  `tests/best_config.csv`. It and `Total`'s `__main__` use the gitignored
+  `tests/` scratch folder; the checked-in cluster files are
+  `loads/clusters.csv` (current `elec_total_MW` k=6 medoids) and
+  `loads/configs.csv` (TSGAM configs for an earlier medoid set).
 
 ## Working rules
 

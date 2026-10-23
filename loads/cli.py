@@ -1,15 +1,19 @@
 # pylint: disable=line-too-long
 """Electric loads data accessor
 
-Generates electric load model for residential, commercial, industrial,
-agricultural, and public sectors. Two types of data frame are generated
-depending on whether `building_type` is specified.
+Outputs the load data of a county for the residential, commercial,
+industrial, and agricultural sectors, the county weather, or the total load
+by sector (`loads.total.Total`, the default dataset).
 
-If `building_type` is specified, then the raw end-use data for that building
+For the residential and commercial datasets, two types of data frame are
+generated depending on whether `building_type` is specified. If
+`building_type` is specified, then the raw end-use data for that building
 type is returned, the columns of which depend on the building type.  If
 `building_type` is not specified, then the compiled end-use data for the
 entire sector is returned in columns of MW electric and non-electric base,
 cooling, heating, total, distributed generation, and net loads.
+
+See `loads` for the command syntax.
 
 Examples
 --------
@@ -34,7 +38,7 @@ outputs the following
 
 To print the compiled residential loads in Alameda County CA in CSV format, the command
 
-    loads CA Alameda residential --format=csv
+    loads print -S=CA -C=Alameda -D=residential -f=csv
 
 outputs the following
 
@@ -49,20 +53,37 @@ outputs the following
     2018-12-31 22:00:00+00:00,37.711,1.033,-5.342,2.649,36.051,41.393,7.904,0.0,38.068,45.972
     2018-12-31 23:00:00+00:00,38.226,1.382,-3.725,1.664,37.548,41.272,8.399,0.0,30.819,39.218
 
-To plot the Alameda County CA total electric and non-electric loads in 2020, the command
+To plot the Alameda County CA 2018 electric loads by sector, the command
 
-    loads plot -S=CA -C=Alameda -Y=2020
+    loads plot -S=CA -C=Alameda
 
-display the following image
+displays an area plot of `elec_residential_MW`, `elec_commercial_MW`,
+`elec_industrial_MW`, `elec_agricultural_MW`, `elec_transportation_MW`, and
+`elec_dg_MW`. Use `-o FILE` to save the plot to a file instead.
 
-![image](https://github.com/eudoxys/loads/blob/main/docs/CA_Alameda_2020.png?raw=true)
+To print the Alameda County CA 2018 loads by sector with the county's
+distributed generation from EIA-861M small-scale solar (see `loads.dgen`)
+in place of the building stock PV, the command
+
+    loads print -S=CA -C=Alameda -G -f=csv
+
+replaces `elec_dg_MW` and recomputes `elec_net_MW`. The `-G` option only
+applies to the `total` dataset.
 
 Caveats
 -------
 
   - Compiling data can be time consuming. To help with performance data is
-    cached locally in the package library. See https://eudoxys.com/cache for
-    information on managing the cache data.
+    cached locally (see https://www.eudoxys.com/cache for information on
+    managing the cache data).
+
+  - The `total` dataset always returns the 2018 training data, so `-Y` has
+    no effect on it. The year is only used by the `weather` dataset.
+
+  - `plot` only supports the `weather` and `total` datasets at present.
+
+  - The `viewer`, `test`, `help`, and `info` commands are not functional in
+    this version.
 """
 # pylint: enable=line-too-long
 
@@ -96,12 +117,15 @@ E_SYNTAX = 2
 """Exit code on syntax error"""
 
 def main(*args:list[str],**kwargs:dict[str,str]) -> int:
-    """RESstock form accessor main command line processor
+    """Loads command line processor
 
     Arguments
     ---------
 
-      - `*args`: command line arguments (`None` reverts to `sys.argv`)
+      - `*args`: command line arguments (none uses `sys.argv`)
+
+      - `**kwargs`: additional options, passed as `--{name}={value}`
+        arguments (e.g., `state="CA"`)
 
     Returns
     -------
@@ -136,6 +160,10 @@ def main(*args:list[str],**kwargs:dict[str,str]) -> int:
         parser.add_argument("-Y","--year",
             type=int,
             help="set load model year (default 2018)")
+
+        parser.add_argument("-G","--dg",
+            action="store_true",
+            help="include county distributed generation (total only, see loads.dgen)")
 
         parser.add_argument("-o","--output",
             help="set output file name")

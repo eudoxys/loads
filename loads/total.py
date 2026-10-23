@@ -1,8 +1,10 @@
 """Total load aggregation module
 
-The total load module computes the expected sum of the residential,
-commercial, industrial and agricultural loads at the county level for the
-specified year.
+The total load module computes the sum of the residential, commercial,
+industrial and agricultural loads at the county level for the 2018 training
+year, and uses a TSGAM estimator trained on those loads and the county's 2018
+weather to predict or sample a load column for any date range with weather
+data.
 
 Data Flow
 ---------
@@ -12,80 +14,117 @@ The county-level total and net loads are calculated as follows:
 ```mermaid
 flowchart TD
 
-    NLR --> OpenEI
-    OpenEI --> Industrial
-    OpenEI --> Agricultural
-    OpenEI --> Transportation
+    NLR --> RESstock --> Residential
+    NLR --> COMstock --> Commercial
+    NLR --> Industrial
+    NLR --> Agricultural
+    Transportation[Transportation = 0]
+    NSRDB --> Weather
 
-    EIA ---> Energy
-    Energy -------> Calibration
-
-    NLR --> RESstock
-    NLR --> COMstock
-    NLR ---> Weather
-
-    Residential --> Loads
+    Residential --> Loads[2018 training data]
     Commercial --> Loads
     Industrial --> Loads
     Agricultural --> Loads
     Transportation --> Loads
-
-
-    Loads --> Fit
-
-    RESstock --> Residential
-    COMstock --> Commercial
-
-    Weather ---> Fit
-    Weather --> Sample[Sample/Predict]
-    Weather --> DG
+    Residential -->|pv| DG[elec_dg_MW]
+    Commercial -->|pv| DG
+    DG --> Loads
+    Weather -->|2018| Loads
 
     subgraph TSGAM Estimator
         Fit --> Estimator
-
-        Estimator --> Sample
-
+        Estimator --> Sample[Sample/Predict]
     end
 
-    Sample --> Total --> Net
-    DG --> Net
+    Loads -->|X, Y| Fit
+    Weather -->|date_range| Sample
+    Sample --> Y[Y column for date_range]
+
+    EIA[EIA-861M small-scale PV] --> DGEN[loads.dgen.DG]
+    Weather --> DGEN
+    DGEN -->|dg=True| Merge[elec_dg_MW, elec_net_MW]
+    Loads -.->|dg=True| Merge
+    Y -.->|dg=True| Merge
 ```
 
-Example
--------
+In the training data `elec_total_MW` is the sum of the sector loads and
+`elec_net_MW = elec_total_MW + elec_dg_MW`, where `elec_dg_MW` is the
+(negative) rooftop PV output of the residential and commercial building
+stock.
 
-To compute the total load in 2020 for Alameda County CA use the following
+Distributed Generation
+----------------------
+
+By default (`dg=False`) no observed DG is included: the training data carries
+only the building stock PV described above, and predictions and samples have
+no DG column. With `dg=True` the county's hourly DG from `loads.dgen.DG`
+(EIA-861M small-scale solar allocated to the county and shaped by weather) is
+added to the result with `loads.dgen.DG.merge`, i.e.,
+
+  - `elec_dg_MW` is added, or replaces the building stock PV in the training
+    data and the predicted DG when `Y="elec_dg_MW"`, and
+
+  - `elec_net_MW = elec_total_MW + elec_dg_MW` is set whenever
+    `elec_total_MW` is in the result.
+
+The DG profile and EIA data source are set by `Total.DG_PROFILE` and
+`Total.DG_SOURCE`. DG cannot be added to non-electric loads or to a
+predicted `elec_net_MW`, which already includes the model's DG.
+
+Examples
+--------
+
+To get the 2018 training data for Alameda County CA, i.e., the sector loads,
+total, distributed generation, net load, and weather, use
 
     from loads import Total
-    Total("CA","Alameda",2020)
+    Total("CA","Alameda")
 
-which outputs
+which returns 8760 hourly rows with the weather columns and the columns
+`elec_dg_MW`, `elec_residential_MW`, `elec_commercial_MW`,
+`elec_industrial_MW`, `elec_agricultural_MW`, `elec_transportation_MW`,
+`elec_total_MW`, and `elec_net_MW`.
 
-                               elec_residential_MW  elec_commercial_MW  elec_industrial_MW  elec_agricultural_MW  elec_transportation_MW  elec_total_MW  elec_net_MW  elec_dg_MW  temperature_degF  global_Wpms  direct_Wpms  diffuse_Wpms
-    timestamp
-    2020-01-01 00:00:00+00:00             1000.677             988.157             223.618                 6.901                     0.0       2219.353     2219.353        -0.0              50.9         37.0         40.0          34.0
-    2020-01-01 01:00:00+00:00              857.849             850.925             223.618                 6.901                     0.0       1939.294     1939.294        -0.0              49.5          0.0          0.0           0.0
-    2020-01-01 02:00:00+00:00              675.618             715.667             223.618                 6.901                     0.0       1621.805     1621.805        -0.0              48.9          0.0          0.0           0.0
-    2020-01-01 03:00:00+00:00              523.432             589.093             223.618                 6.901                     0.0       1343.044     1343.044        -0.0              48.7          0.0          0.0           0.0
-    2020-01-01 04:00:00+00:00              492.401             597.660             223.618                 6.901                     0.0       1320.580     1320.580        -0.0              48.0          0.0          0.0           0.0
-    ...                                        ...                 ...                 ...                   ...                     ...            ...          ...         ...               ...          ...          ...           ...
-    2020-12-31 19:00:00+00:00              425.438             659.111             223.618                 6.901                     0.0       1315.069     1315.069        -0.0              54.9        497.0        891.0          70.0
-    2020-12-31 20:00:00+00:00              397.054             640.492             223.618                 6.901                     0.0       1268.065     1268.065        -0.0              56.7        506.0        890.0          72.0
-    2020-12-31 21:00:00+00:00              473.943             712.390             223.618                 6.901                     0.0       1416.852     1416.852        -0.0              57.4        456.0        859.0          71.0
-    2020-12-31 22:00:00+00:00              584.162             764.285             223.618                 6.901                     0.0       1578.966     1578.966        -0.0              57.2        351.0        797.0          63.0
-    2020-12-31 23:00:00+00:00              738.641             861.597             223.618                 6.901                     0.0       1830.758     1830.758        -0.0              53.6        207.0        668.0          51.0
+To predict the total load in 2020 for Alameda County CA use
 
-    [8784 rows x 12 columns]
+    import pandas as pd
+    date_range = pd.date_range("2020-01-01 00:00:00+00:00",
+        "2020-12-31 23:00:00+00:00",freq="1h")
+    Total("CA","Alameda",date_range=date_range,samples=0)
+
+which returns 8784 hourly rows with the exogenous variables
+`temperature_degF` and `humidity_pc`, and the predicted `elec_total_MW`.
+The first and last 3 hours of the prediction are NaN because of the
+exogenous variable lags in `Total.TSGAM_CONFIG`.
+
+To include the county's 2020 distributed generation and the resulting net
+load use
+
+    Total("CA","Alameda",date_range=date_range,samples=0,dg=True)
+
+which adds the columns `elec_dg_MW` (never positive) and `elec_net_MW`.
+
+To get the 95th percentile of 100 autoregressive samples of the distributed
+generation use
+
+    Total("CA","Alameda",Y="elec_dg_MW",date_range=date_range,
+        samples=100,percentile=95)
+
+Use `percentile=None` to get all the samples in columns `sample_0`,
+`sample_1`, etc.
 
 Known Issues
 ------------
 
-1. Log-load is regarded as a better model, however the current implementation
+1. Log-load is regarded as a better model, however loads are currently fitted
+in the linear domain (see `Total.TRANSFORMATIONS`) because the implementation
 does not exclude zeros from training or learn when zero should be predicted.
-(See `ISSUE 1` in code below.)
 
-2. The current total from the main run is a sample, not a prediction, or a
-percentile of K samples. (See `ISSUE 2` in code below.)
+2. The `holdout` constructor argument is accepted but not used. Use
+`Total.test` to perform a holdout test.
+
+3. The main script of this module saves its results to the gitignored
+`tests/` folder.
 """
 
 import datetime as dt
@@ -120,6 +159,8 @@ class Total(pd.DataFrame):
     Columns
     -------
 
+    The training data (`samples=None`) contains the following columns:
+
       - `elec_residential_MW`: total residential building loads
 
       - `elec_commercial_MW`: total commercial building loads
@@ -128,29 +169,45 @@ class Total(pd.DataFrame):
 
       - `elec_agricultural_MW`: total agricultural loads
 
-      - `elec_total_MW`: total loads
+      - `elec_transportation_MW`: total transportation loads (always 0)
 
-      - `elec_dg_MW`: total distributed generation
+      - `elec_total_MW`: total loads (sum of the sector loads)
 
-      - `elec_net_MW`: total net loads
+      - `elec_dg_MW`: total distributed generation (never positive)
+
+      - `elec_net_MW`: total net loads (`elec_total_MW + elec_dg_MW`)
 
       - `temperature_degF`: dry-bulb temperature used to predict loads
 
-      - `global_Wpms`: global horizontal irradiance used to predict DG
+      - `humidity_pc`: relative humidity used to predict loads
 
-      - `direct_Wpms`: direct normal irradiance used to to predict DG
+      - `global_Wpms`: global horizontal irradiance
 
-      - `diffuse_Wpms`: global diffuse irradiance used to predict DG
+      - `direct_Wpms`: direct normal irradiance used to predict DG
+
+      - `diffuse_Wpms`: diffuse horizontal irradiance used to predict DG
+
+    plus any other columns provided by `weather.Weather`. When `Y` starts with
+    `nonelec_`, the training data contains the `nonelec_` sector, total, and
+    net columns instead and has no DG column.
+
+    Predictions and samples (`samples>=0`) contain the `X` columns and the `Y`
+    column only (or `sample_0`, `sample_1`, etc. when `samples>1` and
+    `percentile=None`).
+
+    When `dg=True`, `elec_dg_MW` from `loads.dgen.DG` is added (replacing any
+    existing DG column), and `elec_net_MW` is set to `elec_total_MW +
+    elec_dg_MW` when `elec_total_MW` is present.
 
     Caveats
     -------
 
-      - Only direct normal and global diffuse irradiance are currently used to
-        predict DG using a simple least-squares fit
+      - Only direct normal and diffuse irradiance are used to predict DG (see
+        `Total.EXOGENOUS_VARIABLES`).
 
       - Large loads as defined by NERC (e.g., data centers) are not included.
 
-      - Transportation loads are current set to 0 because they are less than
+      - Transportation loads are currently set to 0 because they are less than
         1% of total electric loads.
     """
 
@@ -239,6 +296,13 @@ class Total(pd.DataFrame):
     TRAINING_YEAR = 2018
     """Year of training data"""
 
+    DG_PROFILE = "weather"
+    """Hourly DG profile used when `dg=True` (see `loads.dgen.DG`)"""
+
+    DG_SOURCE = None
+    """Local EIA-861M data file used when `dg=True` (`None` downloads it, see
+    `loads.dgen.SmallScaleSolar`)"""
+
     COLUMNS = {
         "temperature_degF": "Outdoor air temperature",
         "humidity_pc": "Relative humidity",
@@ -260,7 +324,7 @@ class Total(pd.DataFrame):
         *,
         Y:str="elec_total_MW",
         X:str=None,
-        dg:bool|pd.DataFrame|None=None,
+        dg:bool=False,
         date_range:pd.DatetimeIndex=None,
         samples:int=None,
         percentile:float=96,
@@ -276,26 +340,46 @@ class Total(pd.DataFrame):
 
           - `county`: county for which to aggregate loads
 
-          - `Y`: column to use for Y values
+          - `Y`: column to predict (default `elec_total_MW`, see
+            `Total.EXOGENOUS_VARIABLES` for the supported columns)
 
-          - `X`: column to use for X values (defaults to exogenous variables of
-            `Y`, see `loads.total.EXOGENOUS_VARIABLES`)
+          - `X`: list of columns to use as exogenous variables (defaults to
+            `Total.EXOGENOUS_VARIABLES[Y]`)
 
-          - `date_range`: date/time index to use
+          - `dg`: include the county's distributed generation from
+            `loads.dgen.DG` (default `False`, see `Total`)
 
-          - `samples`: number of AR samples to generate (`0` predicts, `1`
-            samples, `>1` samples with percentile, `None` for training data)
+          - `date_range`: date/time index to predict or sample (required when
+            `samples` is not `None`)
 
-          - `percentile`: percentile to use when `samples` > 1
+          - `samples`: `None` returns the 2018 training data (`date_range` is
+            ignored), `0` returns the prediction, `1` returns one AR sample,
+            and `>1` returns the `percentile` of that many AR samples
 
-          - `holdout`: index of records to hold out of training for testing
+          - `percentile`: percentile to use when `samples` > 1 (`None`
+            returns all samples)
 
-          - `refresh`: refresh cache data
+          - `holdout`: not used (see `Total.test`)
+
+          - `refresh`: refresh cache data and refit the estimator
+
+        Returns
+        -------
+
+        The data frame is indexed by a UTC `timestamp`. See `Total` for the
+        columns.
         """
 
         # identify location of cached results
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
+
+        # check DG option
+        if dg:
+            if Y.startswith("nonelec_"):
+                raise ValueError(f"{dg=} is not valid for non-electric {Y=}")
+            if Y == "elec_net_MW" and samples is not None:
+                raise ValueError(f"{dg=} is not valid for {Y=} (predict elec_total_MW instead)")
 
         # choose sampling method
         if not samples is None and not isinstance(samples,int):
@@ -340,6 +424,14 @@ class Total(pd.DataFrame):
             data.index = data.index.tz_localize("UTC")
         elif not data.index.tz == "UTC":
             data.index = data.index.tz_convert("UTC")
+
+        # add distributed generation
+        if dg:
+            data = DG.merge(data,state,county,
+                profile=self.DG_PROFILE,
+                source=self.DG_SOURCE,
+                refresh=refresh,
+                )
 
         super().__init__(data.rename_axis("timestamp"))
 
@@ -626,18 +718,23 @@ class Total(pd.DataFrame):
 
           - `county`: county to draw data from
 
-          - `holdout`: index of hold rows
+          - `holdout`: index (or boolean mask) of the 2018 rows to hold out of
+            training
 
           - `X`: X columns in `loads.total.Total` to use as exogenous variables
 
           - `Y`: Y column in `loads.total.Total` to fit
 
-          - `samples`: number of sample columns to generate
+          - `n_samples`: number of sample columns to generate (`0` for none)
+
+          - `refresh`: refresh cached training data
 
         Returns
         -------
 
-          - `pd.DataFrame`: the X and Y data frame augmented with `predict` and `sample`
+          - `pd.DataFrame`: the 2018 X and Y data frame augmented with the
+            `predict` column and, when `n_samples` is positive, a `sample`
+            column (`n_samples=1`) or `sample_0`, `sample_1`, etc. columns
         """
 
         # get original data

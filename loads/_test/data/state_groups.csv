@@ -1,0 +1,408 @@
+county_st,CAISO,WECC
+Apache AZ,0,1
+Cochise AZ,0,1
+Coconino AZ,0,1
+Gila AZ,0,1
+Graham AZ,0,1
+Greenlee AZ,0,1
+La Paz AZ,0,1
+Maricopa AZ,0,1
+Mohave AZ,0,1
+Navajo AZ,0,1
+Pima AZ,0,1
+Pinal AZ,0,1
+Santa Cruz AZ,0,1
+Yavapai AZ,0,1
+Yuma AZ,0,1
+Alameda CA,1,1
+Alpine CA,0,1
+Amador CA,1,1
+Butte CA,1,1
+Calaveras CA,1,1
+Colusa CA,1,1
+Contra Costa CA,1,1
+Del Norte CA,0,1
+El Dorado CA,1,1
+Fresno CA,1,1
+Glenn CA,1,1
+Humboldt CA,1,1
+Imperial CA,0,1
+Inyo CA,0,1
+Kern CA,1,1
+Kings CA,1,1
+Lake CA,1,1
+Lassen CA,0,1
+Los Angeles CA,0.66,1
+Madera CA,1,1
+Marin CA,1,1
+Mariposa CA,1,1
+Mendocino CA,1,1
+Merced CA,1,1
+Modoc CA,0,1
+Mono CA,0,1
+Monterey CA,1,1
+Napa CA,1,1
+Nevada CA,1,1
+Orange CA,1,1
+Placer CA,1,1
+Plumas CA,1,1
+Riverside CA,0.87,1
+Sacramento CA,0,1
+San Benito CA,1,1
+San Bernardino CA,1,1
+San Diego CA,1,1
+San Francisco CA,1,1
+San Joaquin CA,1,1
+San Luis Obispo CA,1,1
+San Mateo CA,1,1
+Santa Barbara CA,1,1
+Santa Clara CA,1,1
+Santa Cruz CA,1,1
+Shasta CA,1,1
+Sierra CA,1,1
+Siskiyou CA,0,1
+Solano CA,1,1
+Sonoma CA,1,1
+Stanislaus CA,0,1
+Sutter CA,1,1
+Tehama CA,1,1
+Trinity CA,1,1
+Tulare CA,1,1
+Tuolumne CA,1,1
+Ventura CA,1,1
+Yolo CA,1,1
+Yuba CA,1,1
+Adams CO,0,1
+Alamosa CO,0,1
+Arapahoe CO,0,1
+Archuleta CO,0,1
+Baca CO,0,1
+Bent CO,0,1
+Boulder CO,0,1
+Broomfield CO,0,1
+Chaffee CO,0,1
+Cheyenne CO,0,1
+Clear Creek CO,0,1
+Conejos CO,0,1
+Costilla CO,0,1
+Crowley CO,0,1
+Custer CO,0,1
+Delta CO,0,1
+Denver CO,0,1
+Dolores CO,0,1
+Douglas CO,0,1
+Eagle CO,0,1
+El Paso CO,0,1
+Elbert CO,0,1
+Fremont CO,0,1
+Garfield CO,0,1
+Gilpin CO,0,1
+Grand CO,0,1
+Gunnison CO,0,1
+Hinsdale CO,0,1
+Huerfano CO,0,1
+Jackson CO,0,1
+Jefferson CO,0,1
+Kiowa CO,0,1
+Kit Carson CO,0,1
+La Plata CO,0,1
+Lake CO,0,1
+Larimer CO,0,1
+Las Animas CO,0,1
+Lincoln CO,0,1
+Logan CO,0,1
+Mesa CO,0,1
+Mineral CO,0,1
+Moffat CO,0,1
+Montezuma CO,0,1
+Montrose CO,0,1
+Morgan CO,0,1
+Otero CO,0,1
+Ouray CO,0,1
+Park CO,0,1
+Phillips CO,0,1
+Pitkin CO,0,1
+Prowers CO,0,1
+Pueblo CO,0,1
+Rio Blanco CO,0,1
+Rio Grande CO,0,1
+Routt CO,0,1
+Saguache CO,0,1
+San Juan CO,0,1
+San Miguel CO,0,1
+Sedgwick CO,0,1
+Summit CO,0,1
+Teller CO,0,1
+Washington CO,0,1
+Weld CO,0,1
+Yuma CO,0,1
+Ada ID,0,1
+Adams ID,0,1
+Bannock ID,0,1
+Bear Lake ID,0,1
+Benewah ID,0,1
+Bingham ID,0,1
+Blaine ID,0,1
+Boise ID,0,1
+Bonner ID,0,1
+Bonneville ID,0,1
+Boundary ID,0,1
+Butte ID,0,1
+Camas ID,0,1
+Canyon ID,0,1
+Caribou ID,0,1
+Cassia ID,0,1
+Clark ID,0,1
+Clearwater ID,0,1
+Custer ID,0,1
+Elmore ID,0,1
+Franklin ID,0,1
+Fremont ID,0,1
+Gem ID,0,1
+Gooding ID,0,1
+Idaho ID,0,1
+Jefferson ID,0,1
+Jerome ID,0,1
+Kootenai ID,0,1
+Latah ID,0,1
+Lemhi ID,0,1
+Lewis ID,0,1
+Lincoln ID,0,1
+Madison ID,0,1
+Minidoka ID,0,1
+Nez Perce ID,0,1
+Oneida ID,0,1
+Owyhee ID,0,1
+Payette ID,0,1
+Power ID,0,1
+Shoshone ID,0,1
+Teton ID,0,1
+Twin Falls ID,0,1
+Valley ID,0,1
+Washington ID,0,1
+Beaverhead MT,0,1
+Big Horn MT,0,1
+Blaine MT,0,1
+Broadwater MT,0,1
+Carbon MT,0,1
+Carter MT,0,1
+Cascade MT,0,1
+Chouteau MT,0,1
+Custer MT,0,1
+Deer Lodge MT,0,1
+Fergus MT,0,1
+Flathead MT,0,1
+Gallatin MT,0,1
+Garfield MT,0,1
+Glacier MT,0,1
+Golden Valley MT,0,1
+Granite MT,0,1
+Hill MT,0,1
+Jefferson MT,0,1
+Judith Basin MT,0,1
+Lake MT,0,1
+Lewis and Clark MT,0,1
+Liberty MT,0,1
+Lincoln MT,0,1
+Madison MT,0,1
+McCone MT,0,1
+Meagher MT,0,1
+Mineral MT,0,1
+Missoula MT,0,1
+Musselshell MT,0,1
+Park MT,0,1
+Petroleum MT,0,1
+Phillips MT,0,1
+Pondera MT,0,1
+Powder River MT,0,1
+Powell MT,0,1
+Prairie MT,0,1
+Ravalli MT,0,1
+Rosebud MT,0,1
+Sanders MT,0,1
+Silver Bow MT,0,1
+Stillwater MT,0,1
+Sweet Grass MT,0,1
+Teton MT,0,1
+Toole MT,0,1
+Treasure MT,0,1
+Valley MT,0,1
+Wheatland MT,0,1
+Yellowstone MT,0,1
+Bernalillo NM,0,1
+Catron NM,0,1
+Chaves NM,0,1
+Cibola NM,0,1
+Colfax NM,0,1
+De Baca NM,0,1
+Doña Ana NM,0,1
+Eddy NM,0,1
+Grant NM,0,1
+Guadalupe NM,0,1
+Harding NM,0,1
+Hidalgo NM,0,1
+Lincoln NM,0,1
+Los Alamos NM,0,1
+Luna NM,0,1
+McKinley NM,0,1
+Mora NM,0,1
+Otero NM,0,1
+Rio Arriba NM,0,1
+San Juan NM,0,1
+San Miguel NM,0,1
+Sandoval NM,0,1
+Santa Fe NM,0,1
+Sierra NM,0,1
+Socorro NM,0,1
+Taos NM,0,1
+Torrance NM,0,1
+Union NM,0,1
+Valencia NM,0,1
+Carson City NV,0,1
+Churchill NV,0,1
+Clark NV,0,1
+Douglas NV,0,1
+Elko NV,0,1
+Esmeralda NV,1,1
+Eureka NV,0,1
+Humboldt NV,0,1
+Lander NV,0,1
+Lincoln NV,0,1
+Lyon NV,0,1
+Mineral NV,0,1
+Nye NV,1,1
+Pershing NV,0,1
+Storey NV,0,1
+Washoe NV,0,1
+White Pine NV,0,1
+Baker OR,0,1
+Benton OR,0,1
+Clackamas OR,0,1
+Clatsop OR,0,1
+Columbia OR,0,1
+Coos OR,0,1
+Crook OR,0,1
+Curry OR,0,1
+Deschutes OR,0,1
+Douglas OR,0,1
+Gilliam OR,0,1
+Grant OR,0,1
+Harney OR,0,1
+Hood River OR,0,1
+Jackson OR,0,1
+Jefferson OR,0,1
+Josephine OR,0,1
+Klamath OR,0,1
+Lake OR,0,1
+Lane OR,0,1
+Lincoln OR,0,1
+Linn OR,0,1
+Malheur OR,0,1
+Marion OR,0,1
+Morrow OR,0,1
+Multnomah OR,0,1
+Polk OR,0,1
+Sherman OR,0,1
+Tillamook OR,0,1
+Umatilla OR,0,1
+Union OR,0,1
+Wallowa OR,0,1
+Wasco OR,0,1
+Washington OR,0,1
+Wheeler OR,0,1
+Yamhill OR,0,1
+Custer SD,0,1
+Fall River SD,0,1
+Lawrence SD,0,1
+El Paso TX,0,1
+Beaver UT,0,1
+Box Elder UT,0,1
+Cache UT,0,1
+Carbon UT,0,1
+Daggett UT,0,1
+Davis UT,0,1
+Duchesne UT,0,1
+Emery UT,0,1
+Garfield UT,0,1
+Grand UT,0,1
+Iron UT,0,1
+Juab UT,0,1
+Kane UT,0,1
+Millard UT,0,1
+Morgan UT,0,1
+Piute UT,0,1
+Rich UT,0,1
+Salt Lake UT,0,1
+San Juan UT,0,1
+Sanpete UT,0,1
+Sevier UT,0,1
+Summit UT,0,1
+Tooele UT,0,1
+Uintah UT,0,1
+Utah UT,0,1
+Wasatch UT,0,1
+Washington UT,0,1
+Wayne UT,0,1
+Weber UT,0,1
+Adams WA,0,1
+Asotin WA,0,1
+Benton WA,0,1
+Chelan WA,0,1
+Clallam WA,0,1
+Clark WA,0,1
+Columbia WA,0,1
+Cowlitz WA,0,1
+Douglas WA,0,1
+Ferry WA,0,1
+Franklin WA,0,1
+Garfield WA,0,1
+Grant WA,0,1
+Grays Harbor WA,0,1
+Island WA,0,1
+Jefferson WA,0,1
+King WA,0,1
+Kitsap WA,0,1
+Kittitas WA,0,1
+Klickitat WA,0,1
+Lewis WA,0,1
+Lincoln WA,0,1
+Mason WA,0,1
+Okanogan WA,0,1
+Pacific WA,0,1
+Pend Oreille WA,0,1
+Pierce WA,0,1
+San Juan WA,0,1
+Skagit WA,0,1
+Skamania WA,0,1
+Snohomish WA,0,1
+Spokane WA,0,1
+Stevens WA,0,1
+Thurston WA,0,1
+Wahkiakum WA,0,1
+Walla Walla WA,0,1
+Whatcom WA,0,1
+Whitman WA,0,1
+Yakima WA,0,1
+Albany WY,0,1
+Big Horn WY,0,1
+Campbell WY,0,1
+Carbon WY,0,1
+Converse WY,0,1
+Crook WY,0,1
+Fremont WY,0,1
+Goshen WY,0,1
+Hot Springs WY,0,1
+Johnson WY,0,1
+Laramie WY,0,1
+Lincoln WY,0,1
+Natrona WY,0,1
+Niobrara WY,0,1
+Park WY,0,1
+Platte WY,0,1
+Sheridan WY,0,1
+Sublette WY,0,1
+Sweetwater WY,0,1
+Teton WY,0,1
+Uinta WY,0,1
+Washakie WY,0,1
+Weston WY,0,1

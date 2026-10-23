@@ -3,10 +3,11 @@
 The `RESstock` class is a Pandas data frame loaded with the RESstock
 building data.
 
-Residental building types are coded using three characters `R` for
-residential, `{'SA','SD','SM','LM','MH'}` for single-family attached,
-single-family detached, small multi-family, large multi-family, and
-mobile-home. Values are given in W/unit.
+Residential building types are coded using three characters, `R` for
+residential followed by `SA`, `SD`, `SM`, `MM`, or `MH` for single-family
+attached, single-family detached, small (2-4 unit) multi-family, large (5+
+unit) multi-family, and mobile-home, respectively (see
+`RESstock.BUILDING_TYPES`). Values are given in W/unit.
 
 Examples
 --------
@@ -153,7 +154,8 @@ class RESstock(pd.DataFrame):
           - `county`: specifies the county (e.g., "Alameda") or None for the
             entire state
 
-          - `building_type`: specifies the building type (e.g., "house")
+          - `building_type`: specifies the building type code (e.g., "RSD",
+            required, see `RESstock.BUILDING_TYPES`)
 
           - `refresh`: force download of data from source
 
@@ -164,8 +166,11 @@ class RESstock(pd.DataFrame):
         maps the RESstock data to the data frame columns. The values are given in
         average Watts per housing unit. The number of units from RESstock is
         given by the `units` column. Note that the number of units is that used
-        in the RESstock model, which may not be accurately reflect the actual
+        in the RESstock model, which may not accurately reflect the actual
         number of units in any given year.
+
+        If no data is available for the building type in the county, an
+        all-zero data frame is returned.
         """
         assert building_type is not None, "building_type must be specified"
         assert building_type in self.BUILDING_TYPES, \

@@ -60,8 +60,11 @@ flowchart LR
 ```
 Figure 1: RESstock to Residential data frame data flow
 
-In addition, the number of housing units, casting, and calibration are handled
-as shown in Figure 2.
+In addition, the loads are scaled by the number of housing units as shown in
+Figure 2. Each building type's per-unit load (W/unit) is weighted by its share
+of the RESstock housing units and multiplied by the county's Census housing
+units (`loads.units.Units` for 2018, which uses the earliest available
+estimate, i.e., 2020).
 
 ```mermaid
 flowchart LR
@@ -82,7 +85,7 @@ flowchart LR
         end
     end
 
-    Unscaled --> Units --> Cast --> Calibrate --> Scaled
+    Unscaled --> Units --> Scaled
 
     subgraph Scaled
         subgraph s_nonelec[nonelec]
@@ -114,17 +117,17 @@ which outputs the following
 
                                elec_baseload_MW  ...  nonelec_total_MW
     timestamp                                    ...
-    2018-01-01 00:00:00+00:00         45.084952  ...         46.469329
-    2018-01-01 01:00:00+00:00         52.149717  ...         55.490697
-    2018-01-01 02:00:00+00:00         58.137018  ...         66.615070
-    2018-01-01 03:00:00+00:00         55.908885  ...         76.447298
-    2018-01-01 04:00:00+00:00         52.823653  ...         88.704520
+    2018-01-01 00:00:00+00:00           45.0850  ...           46.4693
+    2018-01-01 01:00:00+00:00           52.1497  ...           55.4907
+    2018-01-01 02:00:00+00:00           58.1370  ...           66.6151
+    2018-01-01 03:00:00+00:00           55.9089  ...           76.4473
+    2018-01-01 04:00:00+00:00           52.8237  ...           88.7045
     ...                                     ...  ...               ...
-    2018-12-31 19:00:00+00:00         41.082225  ...         78.719394
-    2018-12-31 20:00:00+00:00         41.320007  ...         65.788885
-    2018-12-31 21:00:00+00:00         39.149527  ...         54.617247
-    2018-12-31 22:00:00+00:00         37.711368  ...         45.972108
-    2018-12-31 23:00:00+00:00         38.225652  ...         39.217772
+    2018-12-31 19:00:00+00:00           41.0822  ...           78.7194
+    2018-12-31 20:00:00+00:00           41.3200  ...           65.7889
+    2018-12-31 21:00:00+00:00           39.1495  ...           54.6172
+    2018-12-31 22:00:00+00:00           37.7114  ...           45.9721
+    2018-12-31 23:00:00+00:00           38.2257  ...           39.2178
 
     [8760 rows x 10 columns]
 """
@@ -145,8 +148,12 @@ class Residential(pd.DataFrame):
 
     The `Residential` class is a data frame that contains the collected
     building loads for each residential building types, aggregated by load
-    category, i.e., `baseload`,`cooling`, `heating`, `dg`, and `total` for
-    both electric and non-electric loads.  Values are delivered both in MW.
+    category, i.e., `baseload`,`cooling`, `heating`, and `total` for both
+    electric and non-electric loads, plus `elec_dg_MW` and `elec_net_MW`.
+    Values are delivered in MW.
+
+    The `elec_dg_MW` column keeps the sign of the RESstock PV data, and
+    `elec_net_MW` is `elec_total_MW` less the magnitude of `elec_dg_MW`.
     """
     COLLECT = {
             "elec_baseload": [
@@ -246,17 +253,24 @@ class Residential(pd.DataFrame):
 
           - `county`: specify the county name (required)
 
-          - `collect`: specify how RESstock columns are collected
+          - `collect`: specify how RESstock columns are collected (default
+            is `COLLECT`)
 
-          - `refresh`: force download of data from source
+          - `refresh`: force regeneration of the cached data
 
         Description
         -----------
 
         This class compiles the building type data for a county by collecting
-        RESstock columns, scaling by the number of housing units in 2018, and
-        finally computing total MW and the fraction of total of electric or
-        non-electric load.
+        RESstock columns, scaling by the number of housing units, and finally
+        computing the electric and non-electric total and net loads in MW.
+
+        Caveats
+        -------
+
+          - The result is cached regardless of `collect`, so a cached result
+            is returned for a custom `collect` unless `refresh=True` is
+            given.
         """
 
         # pylint: disable=too-many-locals

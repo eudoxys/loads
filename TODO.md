@@ -8,14 +8,16 @@
 
 - [x] Change training from {RES,COM}stock weather to NSRDB weather
 
-- [ ] Read solar and wind DG from NREL
+- [ ] Read solar and wind DG (rooftop solar is EIA-861M small-scale PV
+  allocated to counties and shaped hourly in `loads.dgen`; wind is not done)
 
-- [ ] Calculate net loads
+- [x] Calculate net loads
 
-- [ ] Calibrate `elec_total_MW` based on `elec_net_MW` w.r.t. EIA energy use at
-  state level, stratefied as monthly DG level
+- [x] Calibrate net loads w.r.t. EIA energy use at state level and regional
+  peaks (see `loads.calibrate`)
 
-- [ ] Produce 95th percentile samples from TSGAM
+- [x] Produce 95th percentile samples from TSGAM (see `samples` and
+  `percentile` in `loads.total.Total`)
 
 # Clustering
 
@@ -23,9 +25,10 @@
 
 - [x] k-means clustering of SVD U-matrix to 99% of power spectrum
 
-- [x] Cluster review notebook
+- [x] Cluster review notebook (`_explore/explore_clusters_marimo.py`)
 
-- [x] Generate `tests/clusters.csv` for all counties, all total fields, for k from 2 to 10
+- [x] Generate `_explore/explore_clusters.csv` for all counties, all total
+  fields, for k from 2 to 10
 
 # TSGAM
 
@@ -37,4 +40,4 @@
 
 - [x] Find optimal models for medoid counties
 
-- [x] Check optimal models for random counties to see if the match medoid county optimal models
+- [x] Check optimal models for random counties to see if they match medoid county optimal models

@@ -3,48 +3,48 @@
 Syntax
 ------
 
-    loads {print,plot} [-S STATE] [-C COUNTY] [-B BUILDING_TYPE] [-Y YEAR]
-          [-D {residential,commercial,industrial,agricultural,weather}] 
-          [-h] [-o OUTPUT] [-f {csv,gzip,zip,xlsx,pie,scatter,plot}] [-p PRECISION] 
-          [-w] [-d]
+    loads {print,plot,viewer,test,help,info} [-h] [-S STATE] [-C COUNTY]
+          [-D {residential,commercial,industrial,agricultural,weather,total}]
+          [-Y YEAR] [-o OUTPUT] [-B BUILDING_TYPE]
+          [-f {csv,gzip,zip,xlsx,pie,scatter,plot}] [-p PRECISION] [-w] [-d]
 
 Positional arguments
 --------------------
-
-  - `help`: open online documentation
-
-  - `info`: get package information
 
   - `print`: output text
 
   - `plot`: output graphics
 
-  - `viewer`: open load browser
+  - `viewer`, `test`, `help`, `info`: accepted by the parser but not
+    functional in this version (see `loads.cli`)
 
 Optional arguments
 ------------------
 
   - `-B|--building_type BUILDING_TYPE`: access raw building type stock data
+    (`residential` and `commercial` datasets only)
 
   - `-C|--county COUNTY`: select county
 
-  - `-D|--dataset {residential,commercial,industrial,agricultural,public,weather}`: select dataset
+  - `-D|--dataset {residential,commercial,industrial,agricultural,weather,total}`:
+    select dataset (default `total`)
 
-  - `-d|--debug`: enable debug traceback on exceptions
+  - `-d|--debug`: enable debug logging and traceback on exceptions
 
-  - `--format {csv,gzip,zip,xlsx}`: specify output format
+  - `-f|--format {csv,gzip,zip,xlsx,pie,scatter,plot}`: specify output format
 
   - `-h|--help`: show this help message and exit
 
   - `-o|--output OUTPUT`: set output file name
 
-  - `--precision PRECISION`: specify output precision
+  - `-p|--precision PRECISION`: specify output precision (default 3)
 
   - `-S|--state STATE`: select state
 
   - `-w|--warning`: enable warning messages from python
 
-  - `-Y|--year YEAR`: select year
+  - `-Y|--year YEAR`: select year (only used by the `weather` dataset; the
+    load datasets return their 2018 reference data)
 
 See https://www.eudoxys.com/loads for full documentation.
 
@@ -57,35 +57,36 @@ actual weather. It is intended for power-system planning studies that need a
 realistic county load shape for a specific year, and it can sum county loads
 onto network nodes (e.g., the WECC 240-bus model) with `loads.aggregate`.
 
-Given a state, a county, and a year or date range, `loads.total.Total` returns
-a data frame that is expected to satisfy the following:
+Given a state and a county, `loads.total.Total` returns a data frame that is
+expected to satisfy the following:
 
-  1. **Complete hourly coverage.** One row per hour of the requested period,
-     indexed by a UTC `timestamp` (8760 rows for a normal year, 8784 for a
-     leap year).
+  1. **Reference-year sector breakdown.** By default (`samples=None`) the
+     frame holds the 2018 training data: one row per hour of 2018 indexed by
+     a UTC `timestamp`, the county's 2018 weather, and separate columns for
+     residential, commercial, industrial, agricultural and transportation
+     load (`elec_residential_MW`, ..., `elec_transportation_MW`).
 
-  2. **Sector breakdown.** Separate columns for residential, commercial,
-     industrial, agricultural and transportation load
-     (`elec_residential_MW`, ..., `elec_transportation_MW`), plus the weather
-     used to produce them.
-
-  3. **Consistent totals.** `elec_total_MW` is the sum of the sector columns.
+  2. **Consistent totals.** In the training data `elec_total_MW` is the sum
+     of the sector columns and excludes distributed generation.
      `elec_dg_MW` (rooftop solar and other distributed generation) is never
-     positive. `elec_net_MW = elec_total_MW + elec_dg_MW`.
+     positive, and `elec_net_MW = elec_total_MW + elec_dg_MW`.
 
-  4. **Weather response.** Residential and commercial load follow the
-     county's outdoor temperature and humidity for the requested period, and
-     distributed generation follows its direct and diffuse sunlight.
-     Industrial and agricultural load do not depend on weather.
+  3. **Predictions for other periods.** Given a `date_range` and
+     `samples=0`, the frame holds the weather variables used as inputs and
+     a TSGAM prediction of one load column (`Y`, default `elec_total_MW`)
+     for every hour of the range. With `samples=1` the prediction is replaced
+     by one autoregressive sample, and with `samples>1` by the requested
+     `percentile` of that many samples.
 
-  5. **Agreement with reported state totals.** For the reference year (2018),
-     residential and commercial energy summed over every county in a state
-     equals that state's annual EIA Form 861M retail sales for each sector.
-     Distributed generation summed the same way equals the state's
-     EIA-reported small-scale solar output.
+  4. **Weather response.** Predicted residential, commercial and total load
+     follow the county's outdoor temperature and humidity for the requested
+     period, and predicted distributed generation follows its direct and
+     diffuse sunlight. Industrial and agricultural load do not depend on
+     weather.
 
-  6. **Repeatability.** The same request returns the same result; results are
-     cached locally after the first run unless `refresh=True` is given.
+  5. **Repeatability.** Training data and the downloaded inputs are cached
+     locally after the first run unless `refresh=True` is given. Predictions
+     (`samples=0`) are deterministic; sampled results are not.
 
 How the estimate is produced
 ----------------------------
@@ -102,11 +103,17 @@ How the estimate is produced
   - Transportation is not yet modeled and is reported as zero.
 
   - The 2018 sector loads and the county's 2018 weather are used to train a
-    time-series model (TSGAM). Loads for other years are predicted from that
-    year's weather, so a hotter summer produces more cooling load.
+    time-series model (TSGAM). Loads for other periods are predicted from
+    that period's weather, so a hotter summer produces more cooling load.
+    `loads.estimator.Estimator` is a newer front end to the same kind of
+    model that uses a single `"County ST"` location argument.
 
-  - Residential and commercial loads and distributed generation are scaled to
-    match the state totals EIA reports for 2018 (item 5 above).
+  - Calibration to published totals is a separate step.
+    `loads.calibrate.Calibrate` shapes a panel of county (or node) loads so
+    that it honors monthly state energy targets and regional peak ceilings,
+    and `loads/wecc/wecc_estimate.py` rescales each county's monthly energy
+    to its gross load, i.e., the EIA 861M retail sales allocated to it plus
+    its distributed generation.
 
 The same approach applies to non-electric energy (`nonelec_*` columns) where
 the building-stock data provides it.
@@ -117,53 +124,63 @@ What is not promised
   - Industrial and agricultural loads have no hourly, daily or seasonal shape
     and are not checked against EIA totals.
 
-  - Predicted years are not re-calibrated to that year's EIA totals; they
-    inherit the 2018 calibration.
+  - `Total` itself does not calibrate to EIA totals. Neither the training
+    data nor the predictions are adjusted to reported state sales unless
+    `loads.calibrate` (or another rescaling) is applied afterwards.
 
-  - Results are only available for years with weather data and have mostly
-    been exercised for 2018-2022 in western (WECC) states.
+  - Results are only available for periods with weather data and have
+    mostly been exercised for 2018-2022 in western (WECC) states.
 
-  - Calibrating any one county requires computing every county in its state
-    first, which can take a long time for states with many counties.
+  - Predictions and samples only contain the weather inputs and the one
+    predicted column, not the full sector breakdown.
 
-  - When `samples` is 1 or more, the first and last few hours of a sampled
-    series may be missing (see `loads.total`).
+  - The first and last few hours of a prediction or sample are NaN (see
+    `loads.total`).
 
 Load data
 ---------
 
 Load data frames generally contain any of the following, indexed by date/time:
 
-  - `elec_baseload_MW`: electric loads which are dependent on outdoor air
-    temperature and solar gains over all conditions.
+  - `elec_baseload_MW`: electric end uses other than space cooling and
+    heating, e.g., lighting, appliances, plug loads, refrigeration, pumps,
+    and water heating.
 
-  - `elec_cooling_MW`: electric loads which are dependent on outdoor air
-    temperature only when cooling is required.
+  - `elec_cooling_MW`: electric space cooling end uses (compressors, cooling
+    fans and pumps).
 
-  - `elec_heating_MW`: electric loads which are dependent on outdoor air
-    temperature only when heating is required.
+  - `elec_heating_MW`: electric space heating end uses (heaters, heat pumps,
+    heating fans and pumps, supplemental heat).
 
-  - `elec_total_MW`: total electric loads, i.g., base load plus cooling and
+  - `elec_total_MW`: total electric loads, i.e., base load plus cooling and
     heating loads.
 
-  - `elec_dg_MW`: distribution generation, i.e., negative loads from sources
-    such as rooftop photovoltaics and batteries that are discharging.
+  - `elec_dg_MW`: distributed generation, i.e., negative loads from sources
+    such as rooftop photovoltaics.
 
   - `elec_net_MW`: net load, i.e., total including distributed generation.
 
-  - `nonelec_baseload_MW`: non-electric loads which are dependent on outdoor air
-    temperature and solar gains over all conditions.
+  - `nonelec_baseload_MW`: non-electric (gas, propane, fuel oil, district,
+    other fuel) end uses other than space cooling and heating, e.g., water
+    heating, cooking and drying.
 
-  - `nonelec_cooling_MW`: non-electric loads which are dependent on outdoor air
-    temperature only when cooling is required.
+  - `nonelec_cooling_MW`: non-electric space cooling end uses (e.g.,
+    district cooling).
 
-  - `nonelec_heating_MW`: non-electric loads which are dependent on outdoor air
-    temperature only when heating is required.
+  - `nonelec_heating_MW`: non-electric space heating end uses (e.g., gas,
+    propane, fuel oil and wood heating).
 
-  - `nonelec_total_MW`: total non-electric loads, i.g., non-electric base load plus cooling and
-    heating loads.
+  - `nonelec_total_MW`: total non-electric loads, i.e., non-electric base
+    load plus cooling and heating loads.
 
-Not all data frames will contain all these columns. Columns that are all zeros may be omitted.
+`loads.total.Total` instead reports electric load by sector
+(`elec_residential_MW`, `elec_commercial_MW`, `elec_industrial_MW`,
+`elec_agricultural_MW`, `elec_transportation_MW`) together with
+`elec_total_MW`, `elec_dg_MW`, `elec_net_MW` and the weather columns from
+`weather.Weather` (e.g., `temperature_degF`, `humidity_pc`, `global_Wpms`,
+`direct_Wpms`, `diffuse_Wpms`).
+
+Not all data frames will contain all these columns.
 
 Package architecture
 --------------------
@@ -239,10 +256,12 @@ flowchart TB
         direction TB
         FIT["TSGAM fit<br/>(nimish/estimator)"]
         SAMPLE["Sample / predict<br/>hourly county load"]
-        CAL["calibrate.py · Calibrate"]
         NET["elec_total_MW<br/>elec_dg_MW · elec_net_MW"]
-        FIT --> SAMPLE --> CAL --> NET
+        FIT --> SAMPLE --> NET
     end
+
+    CAL(["calibrate.py · Calibrate<br/>state energy & regional peaks"])
+    NET --> CAL
 
     RESID --> FIT
     COMM --> FIT
@@ -251,22 +270,23 @@ flowchart TB
     TRANS -.-> FIT
     WX --> FIT
 
-    DGFILE["wecc/county_dg.csv.gz<br/>(built offline, see below)"]
-    DG["dgen.py · DG<br/>county solar"]
+    DGFILE["wecc/county_mwh.csv<br/>county load shares"]
+    DG["dgen.py · DG<br/>county hourly solar"]
 
-    EIA -- "solar" --> DG
+    EIA -- "861M small-scale PV" --> DG
     DGFILE --> DG
     EIA -- "state sales" --> CAL
     DG --> CAL
+    DG -. "dg=True" .-> NET
 
     %% ---------- offline build of county DG ----------
     subgraph BUILD["Offline build · dgen.compile()"]
         direction TB
         ENERGY["energy.py · Energy<br/>monthly MWh"]
-        DGEN_RAW["wecc/dgen.csv.gz<br/>NLR dGen nodal DG"]
+        DGEN_RAW["wecc/county_dg.csv.gz<br/>NLR dGen hourly shapes<br/>(profile=dgen)"]
         MWH_CF["wecc/county_mwh.csv<br/>wecc/county_cf.csv"]
-        COMPILE["nodal → county DG"]
-        DGOUT["wecc/county_dg.csv.gz"]
+        COMPILE["state monthly → county hourly DG"]
+        DGOUT["county DG file<br/>(nonnegative MW)"]
         ENERGY --> COMPILE
         ENERGY --> MWH_CF
         DGEN_RAW --> COMPILE
@@ -276,7 +296,7 @@ flowchart TB
     NODES --> COMPILE
 
     %% ---------- downstream uses ----------
-    CLUSTER["cluster.py<br/>review_clusters.py"]
+    CLUSTER["cluster.py<br/>explore_clusters_marimo.py"]
     CLUSTERS["clusters.csv · configs.csv"]
     EVAL(["tsgam_evaluate.py<br/>evaluate_lag.py"])
     CLI(["cli.py · loads command<br/>Python API"])
@@ -296,7 +316,7 @@ flowchart TB
     classDef note fill:#fffde7,stroke:#c9b458,color:#4a4000
     class FIPS,GEOJSON,EIA,OEDI_RES,CENSUS,OEDI_COM,OPENEI,NLR97,WX,WECCGIS,NODES external
     class DGEN_RAW,DGFILE,DGOUT,MWH_CF,CLUSTERS bundled
-    class NET,CLI,AGG,EVAL output
+    class NET,CAL,CLI,AGG,EVAL output
     class NOTE note
     style EXT fill:#fff8f2,stroke:#d9480f,stroke-width:2px
 ```
@@ -304,17 +324,25 @@ flowchart TB
 
   - `loads.agriculture`: 2019 agricultural load data
 
-  - `loads.calibrate`: load calibration to energy use
+  - `loads.calibrate`: net-load shaping to state energy and regional peak targets
+
+  - `loads.cast`: weather-based back/forecast of a 2018 load to another year
 
   - `loads.cli`: command line interface
+
+  - `loads.cluster`: SVD and k-means clustering of county load shapes
 
   - `loads.commercial`: 2018 commercial building compiled load data
 
   - `loads.comstock`: 2018 commercial building end-use load data
 
+  - `loads.dgen`: county distributed generation data
+
   - `loads.energy`: County and state-level periodic energy consumption
 
-  - `loads.floorarea`: 2020-era commercial building floor area data
+  - `loads.estimator`: TSGAM load estimator for target years
+
+  - `loads.floorarea`: 2019 commercial building floor area data
 
   - `loads.industry`: 2019 industrial load data
 
@@ -324,53 +352,58 @@ flowchart TB
 
   - `loads.total`: total loads by sector
 
-  - `loads.transportation`: 2019 transportation load data
+  - `loads.transportation`: transportation load data (not implemented)
 
-  - `loads.units`: 2020-era residential units data
+  - `loads.units`: 2020-2024 residential housing units data
 
-Notebooks
----------
+Notebooks and scripts
+---------------------
 
-The following `marimo` notebooks are available to review the results of
-applying the `loads` model tools on the WECC system.
+The following `marimo` notebooks and scripts are available to review the
+results of applying the `loads` model tools on the WECC system.
 
-  - `review_clusters.py` provides a notebook to review the results of county
-    clustering
+  - `review_loads.py` reviews the load data of a county
 
-  - `review_loads.py` provides a notebook to review the load data
+  - `evaluate_lag.py` evaluates the exogenous lag window of the cluster
+    medoid TSGAM configurations in `configs.csv`
+
+  - `tsgam_evaluate.py` searches for the best TSGAM configuration of each
+    cluster medoid
+
+  - `wecc/wecc_estimate.py` generates the hourly 2018-2022 load estimate of
+    every WECC county (`wecc/wecc_estimate.csv.gz`)
+
+  - `_explore/` contains notebooks and scripts used to choose the cluster
+    configuration, the estimator harmonics and the calibration weights (see
+    `_explore/README.md`)
+
+  - `_review/review_wecc_estimate_marimo.py` displays the WECC county load
+    estimate and `_review/review_commercial_marimo.py` reviews the commercial
+    load data
+
+  - `_validate/validate_estimator_marimo.py` validates the estimator (see
+    `_validate/README.md`)
 
 Example
 -------
 
-The following command plots the loads for Alemeda County CA in 2020:
+The following command plots the 2018 sector loads for Alameda County CA:
 
-    loads plot -S=CA -C=Alameda -Y=2020
+    loads plot -S=CA -C=Alameda
 
 Caveats
 -------
 
   - Most of the data comes from online sources that are cached locally to help
-    with performance. However, some of the initial downloads can take a several
+    with performance. However, some of the initial downloads can take several
     minutes to complete before being cached.
 
   - Some residential and commercial building types are not available in some
-    counties. In such cases a warning is output and a zero dataframe is
-    constructed.
+    counties. In such cases a zero data frame is constructed (and an error is
+    logged if the download failed for a reason other than missing data).
 
-  - Item 3 of the Description may not hold at present. `Total` computes
-    `elec_total_MW` by summing every column ending in `_MW`, which at that
-    point already includes `elec_dg_MW`. DG therefore appears to be counted in
-    the total and then subtracted again when `elec_net_MW` is computed (see
-    `loads.total.Total._get_training`).
-
-  - Item 1 of the Description does not hold when sampling. With `samples` of
-    1 or more, the leading and trailing lag hours of each sampled series are
-    set to NaN.
-
-  - The "Load data" section describes `elec_baseload_MW` (and
-    `nonelec_baseload_MW`) as dependent on outdoor air temperature and solar
-    gains, which describes a weather-driven load rather than a base load.
-    The definitions should be checked against how the columns are computed.
+  - Weather data requires NSRDB credentials in `~/.nsrdb/credentials.json`
+    (see https://www.eudoxys.com/weather).
 
 Package information
 -------------------
@@ -383,20 +416,26 @@ Package information
 
   - License: https://github.com/eudoxys/loads/blob/main/LICENSE
 
-  - Dependencies: 
+  - Dependencies:
 
+    - [cvxpy](https://pypi.org/project/cvxpy/)
     - [h5pyd](https://pypi.org/project/h5pyd/)
     - [marimo](https://pypi.org/project/marimo/)
     - [matplotlib](https://pypi.org/project/matplotlib/)
+    - [numpy](https://pypi.org/project/numpy/)
     - [openpyxl](https://pypi.org/project/openpyxl/)
     - [pandas](https://pypi.org/project/pandas/)
     - [plotly](https://pypi.org/project/plotly/)
     - [pytz](https://pypi.org/project/pytz/)
     - [pyxlsb](https://pypi.org/project/pyxlsb/)
     - [requests](https://pypi.org/project/requests/)
+    - [scikit-learn](https://pypi.org/project/scikit-learn/)
+    - [spcqe](https://pypi.org/project/spcqe/)
+    - [tsgam_estimator](https://github.com/nimish/estimator/)
     - [cache](https://github.com/eudoxys/cache/)
     - [eia](https://github.com/eudoxys/eia/)
     - [fips](https://github.com/eudoxys/fips/)
+    - [geohash](https://github.com/eudoxys/geohash/)
     - [weather](https://github.com/eudoxys/weather/)
 """
 
