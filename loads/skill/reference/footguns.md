@@ -184,7 +184,9 @@ the tracking issues above or open a new one.
 ## Precomputed WECC files
 
 28. **Not installed by `pip install .`.** `loads/wecc/*.csv*` are in the
-    repository but not package data. → use a clone with `pip install -e .`;
+    repository but not package data. Besides the precomputed estimates, this
+    breaks `loads.dgen.DG` and `Total(dg=True)`, which read
+    `wecc/county_mwh.csv` at run time. → use a clone with `pip install -e .`;
     `ls.wecc_*` raise `FileNotFoundError` saying so.
 
 29. **Two DG datasets.** `county_dg.csv.gz` (dGen, 369 counties, no

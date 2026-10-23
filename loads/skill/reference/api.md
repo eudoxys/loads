@@ -333,6 +333,8 @@ monthly county DG energy matches EIA. Returns one column `elec_dg_MW`,
 - `source`: a local EIA-861M file ("Monthly Totals- States" layout);
   `None` downloads with `eia.Form861m`. Hours of months EIA has not
   published are NaN (and not cached).
+- Needs `loads/wecc/county_mwh.csv`, which a non-editable install does
+  not ship (`FileNotFoundError`); use a clone with `pip install -e .`.
 - Shares exist only for counties in `county_mwh.csv`, i.e. every county of
   the 13 WECC states, 2018–2022; other years use the same month of the
   nearest year. Any other county gets **zero DG with a `UserWarning`**

@@ -199,6 +199,13 @@ def test_energy_int_year_fails(tmp_path, monkeypatch):
         loads.Energy("NV", "Esmeralda", 2019)
 
 
+_COUNTY_MWH = os.path.join(os.path.dirname(loads.__file__), "wecc", "county_mwh.csv")
+needs_county_mwh = pytest.mark.skipif(
+    not os.path.exists(_COUNTY_MWH),
+    reason="loads/wecc/county_mwh.csv is not installed (non-editable install); loads.dgen.DG needs it",
+)
+
+
 def _stub_dg(monkeypatch, tmp_path, state="CA", tot_mwh=1000.0):
     """Stub the EIA download and the NSRDB profile of `loads.dgen.DG`"""
     import loads.dgen as dgen
@@ -230,6 +237,7 @@ def test_dg_signature():
     assert loads.DG.PROFILES == ["weather", "dgen"]
 
 
+@needs_county_mwh
 def test_dg_is_eia_allocated_negative_load(monkeypatch, tmp_path):
     # #43: DG allocates EIA-861M state small-scale PV by county share of state energy use
     dgen = _stub_dg(monkeypatch, tmp_path)
@@ -241,6 +249,7 @@ def test_dg_is_eia_allocated_negative_load(monkeypatch, tmp_path):
     assert np.isclose(-dg.elec_dg_MW.sum(), 1000.0 * share, rtol=1e-4)
 
 
+@needs_county_mwh
 def test_dg_outside_county_mwh_is_zero(monkeypatch, tmp_path):
     dgen = _stub_dg(monkeypatch, tmp_path, state="IL")
     with pytest.warns(UserWarning, match="no DG allocated"):
