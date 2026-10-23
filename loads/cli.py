@@ -61,6 +61,15 @@ displays an area plot of `elec_residential_MW`, `elec_commercial_MW`,
 `elec_industrial_MW`, `elec_agricultural_MW`, `elec_transportation_MW`, and
 `elec_dg_MW`. Use `-o FILE` to save the plot to a file instead.
 
+To print the Alameda County CA 2018 loads by sector with the county's
+distributed generation from EIA-861M small-scale solar (see `loads.dgen`)
+in place of the building stock PV, the command
+
+    loads print -S=CA -C=Alameda -G -f=csv
+
+replaces `elec_dg_MW` and recomputes `elec_net_MW`. The `-G` option only
+applies to the `total` dataset.
+
 Caveats
 -------
 
@@ -151,6 +160,10 @@ def main(*args:list[str],**kwargs:dict[str,str]) -> int:
         parser.add_argument("-Y","--year",
             type=int,
             help="set load model year (default 2018)")
+
+        parser.add_argument("-G","--dg",
+            action="store_true",
+            help="include county distributed generation (total only, see loads.dgen)")
 
         parser.add_argument("-o","--output",
             help="set output file name")

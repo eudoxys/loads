@@ -8,8 +8,8 @@
 
 - [x] Change training from {RES,COM}stock weather to NSRDB weather
 
-- [ ] Read solar and wind DG from NREL (rooftop solar is compiled from NREL
-  dGen nodal data in `loads.dgen`; wind is not done)
+- [ ] Read solar and wind DG (rooftop solar is EIA-861M small-scale PV
+  allocated to counties and shaped hourly in `loads.dgen`; wind is not done)
 
 - [x] Calculate net loads
 

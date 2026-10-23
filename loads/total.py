@@ -39,12 +39,37 @@ flowchart TD
     Loads -->|X, Y| Fit
     Weather -->|date_range| Sample
     Sample --> Y[Y column for date_range]
+
+    EIA[EIA-861M small-scale PV] --> DGEN[loads.dgen.DG]
+    Weather --> DGEN
+    DGEN -->|dg=True| Merge[elec_dg_MW, elec_net_MW]
+    Loads -.->|dg=True| Merge
+    Y -.->|dg=True| Merge
 ```
 
 In the training data `elec_total_MW` is the sum of the sector loads and
 `elec_net_MW = elec_total_MW + elec_dg_MW`, where `elec_dg_MW` is the
 (negative) rooftop PV output of the residential and commercial building
 stock.
+
+Distributed Generation
+----------------------
+
+By default (`dg=False`) no observed DG is included: the training data carries
+only the building stock PV described above, and predictions and samples have
+no DG column. With `dg=True` the county's hourly DG from `loads.dgen.DG`
+(EIA-861M small-scale solar allocated to the county and shaped by weather) is
+added to the result with `loads.dgen.DG.merge`, i.e.,
+
+  - `elec_dg_MW` is added, or replaces the building stock PV in the training
+    data and the predicted DG when `Y="elec_dg_MW"`, and
+
+  - `elec_net_MW = elec_total_MW + elec_dg_MW` is set whenever
+    `elec_total_MW` is in the result.
+
+The DG profile and EIA data source are set by `Total.DG_PROFILE` and
+`Total.DG_SOURCE`. DG cannot be added to non-electric loads or to a
+predicted `elec_net_MW`, which already includes the model's DG.
 
 Examples
 --------
@@ -72,6 +97,13 @@ which returns 8784 hourly rows with the exogenous variables
 The first and last 3 hours of the prediction are NaN because of the
 exogenous variable lags in `Total.TSGAM_CONFIG`.
 
+To include the county's 2020 distributed generation and the resulting net
+load use
+
+    Total("CA","Alameda",date_range=date_range,samples=0,dg=True)
+
+which adds the columns `elec_dg_MW` (never positive) and `elec_net_MW`.
+
 To get the 95th percentile of 100 autoregressive samples of the distributed
 generation use
 
@@ -88,8 +120,8 @@ Known Issues
 in the linear domain (see `Total.TRANSFORMATIONS`) because the implementation
 does not exclude zeros from training or learn when zero should be predicted.
 
-2. The `dg` and `holdout` constructor arguments are accepted but not used.
-Use `Total.test` to perform a holdout test.
+2. The `holdout` constructor argument is accepted but not used. Use
+`Total.test` to perform a holdout test.
 
 3. The main script of this module saves its results to the gitignored
 `tests/` folder.
@@ -162,6 +194,10 @@ class Total(pd.DataFrame):
     Predictions and samples (`samples>=0`) contain the `X` columns and the `Y`
     column only (or `sample_0`, `sample_1`, etc. when `samples>1` and
     `percentile=None`).
+
+    When `dg=True`, `elec_dg_MW` from `loads.dgen.DG` is added (replacing any
+    existing DG column), and `elec_net_MW` is set to `elec_total_MW +
+    elec_dg_MW` when `elec_total_MW` is present.
 
     Caveats
     -------
@@ -260,6 +296,13 @@ class Total(pd.DataFrame):
     TRAINING_YEAR = 2018
     """Year of training data"""
 
+    DG_PROFILE = "weather"
+    """Hourly DG profile used when `dg=True` (see `loads.dgen.DG`)"""
+
+    DG_SOURCE = None
+    """Local EIA-861M data file used when `dg=True` (`None` downloads it, see
+    `loads.dgen.SmallScaleSolar`)"""
+
     COLUMNS = {
         "temperature_degF": "Outdoor air temperature",
         "humidity_pc": "Relative humidity",
@@ -281,7 +324,7 @@ class Total(pd.DataFrame):
         *,
         Y:str="elec_total_MW",
         X:str=None,
-        dg:bool|pd.DataFrame|None=None,
+        dg:bool=False,
         date_range:pd.DatetimeIndex=None,
         samples:int=None,
         percentile:float=96,
@@ -303,7 +346,8 @@ class Total(pd.DataFrame):
           - `X`: list of columns to use as exogenous variables (defaults to
             `Total.EXOGENOUS_VARIABLES[Y]`)
 
-          - `dg`: not used
+          - `dg`: include the county's distributed generation from
+            `loads.dgen.DG` (default `False`, see `Total`)
 
           - `date_range`: date/time index to predict or sample (required when
             `samples` is not `None`)
@@ -329,6 +373,13 @@ class Total(pd.DataFrame):
         # identify location of cached results
         if self.CACHEDIR:
             Cache.CACHEDIR = self.CACHEDIR
+
+        # check DG option
+        if dg:
+            if Y.startswith("nonelec_"):
+                raise ValueError(f"{dg=} is not valid for non-electric {Y=}")
+            if Y == "elec_net_MW" and samples is not None:
+                raise ValueError(f"{dg=} is not valid for {Y=} (predict elec_total_MW instead)")
 
         # choose sampling method
         if not samples is None and not isinstance(samples,int):
@@ -373,6 +424,14 @@ class Total(pd.DataFrame):
             data.index = data.index.tz_localize("UTC")
         elif not data.index.tz == "UTC":
             data.index = data.index.tz_convert("UTC")
+
+        # add distributed generation
+        if dg:
+            data = DG.merge(data,state,county,
+                profile=self.DG_PROFILE,
+                source=self.DG_SOURCE,
+                refresh=refresh,
+                )
 
         super().__init__(data.rename_axis("timestamp"))
 
