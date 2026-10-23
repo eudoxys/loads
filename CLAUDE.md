@@ -15,34 +15,15 @@ onto network nodes (e.g. WECC240 busses).
 - Author/maintainer: David P. Chassin
 - CLI entry point: `loads` → `loads.cli:main`
 
-## Layout
+## Where things are
 
-```
-loads/                     package source (flat; one module per concept)
-  resstock.py comstock.py  raw NREL building-stock end-use data (per building type)
-  units.py floorarea.py    Census housing units / OpenEI commercial floor area (scaling)
-  residential.py           RESstock → consolidated MW columns, scaled by Units
-  commercial.py            COMstock → consolidated MW columns, scaled by Floorarea
-  industry.py agriculture.py  NREL county inventories (flat load shape by default)
-  transportation.py        stub; raises NotImplementedError (loads set to 0 in Total)
-  dgen.py _solar_estimator.py  county distributed generation (rooftop PV) data
-  cast.py                  back/forecast a 2018 load to another year by weather
-  calibrate.py             convex net-load shaping to state energy / regional peak targets (cvxpy)
-  total.py                 2018 sector sum + TSGAM fit/predict/sample (the core model)
-  estimator.py             newer TSGAM front end (`Estimator`, `EstimatorConfig`)
-  energy.py                periodic (monthly etc.) county energy in MWh
-  cluster.py               SVD + k-means clustering of counties → medoids
-  aggregate.py             sum county series onto geographic target nodes
-  cli.py                   argparse CLI (`loads print|plot ...`)
-  clusters.csv configs.csv county→medoid map, best TSGAM config per medoid
-  review_*.py evaluate_lag.py  marimo notebooks
-  tsgam_evaluate.py        TSGAM config search script (writes to tests/)
-  caiso/ isone/ wecc/      checked-in reference data
-  wecc/wecc_estimate.py    hourly 2018-2022 estimate of every WECC county
-  _test/ _validate/        pytest tests, estimator validation notebook
-  _explore/ _review/       exploration scripts/notebooks, result review notebooks
-examples/                  marimo notebook + county CSV outputs
-```
+- `MANIFEST.md`: map of every file, a task index, and what not to read.
+  Read it first instead of listing folders. Update it in the same PR that
+  adds, moves, or deletes a file; `python .github/check_manifest.py` checks it.
+- `DESIGN.md`: design, numbered decisions, planned modules, and the version 1
+  open questions. Follow its decisions; ask before departing from one.
+- General Eudoxys package conventions are in the `eudoxys-package` skill
+  (`github.com/eudoxys/claude`).
 
 Sibling eudoxys packages are core dependencies (installed from GitHub via
 `requirements.txt`): `cache` (local data cache), `fips` (state/county lookups),
