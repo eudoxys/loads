@@ -12,6 +12,12 @@ which gives the following output
 
     623350.0
 
+Years after the most recent Census data (currently 2024) are extrapolated
+from the most recent year at the annual rate `Units.GROWTH_RATE`, e.g.,
+
+    Units.GROWTH_RATE = 0.01 # 1% annual growth
+    print(Units("CA","Alameda",2030))
+
 References
 ----------
 
@@ -40,6 +46,9 @@ class Units(float):
     SOURCE = "https://www2.census.gov/programs-surveys/popest/tables/2020-2024/housing/totals"
     """Source of housing units data"""
 
+    GROWTH_RATE = 0.0175
+    """Annual growth rate applied to years after the most recent data (default is 1.75% annual)"""
+
     def __new__(cls,
         state:str,
         county:str=None,
@@ -56,7 +65,10 @@ class Units(float):
 
           - `county`: county for which to read data (default entire state)
 
-          - `year`: year for which to read data (default most recent)
+          - `year`: year for which to read data (default most recent). Years
+            after the most recent year for which county-level data is
+            available are extrapolated from that year using `GROWTH_RATE`.
+            Years prior to the earliest data use the earliest data.
 
           - `refresh`: force refresh of cache data
 
@@ -112,6 +124,8 @@ class Units(float):
                 compression="gzip" if cache.pathname.endswith(".gz") else None,
                 )
 
+        # apply annual growth rate to years after the most recent data
+        growth = 1.0
         if year is None:
             year = data.columns[-1]
         else:
@@ -120,7 +134,9 @@ class Units(float):
             _logger.warning(f"Units({state=},{county=},{year=}) is prior to {min(data.columns)}, using year={min(data.columns)} instead")
             year = min(data.columns)
         elif year > max(data.columns):
-            _logger.warning(f"Units({state=},{county=},{year=}) is after to {max(data.columns)}, using year={max(data.columns)} instead")
+            growth = (1+cls.GROWTH_RATE)**(int(year)-int(max(data.columns)))
+            _logger.debug(f"Units({state=},{county=},{year=}) is after {max(data.columns)}, "\
+                f"applying {cls.GROWTH_RATE*100:.2f}% annual growth ({growth=:.4f})")
             year = max(data.columns)
 
         if county is None:
@@ -128,7 +144,7 @@ class Units(float):
         else:
             row = [x for x in data.index if x.startswith(f".{county}")]
 
-        result = data.loc[row,year].values
+        result = data.loc[row,year].values * growth
         if len(result) > 1:
             _logger.warning(f"Units({state=},{county=},{year=}) "\
                 f"result has {len(result)} values ({', '.join(result.astype(str))})"\
