@@ -169,3 +169,7 @@ and `Aggregator` tools.
 
 - Weather data requires NSRDB credentials in `~/.nsrdb/credentials.json`
   (see https://www.eudoxys.com/weather).
+
+# Acknowledgments
+
+- This material is based on work supported by the U.S. Department of Energy’s Office of Electricity through a grant from the Grid Controls and Communications Division
