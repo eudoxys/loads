@@ -33,6 +33,22 @@ the number, and one of `h`, `d`, `w`, and `m` are allowed for the frequency.
 Alternatively `EstimatorConfig.holdout` may be a function that takes the
 training data frame and returns the index of the holdout rows.
 
+A frequency holdout divides the training data into `N` groups (folds) of
+intervals, where `N` is the number in the holdout frequency, and
+`EstimatorConfig.fold` selects which group is withheld. With the zero-based
+interval index `ndx`, the group is `(ndx + 1) % N` and the holdout is the
+group equal to `fold`, which is equivalent to `(ndx - fold) % N == N - 1`.
+- `fold=0` (or `False`): every `N`th interval is held out (the default).
+- `fold=k` for `0 < k < N`: the holdout is shifted by `k` intervals.
+- `fold=True`: the estimator is fit `N` times, once for each fold. Every
+  valid row is then held out exactly once, so `prediction` contains the
+  out-of-fold prediction for each row, the additional column `fold` gives
+  the fold that held it out, and `attrs["folds"]` contains the per-fold
+  holdout error statistics (`MAE`, `RMSE`, and `MAPE` in percent) with their
+  average over all folds in the row `mean`.
+
+A nonzero `fold` cannot be used with a callable `EstimatorConfig.holdout`.
+
 Examples
 --------
 
@@ -103,6 +119,13 @@ which outputs the data frame
 
 The first hours of each prediction are NaN because of the exogenous variable
 lags in `WEATHER_CONFIG`.
+
+The following runs the 5-day holdout test over all 5 folds and reports the
+holdout errors averaged over the folds
+
+    from loads.estimator import Estimator, EstimatorConfig
+    df = Estimator("Alameda CA",config=EstimatorConfig(fold=True))
+    df.attrs["folds"].loc["mean"]
 
 Caveats
 -------
@@ -247,6 +270,11 @@ class EstimatorConfig(NamedTuple):
     """Holdout frequency for testing, e.g., `'6h'`, `'5d'`, `'4w'`, `'3m'`, or a
     function returning the holdout index of a training data frame"""
 
+    fold:int|bool = 0
+    """Holdout fold to withhold (`0` or `False` for every `N`th interval of
+    the holdout frequency, `0 < k < N` to shift the holdout by `k` intervals,
+    or `True` to run the holdout test on all `N` folds)"""
+
 def _verbose(*args,**kwargs):
     """Verbose output"""
     if VERBOSE:
@@ -259,9 +287,30 @@ def _verbose(*args,**kwargs):
 class EstimatorError(Exception):
     """Estimator exception"""
 
+def _parse_holdout(freq:str) -> tuple[int,str]:
+    """Parse a holdout frequency
+
+    Arguments
+    ---------
+    - `freq`: holdout frequency of the form `<N><F>`
+
+    Returns
+    -------
+    - `tuple[int,str]`: the number of folds `N` and the interval `F`
+    """
+    try:
+        n,m = re.match("([0-9]+)([mwdh])",freq).groups()
+    except Exception as err:
+        raise EstimatorError(f"{freq=} is not valid") from err
+    count = int(n)
+    if count <= 0:
+        raise EstimatorError(f"{freq=} count must be positive")
+    return count,m
+
 def _get_holdout(
         df:pd.DataFrame,
         freq:str,
+        fold:int=0,
         ) -> pd.DatetimeIndex:
     """Holdout index function
 
@@ -269,6 +318,7 @@ def _get_holdout(
     ---------
     - `df`: data frame to collect holdout from
     - `freq`: holdout frequency
+    - `fold`: holdout fold to withhold, from `0` to `N-1` (default `0`)
 
     Returns
     -------
@@ -276,15 +326,15 @@ def _get_holdout(
 
     Holdout frequencies are of the form `<N><F>`. Valid interval frequencies
     `<F>` are over one year, i.e., `h` for hourly, `d` for daily, `w` for
-    weekly, and `m` for monthly.  The resulting holdout will extract every
+    weekly, and `m` for monthly. The intervals are divided into `N` groups
+    with `group = (ndx + 1) % N`, and the resulting holdout extracts the
+    intervals in the group equal to `fold`. With `fold=0` this is every
     $N$th interval.
     """
-    try:
-        n,m = re.match("([0-9]+)([mwdh])",freq).groups()
-    except Exception as err:
-        raise EstimatorError(f"{freq=} is not valid") from err
-    count = int(n)
-    assert count > 0, f"{count=} must be positive"
+    count,m = _parse_holdout(freq)
+    if isinstance(fold,bool) or not isinstance(fold,(int,np.integer)) \
+            or not 0 <= fold < count:
+        raise EstimatorError(f"{fold=} must be an integer from 0 to {count-1} for {freq=}")
 
     training = df.dropna()
 
@@ -300,9 +350,33 @@ def _get_holdout(
         case _:
             raise EstimatorError(f"{freq=} '{m}' is invalid")
 
-    holdout = ndx % count == count-1
+    holdout = (ndx + 1) % count == fold
 
     return training.index[holdout]
+
+def _holdout_errors(
+        actual:pd.Series,
+        prediction:pd.Series,
+        ) -> dict[str,float]:
+    """Holdout error statistics
+
+    Arguments
+    ---------
+    - `actual`: actual values
+    - `prediction`: predicted values
+
+    Returns
+    -------
+    - `dict[str,float]`: `MAE`, `RMSE`, and `MAPE` (percent) of the valid
+      rows
+    """
+    error = (prediction - actual).dropna()
+    actual = actual[error.index]
+    return {
+        "MAE": float(error.abs().mean()),
+        "RMSE": float(np.sqrt((error**2).mean())),
+        "MAPE": float((error/actual).abs().mean()*100),
+        }
 
 class Estimator(pd.DataFrame):
     """Load estimator results"""
@@ -327,7 +401,8 @@ class Estimator(pd.DataFrame):
         The data frame contains the `EstimatorConfig.weather` columns and the
         `EstimatorConfig.enduse` column for every hour of the requested years
         or, when `years` is `None`, the 2018 weather columns with the
-        `actual`, `prediction`, and `status` columns.
+        `actual`, `prediction`, and `status` columns (and the `fold` column
+        and `attrs["folds"]` summary when `EstimatorConfig.fold` is `True`).
         """
         assert isinstance(county_st,str), f"{county_st=} must be valid county name"
 
@@ -355,31 +430,65 @@ class Estimator(pd.DataFrame):
             enduse=config.enduse,
             ))
 
+        attrs = {}
+
         # isolate valid training data
         reference = pd.concat([X,Y],axis=1)
         training = reference.dropna()
         if years is None: # perform holdout test
 
+            fold = config.fold
+            if not isinstance(fold,(bool,int,np.integer)):
+                raise EstimatorError(f"{fold=} must be an integer or boolean")
             if isinstance(config.holdout,str):
-                holdout = _get_holdout(training,config.holdout)
+                count,_ = _parse_holdout(config.holdout)
+                folds = list(range(count)) if fold is True else [int(fold)]
+                holdouts = [_get_holdout(training,config.holdout,k) for k in folds]
             elif callable(config.holdout):
-                holdout = config.holdout(training)
+                if fold is True or fold != 0:
+                    raise EstimatorError(f"{fold=} is not supported with a callable holdout")
+                folds = [0]
+                holdouts = [config.holdout(training)]
             else:
-                raise ValueError(f"{holdout=} is not valid")
-            training.drop(holdout,inplace=True)
+                raise EstimatorError(f"holdout={config.holdout!r} is not valid")
 
-            # get estimator
-            estimator = self._get_model(
-                X=training[config.weather],
-                Y=training[config.enduse],
-                config=_config)
-
-            # generate predictions
+            inputs = X[config.weather].copy()
             data = X
             data["actual"] = backward(Y)
-            data["prediction"] = backward(estimator(X))
+            data["prediction"] = float("nan")
             data["status"] = "T"
-            data.loc[holdout,"status"] = "H"
+            if fold is True:
+                data["fold"] = pd.Series(pd.NA,index=data.index,dtype="Int64")
+                summary = {}
+
+            for k,holdout in zip(folds,holdouts):
+
+                _verbose(f"fitting fold {k} with {len(holdout)} holdout rows")
+
+                # get estimator
+                fit = training.drop(holdout)
+                estimator = self._get_model(
+                    X=fit[config.weather],
+                    Y=fit[config.enduse],
+                    config=_config)
+
+                # generate predictions
+                prediction = pd.Series(backward(estimator(inputs)),index=inputs.index)
+                if fold is True: # keep only out-of-fold predictions
+                    data.loc[holdout,"prediction"] = prediction[holdout]
+                    data.loc[holdout,"fold"] = k
+                    summary[k] = _holdout_errors(
+                        data.loc[holdout,"actual"],
+                        data.loc[holdout,"prediction"])
+                else:
+                    data["prediction"] = prediction
+                data.loc[holdout,"status"] = "H"
+
+            if fold is True:
+                summary = pd.DataFrame(summary).T
+                summary.index.name = "fold"
+                summary.loc["mean"] = summary.mean()
+                attrs = {"folds":summary}
 
         else: # predict for specified
 
@@ -425,6 +534,7 @@ class Estimator(pd.DataFrame):
 
         # construct dataframe
         super().__init__(data)
+        self.attrs.update(attrs)
 
     @classmethod
     def _estimator_config(cls,
@@ -565,3 +675,8 @@ if __name__ == '__main__':
     print("---------")
     df = Estimator("Alameda CA")
     print(df[df.status=="H"])
+
+    print("Example 4")
+    print("---------")
+    df = Estimator("Alameda CA",config=EstimatorConfig(fold=True))
+    print(df.attrs["folds"])
