@@ -229,10 +229,11 @@ def test_dg_signature():
     assert loads.DG.PROFILES == ["weather", "dgen"]
 
 
-def test_county_mwh_is_package_data():
+def test_dg_data_is_package_data():
     # DG reads it at run time, so it must be installed even by a non-editable install
     import loads.dgen
     assert os.path.exists(loads.dgen.COUNTY_MWH)
+    assert os.path.exists(loads.dgen.DGEN_PROFILES)  # DG(profile="dgen")
 
 
 def test_dg_is_eia_allocated_negative_load(monkeypatch, tmp_path):

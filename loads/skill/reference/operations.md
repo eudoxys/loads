@@ -14,9 +14,11 @@ pytest loads/_test -m "not network"     # offline tests (no network needed)
 
 `loads` and its siblings install from GitHub (`eudoxys/cache`, `fips`,
 `weather`, `eia`, `geohash`, and `nimish/estimator` for TSGAM). An editable
-install from a clone keeps the precomputed `loads/wecc/` files available;
-`pip install git+https://github.com/eudoxys/loads` installs only the Python
-modules and the skill's markdown.
+install from a clone keeps every `loads/wecc/` file available;
+`pip install git+https://github.com/eudoxys/loads` installs the Python
+modules, the skill's markdown, and the two data files `DG` needs
+(`wecc/county_mwh.csv`, `wecc/county_dg.csv.gz`), but not the precomputed
+WECC estimates.
 
 Install the skill for an agent by linking this folder into its skills
 folder, e.g. for Claude Code:

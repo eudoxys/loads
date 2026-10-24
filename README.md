@@ -171,7 +171,7 @@ aggregate counties onto nodes, and export with provenance.
 
 To make the skill available to Claude Code, link the folder into a skills
 folder from a clone installed with `pip install -e .` (the precomputed
-`loads/wecc/` files are not installed by a non-editable install):
+WECC estimates in `loads/wecc/` are not installed by a non-editable install):
 
     ln -s "$PWD/loads/skill" ~/.claude/skills/loads
 

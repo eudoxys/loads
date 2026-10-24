@@ -1,7 +1,8 @@
 """Readers of the precomputed WECC files in `loads/wecc/` (`loads.skill.wecc`)
 
-No network; reads the bundled data files, so skipped when they are not
-installed (non-editable install).
+No network. Tests that read the precomputed estimates are skipped when
+those files are not installed (non-editable install); the DG reader must
+work either way, because `county_dg.csv.gz` is package data.
 """
 
 import os
@@ -14,12 +15,15 @@ from loads.skill import validate, wecc_dg, wecc_estimate
 from loads.skill import wecc
 from loads.skill.cli import main
 
-pytestmark = pytest.mark.skipif(
-    not os.path.exists(os.path.join(os.path.dirname(loads.__file__), "wecc", "wecc_estimate.csv.gz")),
-    reason="loads/wecc data files are not installed",
+_WECC = os.path.join(os.path.dirname(loads.__file__), "wecc")
+needs_repo_data = pytest.mark.skipif(
+    not all(os.path.exists(os.path.join(_WECC, f))
+            for f in ("wecc_estimate.csv.gz", "county_dg_scaled.csv.gz")),
+    reason="loads/wecc estimate files are not installed (non-editable install)",
 )
 
 
+@needs_repo_data
 def test_wecc_estimate_columns_and_index():
     df = wecc_estimate(["Alameda County, CA", "Washoe NV"], 2020)
     assert list(df.columns) == ["Alameda CA", "Washoe NV"]
@@ -32,6 +36,7 @@ def test_wecc_estimate_columns_and_index():
         wecc_estimate("Cook IL", 2020)  # not WECC
 
 
+@needs_repo_data
 def test_wecc_dg_conventions():
     load = wecc_dg(["Alameda CA", "Kern CA"], 2020)
     assert (load <= 0).all().all() and load["Alameda CA"].min() < 0
@@ -42,6 +47,7 @@ def test_wecc_dg_conventions():
     assert len(load) == 8784 and load.notna().all().all()  # first 7 UTC hours of 2018 not in file
 
 
+@needs_repo_data
 def test_estimate_minus_dg_is_retail_energy():
     # wecc_estimate.py calibrates monthly energy to county_mwh.csv + county_dg.csv.gz
     import pandas as pd
@@ -53,7 +59,22 @@ def test_estimate_minus_dg_is_retail_energy():
     assert np.allclose(monthly, retail.reindex(monthly.index), rtol=1e-3)
 
 
+@needs_repo_data
 def test_cli_wecc(tmp_path, capsys):
     path = str(tmp_path / "w.csv")
     assert main(["wecc", "Alameda CA", "--years", "2019", "-o", path]) == 0
     assert '"rows": 8760' in capsys.readouterr().out
+
+
+def test_wecc_dg_needs_only_installed_files(monkeypatch):
+    # county_dg.csv.gz is package data: wecc_dg must not need wecc_estimate.csv.gz
+    real = wecc.path
+    def path(name):
+        if name in ("estimate", "nodes", "dg_scaled"):
+            raise FileNotFoundError(name)
+        return real(name)
+    monkeypatch.setattr(wecc, "path", path)
+    dg = wecc_dg(["Alameda CA", "Kern CA"], 2020)
+    assert dg["Alameda CA"].min() < 0 and (dg["Kern CA"] == 0).all()
+    with pytest.raises(KeyError, match="not a WECC county"):
+        wecc_dg("Cook IL", 2020)

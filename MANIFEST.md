@@ -162,7 +162,7 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `DESIGN.md` | package design | |
 | `MANIFEST.md` | this file | |
 | `TODO.md` | roadmap | |
-| `pyproject.toml` | packaging | version here; `package-data` is `*.py`, the skill's markdown, and `wecc/county_mwh.csv` (read by `DG`) |
+| `pyproject.toml` | packaging | version here; `package-data` is `*.py`, the skill's markdown, `wecc/county_mwh.csv` and `wecc/county_dg.csv.gz` (read by `DG`) |
 | `requirements.txt` | dependencies (dynamic) | sibling packages via `git+` |
 | `Makefile` | `make docs` | `test` target is broken (no `./test/`) |
 | `LICENSE` | MIT | |

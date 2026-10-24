@@ -39,8 +39,8 @@ Do these once, at workflow start. Skipping them fails late or never returns.
 1. **Python 3.12 and a clone.** `loads` pins `==3.12.*`. Install from a
    clone (`git clone https://github.com/eudoxys/loads && cd loads &&
    python3.12 -m venv .venv && . .venv/bin/activate && pip install -e .`):
-   the precomputed WECC files in `loads/wecc/` are not installed by a
-   non-editable `pip install`.
+   the precomputed WECC estimates in `loads/wecc/` are not installed by a
+   non-editable `pip install` (the DG data files are).
 2. **NSRDB credentials.** Every `Total` call fetches NSRDB weather. Without
    `~/.nsrdb/credentials.json` (`{"<email>": "<api_key>"}`) the `weather`
    package tries to open a sign-up page in a browser, which hangs headless

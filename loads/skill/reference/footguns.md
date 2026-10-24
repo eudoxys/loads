@@ -183,13 +183,14 @@ the tracking issues above or open a new one.
 
 ## Precomputed WECC files
 
-28. **Not installed by `pip install .`.** Apart from
-    `wecc/county_mwh.csv` (package data, so `loads.dgen.DG` and
-    `Total(dg=True)` work from any install), `loads/wecc/*.csv*` are in the
-    repository but not package data: the precomputed estimates and the DG
-    files (`DG(profile="dgen")` needs `county_dg.csv.gz`). → use a clone
-    with `pip install -e .`; `ls.wecc_*` raise `FileNotFoundError` saying
-    so.
+28. **Not installed by `pip install .`.** `wecc/county_mwh.csv` and
+    `wecc/county_dg.csv.gz` are package data, so `loads.dgen.DG` (either
+    profile), `Total(dg=True)` and `ls.wecc_dg(scaled=False)` work from any
+    install. The other `loads/wecc/` data files are in the repository only:
+    `wecc_estimate.csv.gz`, `node_estimate.csv.gz` and
+    `county_dg_scaled.csv.gz` (`wecc_dg(scaled=True)`). → for those, use a
+    clone with `pip install -e .`; `ls.wecc_estimate`, `ls.node_estimate`
+    and `wecc_dg(scaled=True)` raise `FileNotFoundError` saying so.
 
 29. **Two DG datasets.** `county_dg.csv.gz` (dGen, 369 counties, no
     year-to-year growth; `county_dg.csv` is an uncompressed copy missing

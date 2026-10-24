@@ -14,8 +14,9 @@ a file instead of fitting a model per county:
 All are hourly UTC (hour beginning). The DG files start at
 2018-01-01 07:00 UTC; the missing night hours read as 0.
 
-These files are in the git repository but are not installed by a
-non-editable `pip install` (only `*.py` is package data); the readers raise
+`county_dg.csv.gz` is installed with the package, so `wecc_dg()` works from
+any install. The other files are in the git repository but are not
+installed by a non-editable `pip install`; their readers raise
 `FileNotFoundError` with that hint. Use a clone with `pip install -e .`.
 """
 
@@ -45,7 +46,7 @@ def path(name: str) -> str:
     full = os.path.join(os.path.dirname(os.path.abspath(loads.__file__)), "wecc", filename)
     if not os.path.exists(full):
         raise FileNotFoundError(
-            f"{full} not found. The loads/wecc data files are not installed by a "
+            f"{full} not found. This loads/wecc data file is not installed by a "
             "non-editable pip install; clone https://github.com/eudoxys/loads and "
             "`pip install -e .`, or pass the file path yourself."
         )
@@ -62,6 +63,18 @@ def _columns(places, available: list[str], what: str) -> list[str] | None:
         if name not in available:
             raise KeyError(f"{name!r} is not in the {what} file")
         names.append(name)
+    return names
+
+
+def _wecc_counties(places) -> list[str]:
+    """`"County ST"` names of WECC counties, checked with the bundled `fips`
+    data (not a data file, so this works from a non-editable install)."""
+    names = []
+    for p in ([places] if isinstance(places, (str, County, tuple)) else places):
+        c = p if isinstance(p, County) else resolve(p)
+        if c.system != "WECC":
+            raise KeyError(f"{c.county_st!r} is not a WECC county")
+        names.append(c.county_st)
     return names
 
 
@@ -157,7 +170,7 @@ def wecc_dg(places=None, when=None, *, scaled: bool = False, convention: str = "
     if places is None:
         columns = None
     else:
-        wanted = _columns(places, _header("estimate"), "WECC county list")
+        wanted = _wecc_counties(places)
         absent = [c for c in wanted if c not in available]
         columns = [c for c in wanted if c in available]
     data = _read(name, columns, None) if columns is None or columns else pd.DataFrame(
