@@ -1,9 +1,11 @@
-# eudoxys/loads — package design (draft 1)
+# eudoxys/loads — package design (draft 2)
 
 Status: draft, 2026-10-22. Reconstructed from the code on `main` at
 `608b9c4` to record the design for version 1; the decisions below describe
 what is implemented and need the maintainer's confirmation. Issue and PR
-numbers (`#n`) refer to `github.com/eudoxys/loads`.
+numbers (`#n`) refer to `github.com/eudoxys/loads`. Draft 2, 2026-10-22:
+adds decision 19 and `skill/` (the agent skill merged from
+`eudoxys/loads-skill`), proposed in the PR that adds them.
 
 ## Purpose
 
@@ -52,6 +54,7 @@ reversed decision in place and note the date.
 | 16 | County → node allocation: counties containing WECC240 load busses split in proportion to bus load; other counties go wholly to the nearest load node; Canadian and Mexican node loads come from `wecc240` node files. Factors are constant in time. |
 | 17 | Sibling packages are dependencies through `git+` URLs in `requirements.txt`; dependencies are dynamic in `pyproject.toml`. Python is pinned to 3.12. |
 | 18 | Tests have two tiers: fast offline tests always run; networked tests are marked `network`, use Alameda CA or a single month, and are skipped when they would need a full WECC build that is not in the cache. |
+| 19 | The agent skill for users of the package (`SKILL.md`, `reference/`) and its helpers ship inside the package as the `loads.skill` subpackage (the one exception to the flat layout, because a skill is a folder), so the skill always describes the installed version. `import loads` does not import it. `loads/_test/test_skill_loads_api.py` pins, offline, every `loads` behavior the skill documents; a change that breaks one updates the skill in the same PR. |
 
 ## Conventions inherited
 
@@ -96,6 +99,9 @@ loads/
   cluster.py         Cluster(counties,column,threshold=0.99,...)
   aggregate.py       Aggregator(targets,start,end); aggregate(targets,dt_range,column)
   clusters.csv       county_st -> medoid
+  skill/             agent skill: SKILL.md, reference/*.md, examples/; loads.skill helpers
+                     (resolve, series, county_loads, validate, shape_to_targets,
+                     wecc_estimate, allocate, to_csv, ...; CLI python3 -m loads.skill)
   wecc/              WECC maintenance scripts and their data (see MANIFEST.md)
   caiso/ isone/      reference ISO hourly loads
   _test/ _validate/ _explore/ _review/
@@ -274,3 +280,5 @@ Proposed scope, for the maintainer to confirm:
 6. **Transportation.** Implement for version 1, or declare it out of scope
    and drop the zero column?
 7. **`isone/`.** Keep (for a future non-WECC validation) or remove?
+8. **`loads.skill` style.** Keep its PEP 8 spacing and prose docstrings, or
+   convert it to the house style (no spaces after commas, pdoc sections)?

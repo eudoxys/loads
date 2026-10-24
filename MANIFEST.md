@@ -22,6 +22,7 @@ Update this file in the same PR that adds, moves, or deletes a file.
 - Re-cluster counties: `loads/_explore/explore_clusters_marimo.py` writes `loads/clusters.csv`
 - Regenerate WECC outputs: `loads/wecc/wecc_estimate.py` → `node_estimate.py`; DG scaling `loads/wecc/county_dg_scale.py`; monthly county energy `python3 -m loads.energy` (writes `loads/wecc/county_mwh.csv`, `county_cf.csv`). Hours of work: only when asked
 - Fix a test: tests and the module they cover are paired in the tables below; `loads/_test/README.md` says what each downloads
+- Change a behavior the agent skill documents: update `loads/skill/SKILL.md` and `loads/skill/reference/` (usually `api.md`, `footguns.md`) and `loads/_test/test_skill_loads_api.py` in the same PR
 - Update docs: docstrings, then `make docs` (output `docs/` is not committed)
 - Release: `pyproject.toml` version and keywords; `DESIGN.md` "Release (version 1)"; the eudoxys-package skill checklist
 
@@ -51,6 +52,29 @@ Update this file in the same PR that adds, moves, or deletes a file.
 | `loads/aggregate.py` | `Aggregator`, `aggregate()`: counties → WECC240 nodes | reads `eudoxys/wecc240` over the network; see issue #15 |
 | `loads/clusters.csv` | county → medoid map (`county_st,medoid`), k=6 on `elec_total_MW` | curated; written by `_explore/explore_clusters_marimo.py` |
 | `loads/.gitignore` | ignores cache and scratch output | |
+
+## Agent skill (`loads/skill/`)
+
+The `loads.skill` subpackage: an agent skill for users of `loads` plus its
+helpers. Conventions in `CLAUDE.md` ("Agent skill").
+
+| Path | Purpose | Notes |
+|---|---|---|
+| `loads/skill/SKILL.md` | skill entry point: setup, the loop, modes, contract, footguns | read first for skill work |
+| `loads/skill/reference/*.md` | data model, verified API, methodology, workflows, footguns, operations | must match the code; guarded by `_test/test_skill_loads_api.py` |
+| `loads/skill/__init__.py` | `loads.skill` docs and re-exports | |
+| `loads/skill/__main__.py`, `loads/skill/cli.py` | `python3 -m loads.skill` (JSON on stdout) | tested by `_test/test_skill_locations_export.py`, `test_skill_wecc.py` |
+| `loads/skill/fetch.py` | explicit `Total` modes, `county_loads`, `batch`, `configure` | tested by `_test/test_skill_fetch_offline.py` (stubbed `Total`) |
+| `loads/skill/calibrate.py` | proportional scaling, `fit_energy_peak`, `shape_to_targets` (`Calibrate` front end) | tested by `_test/test_skill_summarize_calibrate_aggregate.py` |
+| `loads/skill/wecc.py` | readers for `loads/wecc/` estimates and DG | tested by `_test/test_skill_wecc.py` |
+| `loads/skill/validate.py` | contract checks | tested by `_test/test_skill_validate.py` |
+| `loads/skill/aggregate.py` | county → node allocation (`nearest_nodes`, `allocate`) | offline |
+| `loads/skill/export.py` | CSV / GridLAB-D player export with `.meta.json` provenance | offline |
+| `loads/skill/locations.py` | place names → `County` (`resolve`, `counties`) | offline (`fips`) |
+| `loads/skill/schema.py` | column vocabulary and constants copied from `loads` | checked by `_test/test_skill_loads_api.py` |
+| `loads/skill/summarize.py` | energy, peaks, load factor, profiles | offline |
+| `loads/skill/timeaxis.py` | hourly UTC ranges, local-time conversion | offline |
+| `loads/skill/examples/*.py` | worked examples; `offline_demo.py` runs without network | `offline_demo.py` run by `_test/test_skill_examples.py` |
 
 ## WECC estimate (`loads/wecc/`)
 
@@ -91,7 +115,9 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/_test/test_calibrate.py` | `Calibrate` on all WECC counties, August 2020 | network; skipped unless the cache holds the inputs |
 | `loads/_test/test_energy.py` | `Energy` with a stubbed `Total` | fast, offline |
 | `loads/_test/test_estimator.py` | `Estimator` holdout and year handling | network (weather, stock data) |
-| `loads/_test/test_normalize.py` | `Normalize` sources, groupings, weather merge | `test_nogroups` needs NSRDB (weather) |
+| `loads/_test/test_skill_*.py` | `loads.skill` tests; `test_skill_loads_api.py` pins documented `loads` behavior | offline except `test_skill_network.py` (`LOADS_TEST_SKILL=1`) |
+| `loads/_test/skill_synthetic.py` | synthetic `Total`-shaped frames for the skill tests | |
+| `loads/_test/test_normalize.py` | `Normalize` sources, groupings, hourly sums, weather merge | `test_nogroups` is `network` (NSRDB weather) |
 | `loads/_test/ami.csv.gz` | anonymized hourly AMI meter data for `test_normalize.py` | curated; 44 MB gzip, don't open |
 | `loads/_test/make_data.py` | builds `ami.csv.gz` from a raw AMI export (anonymizes ids) | needs the raw file; not a test |
 | `loads/_test/data/README.md` | provenance of test data | |
@@ -136,10 +162,11 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `DESIGN.md` | package design | |
 | `MANIFEST.md` | this file | |
 | `TODO.md` | roadmap | |
-| `pyproject.toml` | packaging | version here; `package-data` is `*.py` only |
+| `pyproject.toml` | packaging | version here; `package-data` is `*.py`, the skill's markdown, and the `loads/wecc` files the code reads (`county_mwh.csv`, `county_dg*.csv.gz`, `wecc_estimate.csv.gz`, `node_estimate.csv.gz`; about 126 MB) |
 | `requirements.txt` | dependencies (dynamic) | sibling packages via `git+` |
 | `Makefile` | `make docs` | `test` target is broken (no `./test/`) |
 | `LICENSE` | MIT | |
+| `COPYRIGHT.md` | copyright and DOE Office of Electricity acknowledgment | |
 | `.gitignore` | Python ignores | |
 | `.gitattributes` | line endings | |
 | `.github/workflows/validate.yaml` | CI: pip install, pylint, pytest | non-editable install |

@@ -47,3 +47,33 @@ cache already holds them; set `LOADS_TEST_BUILD=1` to build them anyway.
 system in seconds and always runs.
 
 	pytest -s test_calibrate.py
+
+Agent skill tests
+-----------------
+
+The `test_skill_*.py` files test `loads.skill` (see `loads/skill/SKILL.md`).
+They run offline in seconds, except `test_skill_network.py`.
+
+  - `test_skill_loads_api.py` checks, without network, the `loads` behaviors
+    that the skill documents (signatures, `Total` modes, `Calibrate` input
+    rules, DG sign conventions). A failure means `loads` changed: update
+    `loads/skill/SKILL.md` and `loads/skill/reference/` to match.
+
+  - `test_skill_fetch_offline.py` exercises the `Total` front ends against a
+    stand-in for `loads.Total` that reproduces its output contract.
+
+  - `test_skill_validate.py`, `test_skill_summarize_calibrate_aggregate.py`
+    and `test_skill_locations_export.py` test the frame helpers on synthetic
+    `Total`-shaped frames (`skill_synthetic.py`) and the bundled `fips` data;
+    `test_skill_examples.py` runs `loads/skill/examples/offline_demo.py`.
+
+  - `test_skill_wecc.py` reads the precomputed files in `loads/wecc/`
+    (skipped when they are not installed).
+
+  - `test_skill_network.py` builds Alameda County CA end to end (training
+    data, a 2020 prediction, and the sector frame). It downloads the
+    national commercial, industrial and agricultural inventories and fits
+    four TSGAM models, so it only runs when `LOADS_TEST_SKILL=1` is set.
+
+	pytest loads/_test -k skill -m "not network"
+	LOADS_TEST_SKILL=1 pytest loads/_test/test_skill_network.py

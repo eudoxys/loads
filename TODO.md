@@ -41,3 +41,11 @@
 - [x] Find optimal models for medoid counties
 
 - [x] Check optimal models for random counties to see if they match medoid county optimal models
+
+# Agent skill
+
+- [x] Agent skill and `loads.skill` helpers for using `loads` in larger
+  workflows (`loads/skill/`, merged from `eudoxys/loads-skill`)
+
+- [x] Readers for the precomputed WECC county and node estimates
+  (`loads.skill.wecc`)

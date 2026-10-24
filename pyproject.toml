@@ -3,7 +3,8 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.package-data]
-loads = ["*.py"]
+loads = ["*.py", "skill/*.md", "skill/reference/*.md", "wecc/county_mwh.csv", "wecc/county_dg.csv.gz",
+    "wecc/county_dg_scaled.csv.gz", "wecc/wecc_estimate.csv.gz", "wecc/node_estimate.csv.gz"]
 
 [tool.setuptools.dynamic]
 dependencies = {file=["requirements.txt"]}
