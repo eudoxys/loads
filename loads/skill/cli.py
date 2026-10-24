@@ -12,7 +12,7 @@
 Unlike `loads print -Y 2020`, which silently ignores `-Y` for the total
 dataset and prints 2018 training data, `county`/`series` honor the years.
 `wecc` reads the precomputed 2018-2022 WECC county estimate (no model fit, no
-NSRDB credentials; needs the `loads/wecc` data files of a repository clone).
+NSRDB credentials, no network).
 """
 
 from __future__ import annotations

@@ -36,11 +36,11 @@ before relying on behavior this skill does not cover.
 
 Do these once, at workflow start. Skipping them fails late or never returns.
 
-1. **Python 3.12 and a clone.** `loads` pins `==3.12.*`. Install from a
-   clone (`git clone https://github.com/eudoxys/loads && cd loads &&
-   python3.12 -m venv .venv && . .venv/bin/activate && pip install -e .`):
-   the precomputed WECC estimates in `loads/wecc/` are not installed by a
-   non-editable `pip install` (the DG data files are).
+1. **Python 3.12.** `loads` pins `==3.12.*`. In a Python 3.12 environment,
+   `pip install git+https://github.com/eudoxys/loads` (or `epm install
+   loads`) installs the package, this skill and the precomputed WECC files
+   (about 126 MB). Use a clone with `pip install -e .` to work on `loads`
+   itself or to run its tests and validation, whose data is repository-only.
 2. **NSRDB credentials.** Every `Total` call fetches NSRDB weather. Without
    `~/.nsrdb/credentials.json` (`{"<email>": "<api_key>"}`) the `weather`
    package tries to open a sign-up page in a browser, which hangs headless

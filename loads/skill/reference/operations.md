@@ -6,19 +6,24 @@ access, credentials, caching, runtime and memory.
 ## Install
 
 ```bash
+python3.12 -m venv .venv && . .venv/bin/activate
+pip install --upgrade pip && pip install git+https://github.com/eudoxys/loads
+```
+
+`loads` and its siblings install from GitHub (`eudoxys/cache`, `fips`,
+`weather`, `eia`, `geohash`, and `nimish/estimator` for TSGAM). The install
+includes the Python modules, this skill's markdown, and the WECC data files
+the code reads (`county_mwh.csv`, the county DG files and the precomputed
+WECC county and node estimates; about 126 MB). To work on `loads` itself,
+or to run its tests, validation and the `Calibrate` recipe (whose data is
+repository-only), use a clone:
+
+```bash
 git clone https://github.com/eudoxys/loads && cd loads
 python3.12 -m venv .venv && . .venv/bin/activate
 pip install --upgrade pip && pip install -e . pytest
 pytest loads/_test -m "not network"     # offline tests (no network needed)
 ```
-
-`loads` and its siblings install from GitHub (`eudoxys/cache`, `fips`,
-`weather`, `eia`, `geohash`, and `nimish/estimator` for TSGAM). An editable
-install from a clone keeps every `loads/wecc/` file available;
-`pip install git+https://github.com/eudoxys/loads` installs the Python
-modules, the skill's markdown, and the two data files `DG` needs
-(`wecc/county_mwh.csv`, `wecc/county_dg.csv.gz`), but not the precomputed
-WECC estimates.
 
 Install the skill for an agent by linking this folder into its skills
 folder, e.g. for Claude Code:
@@ -40,7 +45,8 @@ ln -s "$PWD/loads/skill" ~/.claude/skills/loads     # or a project's .claude/ski
 | EIA-861M sales / small-scale solar | `eia.HS861m`, `Form861m` → `loads.dgen.DG`, `Total(dg=True)` | `www.eia.gov` |
 | WECC240 node GIS (optional) | your aggregation | `github.com/eudoxys/wecc240` |
 
-Bundled (offline, in a clone): `fips` county/state metadata,
+Bundled (offline; `loads/_test/data`, `loads/caiso` and `loads/isone`
+in a clone only): `fips` county/state metadata,
 `loads/clusters.csv`, `loads/wecc/*` (the 2018–2022
 WECC county and WECC240 node estimates, county DG, EIA retail allocations
 and contribution factors), `loads/_test/data/*` (WECC/CAISO EIA-930 hourly

@@ -14,10 +14,8 @@ a file instead of fitting a model per county:
 All are hourly UTC (hour beginning). The DG files start at
 2018-01-01 07:00 UTC; the missing night hours read as 0.
 
-`county_dg.csv.gz` is installed with the package, so `wecc_dg()` works from
-any install. The other files are in the git repository but are not
-installed by a non-editable `pip install`; their readers raise
-`FileNotFoundError` with that hint. Use a clone with `pip install -e .`.
+All four files are installed with the package (package data), so the
+readers work from any install, including `pip install git+...` and `epm`.
 """
 
 from __future__ import annotations
@@ -39,16 +37,16 @@ FILES = {
 
 def path(name: str) -> str:
     """Absolute path of a bundled `loads/wecc` file (a key of `FILES` or a
-    file name). Raises `FileNotFoundError` when it is not installed."""
+    file name). Raises `FileNotFoundError` when it is missing."""
     import loads
 
     filename = FILES.get(name, name)
     full = os.path.join(os.path.dirname(os.path.abspath(loads.__file__)), "wecc", filename)
     if not os.path.exists(full):
         raise FileNotFoundError(
-            f"{full} not found. This loads/wecc data file is not installed by a "
-            "non-editable pip install; clone https://github.com/eudoxys/loads and "
-            "`pip install -e .`, or pass the file path yourself."
+            f"{full} not found. The loads/wecc estimate and DG files are package "
+            "data; reinstall loads (pip install --force-reinstall "
+            "git+https://github.com/eudoxys/loads) or pass the file path yourself."
         )
     return full
 
@@ -68,7 +66,7 @@ def _columns(places, available: list[str], what: str) -> list[str] | None:
 
 def _wecc_counties(places) -> list[str]:
     """`"County ST"` names of WECC counties, checked with the bundled `fips`
-    data (not a data file, so this works from a non-editable install)."""
+    data, so a non-WECC county is caught before any file is read)."""
     names = []
     for p in ([places] if isinstance(places, (str, County, tuple)) else places):
         c = p if isinstance(p, County) else resolve(p)

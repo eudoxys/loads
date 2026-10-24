@@ -9,8 +9,8 @@ import loads.skill as ls
 ls.configure()          # cache folder + NSRDB credential check
 ```
 
-and Python 3.12 with a clone of `eudoxys/loads` installed (`pip install -e
-.`). Before any sweep, run the recipe on one county and show the user the
+and Python 3.12 with `loads` installed (recipe 5's `Calibrate` example
+reads targets from `loads/_test/data/`, which needs a clone). Before any sweep, run the recipe on one county and show the user the
 timing and a summary. Recipe 1 needs no `configure()`, credentials or
 network.
 

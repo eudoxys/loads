@@ -169,11 +169,13 @@ edges to avoid; the helpers resolve place names, call `Total` in an explicit
 mode, validate results, read the precomputed WECC estimates, calibrate,
 aggregate counties onto nodes, and export with provenance.
 
-To make the skill available to Claude Code, link the folder into a skills
-folder from a clone installed with `pip install -e .` (the precomputed
-WECC estimates in `loads/wecc/` are not installed by a non-editable install):
+To make the skill available to Claude Code, link the installed skill
+folder into a skills folder:
 
-    ln -s "$PWD/loads/skill" ~/.claude/skills/loads
+    ln -s "$(python3 -c 'import loads.skill,os;print(os.path.dirname(loads.skill.__file__))')" ~/.claude/skills/loads
+
+The package includes the precomputed WECC estimates and DG files the skill
+reads (about 126 MB installed).
 
 The helpers also work without an agent:
 

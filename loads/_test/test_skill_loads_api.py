@@ -230,7 +230,7 @@ def test_dg_signature():
 
 
 def test_dg_data_is_package_data():
-    # DG reads it at run time, so it must be installed even by a non-editable install
+    # DG reads these at run time, so they must be installed by any install
     import loads.dgen
     assert os.path.exists(loads.dgen.COUNTY_MWH)
     assert os.path.exists(loads.dgen.DGEN_PROFILES)  # DG(profile="dgen")
@@ -280,7 +280,5 @@ def test_growth_not_wired_into_sector_models():
 
 def test_bundled_dg_files_are_positive_output():
     source = os.path.join(os.path.dirname(loads.__file__), "wecc", "county_dg.csv.gz")
-    if not os.path.exists(source):
-        pytest.skip("loads/wecc data files are not installed")
     head = pd.read_csv(source, index_col=0, nrows=24 * 200)
     assert (head.values >= 0).all() and head.values.max() > 0  # opposite to elec_dg_MW <= 0

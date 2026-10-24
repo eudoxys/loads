@@ -183,14 +183,17 @@ the tracking issues above or open a new one.
 
 ## Precomputed WECC files
 
-28. **Not installed by `pip install .`.** `wecc/county_mwh.csv` and
-    `wecc/county_dg.csv.gz` are package data, so `loads.dgen.DG` (either
-    profile), `Total(dg=True)` and `ls.wecc_dg(scaled=False)` work from any
-    install. The other `loads/wecc/` data files are in the repository only:
-    `wecc_estimate.csv.gz`, `node_estimate.csv.gz` and
-    `county_dg_scaled.csv.gz` (`wecc_dg(scaled=True)`). → for those, use a
-    clone with `pip install -e .`; `ls.wecc_estimate`, `ls.node_estimate`
-    and `wecc_dg(scaled=True)` raise `FileNotFoundError` saying so.
+28. **What a pip install leaves out.** The files the code reads are
+    package data: `wecc/county_mwh.csv`, `county_dg.csv.gz`,
+    `county_dg_scaled.csv.gz`, `wecc_estimate.csv.gz` and
+    `node_estimate.csv.gz`, so `DG`, `Total(dg=True)` and every `ls.wecc_*`
+    reader work from any install (about 126 MB). Repository-only: the build
+    inputs and by-products in `loads/wecc/` (`dgen.csv.gz`,
+    `county_dg.csv`, `county_cf.csv`, `node_estimate_cf.csv`,
+    `county_dg_scaling.csv`, `eia_smallscale_pv.csv`), the calibration
+    targets in `loads/_test/data/` used by the `Calibrate` recipe, and
+    `loads/caiso/`, `loads/isone/`. → for those, use a clone (or download
+    the file from GitHub).
 
 29. **Two DG datasets.** `county_dg.csv.gz` (dGen, 369 counties, no
     year-to-year growth; `county_dg.csv` is an uncompressed copy missing
