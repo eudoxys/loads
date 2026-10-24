@@ -221,16 +221,16 @@ model output.
   a plain hourly frame.
 - `weather="County ST"` merges `weather.Weather` columns (NSRDB
   credentials).
-- Aggregation: rows are averaged (`mean()`) within each hour **and across
-  all rows sharing that hour**. So without `groups` the result is the
-  *average* source unit (e.g. average meter), not their sum **[tested]**,
-  and sub-hourly *energy* readings (kWh per 15 min) come out as the
-  per-interval mean, not hourly energy, so scale them by intervals per hour
-  **[tested]**. Power readings (kW) need no such factor. Super-hourly data
-  is not upsampled.
-- The module docstring's example call is ungrouped, but its output
-  (about 21.7 MW) is the *meter-summed* total; the call as written returns
-  the average meter (0.0215 MW) for `loads/_test/ami.csv.gz`.
+- Aggregation: every source row in the same hour (and group) is
+  **summed** **[tested]**. Without `groups` that is the total over all
+  units, e.g. every meter in an AMI file (21.7 MW in the first hour of
+  `loads/_test/ami.csv.gz`); with `groups` it is the total per group, and
+  the groups add up to the ungrouped total **[tested]**. So source values
+  must be **energy per interval** (kWh per 15 minutes, per hour, ...):
+  `scales={"kwh": 1e-3}` turns kWh into MWh per hour, i.e. average MW.
+  Sub-hourly **power** readings (kW every 15 minutes) would be summed too,
+  so divide by the readings per hour (`scales={"kw": 1e-3 / 4}`). Hours
+  with no rows are NaN. Super-hourly data is not upsampled.
 
 ## Calibrate
 
@@ -333,8 +333,9 @@ monthly county DG energy matches EIA. Returns one column `elec_dg_MW`,
 - `source`: a local EIA-861M file ("Monthly Totals- States" layout);
   `None` downloads with `eia.Form861m`. Hours of months EIA has not
   published are NaN (and not cached).
-- Needs `loads/wecc/county_mwh.csv`, which a non-editable install does
-  not ship (`FileNotFoundError`); use a clone with `pip install -e .`.
+- Reads `loads/wecc/county_mwh.csv`, which is package data, so `DG`
+  works from a pip install. `profile="dgen"` also reads
+  `wecc/county_dg.csv.gz`, which is not package data (needs a clone).
 - Shares exist only for counties in `county_mwh.csv`, i.e. every county of
   the 13 WECC states, 2018–2022; other years use the same month of the
   nearest year. Any other county gets **zero DG with a `UserWarning`**

@@ -215,9 +215,10 @@ These fail silently or late. The full list with source references is in
   `state="CA", county="Alameda"`; `Estimator`, `Cluster`, `Calibrate`
   columns, `clusters.csv` and the WECC files use `"Alameda CA"`.
   `County.kwargs` and `County.county_st` give both.
-- **`Normalize` averages.** Without `groups`, rows sharing an hour are
-  averaged (the average meter, not the total), and sub-hourly energy
-  readings need an intervals-per-hour factor. Group by meter and sum.
+- **`Normalize` sums.** All rows in an hour are added up (all meters
+  without `groups`), so source values must be energy per interval;
+  sub-hourly power readings need dividing by the readings per hour, and an
+  hour with missing meters comes out low.
 - **No growth in predictions.** `Units`/`Floorarea` can extrapolate growth,
   but `Total` predictions keep 2020 housing units and 2019 floor area for
   every year. Apply growth separately and state the rate.

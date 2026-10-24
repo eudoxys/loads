@@ -117,7 +117,7 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/_test/test_estimator.py` | `Estimator` holdout and year handling | network (weather, stock data) |
 | `loads/_test/test_skill_*.py` | `loads.skill` tests; `test_skill_loads_api.py` pins documented `loads` behavior | offline except `test_skill_network.py` (`LOADS_TEST_SKILL=1`) |
 | `loads/_test/skill_synthetic.py` | synthetic `Total`-shaped frames for the skill tests | |
-| `loads/_test/test_normalize.py` | `Normalize` sources, groupings, weather merge | `test_nogroups` needs NSRDB (weather) |
+| `loads/_test/test_normalize.py` | `Normalize` sources, groupings, hourly sums, weather merge | `test_nogroups` is `network` (NSRDB weather) |
 | `loads/_test/ami.csv.gz` | anonymized hourly AMI meter data for `test_normalize.py` | curated; 44 MB gzip, don't open |
 | `loads/_test/make_data.py` | builds `ami.csv.gz` from a raw AMI export (anonymizes ids) | needs the raw file; not a test |
 | `loads/_test/data/README.md` | provenance of test data | |
@@ -162,7 +162,7 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `DESIGN.md` | package design | |
 | `MANIFEST.md` | this file | |
 | `TODO.md` | roadmap | |
-| `pyproject.toml` | packaging | version here; `package-data` is `*.py` plus the skill's markdown (no data files) |
+| `pyproject.toml` | packaging | version here; `package-data` is `*.py`, the skill's markdown, and `wecc/county_mwh.csv` (read by `DG`) |
 | `requirements.txt` | dependencies (dynamic) | sibling packages via `git+` |
 | `Makefile` | `make docs` | `test` target is broken (no `./test/`) |
 | `LICENSE` | MIT | |

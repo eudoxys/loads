@@ -173,18 +173,17 @@ def test_normalize_signature_and_required_args():
         loads.Normalize(_meters(), timestamps={"t": pd.DatetimeIndex})
 
 
-def test_normalize_averages_rows_within_an_hour():
-    # footguns.md #31/#32: ungrouped rows are averaged across units, and
-    # sub-hourly energy is averaged per interval (not summed to hourly energy)
+def test_normalize_sums_rows_within_an_hour():
+    # footguns.md #31/#32: rows in the same hour (and group) are summed, so
+    # values must be energy per interval
     args = dict(timestamps={"t": pd.DatetimeIndex}, mapping={"elec_net_MW": "kwh"}, scales={"kwh": 1e-3})
     flat = loads.Normalize(_meters(), **args)
     assert str(flat.index.tz) == "UTC" and len(flat) == 2
-    assert np.allclose(flat.elec_net_MW, 0.002)       # mean of meters (sum would be 0.004)
+    assert np.allclose(flat.elec_net_MW, 0.016)        # 4 x 1 kWh + 4 x 3 kWh per hour
     grouped = loads.Normalize(_meters(), groups={"kwh": "m"}, **args)
     assert grouped.index.names == ["m", "timestamp"]
-    assert np.allclose(grouped.xs("a").elec_net_MW, 0.001)  # 4 kWh/h is 0.004 MW
-    total = grouped.groupby(level="timestamp").sum()
-    assert np.allclose(total.elec_net_MW, 0.004)       # sum of per-meter means"
+    assert np.allclose(grouped.xs("a").elec_net_MW, 0.004)
+    assert np.allclose(grouped.groupby(level="timestamp").sum().elec_net_MW, flat.elec_net_MW)
 
 
 def test_energy_needs_year_sequence():
@@ -197,13 +196,6 @@ def test_energy_int_year_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(Cache, "CACHEDIR", str(tmp_path))
     with pytest.raises(TypeError):
         loads.Energy("NV", "Esmeralda", 2019)
-
-
-_COUNTY_MWH = os.path.join(os.path.dirname(loads.__file__), "wecc", "county_mwh.csv")
-needs_county_mwh = pytest.mark.skipif(
-    not os.path.exists(_COUNTY_MWH),
-    reason="loads/wecc/county_mwh.csv is not installed (non-editable install); loads.dgen.DG needs it",
-)
 
 
 def _stub_dg(monkeypatch, tmp_path, state="CA", tot_mwh=1000.0):
@@ -237,7 +229,12 @@ def test_dg_signature():
     assert loads.DG.PROFILES == ["weather", "dgen"]
 
 
-@needs_county_mwh
+def test_county_mwh_is_package_data():
+    # DG reads it at run time, so it must be installed even by a non-editable install
+    import loads.dgen
+    assert os.path.exists(loads.dgen.COUNTY_MWH)
+
+
 def test_dg_is_eia_allocated_negative_load(monkeypatch, tmp_path):
     # #43: DG allocates EIA-861M state small-scale PV by county share of state energy use
     dgen = _stub_dg(monkeypatch, tmp_path)
@@ -249,7 +246,6 @@ def test_dg_is_eia_allocated_negative_load(monkeypatch, tmp_path):
     assert np.isclose(-dg.elec_dg_MW.sum(), 1000.0 * share, rtol=1e-4)
 
 
-@needs_county_mwh
 def test_dg_outside_county_mwh_is_zero(monkeypatch, tmp_path):
     dgen = _stub_dg(monkeypatch, tmp_path, state="IL")
     with pytest.warns(UserWarning, match="no DG allocated"):

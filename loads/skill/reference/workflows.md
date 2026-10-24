@@ -290,20 +290,19 @@ UTC-offset column (the layout of `loads/_test/ami.csv.gz`):
 ```python
 import numpy as np
 from loads import Normalize
-meters = Normalize("ami.csv",
+measured = Normalize("ami.csv",
     timestamps={"date": pd.DatetimeIndex,
                 "hour": lambda x: pd.TimedeltaIndex((np.array(x) - 1) * 3600e9),
                 "tz_offset": lambda x: pd.TimedeltaIndex(np.array(x) * 3600e9)},
     mapping={"elec_net_MW": "kwh_delta"},       # metered deliveries are net of PV
-    scales={"kwh_delta": 1e-3},                 # hourly kWh -> MW
-    groups={"kwh_delta": "meter_id"})
-measured = meters.groupby(level="timestamp").sum()   # sum meters; ungrouped would average them
-ls.validate(measured)                                # hourly UTC, no gaps
+    scales={"kwh_delta": 1e-3})                 # kWh per hour -> MW; all meters summed
+ls.validate(measured)                           # hourly UTC, no gaps
 ```
 
-See [footguns.md](footguns.md#imported-data-normalize) before trusting
-magnitudes: ungrouped data is averaged, and sub-hourly energy needs an
-intervals-per-hour factor.
+Add `groups={"kwh_delta": "meter_id"}` (or a circuit column) for one
+series per meter or circuit. See
+[footguns.md](footguns.md#imported-data-normalize) for missing meters and
+power-vs-energy readings.
 
 ## 8. Hand off to other tools
 

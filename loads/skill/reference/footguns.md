@@ -183,11 +183,13 @@ the tracking issues above or open a new one.
 
 ## Precomputed WECC files
 
-28. **Not installed by `pip install .`.** `loads/wecc/*.csv*` are in the
-    repository but not package data. Besides the precomputed estimates, this
-    breaks `loads.dgen.DG` and `Total(dg=True)`, which read
-    `wecc/county_mwh.csv` at run time. → use a clone with `pip install -e .`;
-    `ls.wecc_*` raise `FileNotFoundError` saying so.
+28. **Not installed by `pip install .`.** Apart from
+    `wecc/county_mwh.csv` (package data, so `loads.dgen.DG` and
+    `Total(dg=True)` work from any install), `loads/wecc/*.csv*` are in the
+    repository but not package data: the precomputed estimates and the DG
+    files (`DG(profile="dgen")` needs `county_dg.csv.gz`). → use a clone
+    with `pip install -e .`; `ls.wecc_*` raise `FileNotFoundError` saying
+    so.
 
 29. **Two DG datasets.** `county_dg.csv.gz` (dGen, 369 counties, no
     year-to-year growth; `county_dg.csv` is an uncompressed copy missing
@@ -206,19 +208,19 @@ the tracking issues above or open a new one.
 
 ## Imported data (`Normalize`)
 
-31. **Ungrouped `Normalize` averages, it doesn't sum.** Rows sharing an
-    hour are averaged, so meter-level data without `groups` gives the
-    average meter (for `loads/_test/ami.csv.gz`, 0.0215 MW instead of about
-    19 MW for 960 meters) **[tested]**, while the docstring says grouped
-    data is summed. → to get a feeder or system total, group by meter and
-    sum: `Normalize(..., groups={"kwh": "meter_id"}).groupby(level="timestamp").sum()`;
-    check the result's magnitude against a known total.
+31. **`Normalize` sums, so a missing meter is missing load.** Every row in
+    an hour is added up **[tested]**: right for a fleet total, but an hour
+    in which some meters didn't report comes out low rather than NaN, and
+    duplicate rows are double counted. → check the number of reporting
+    units per hour in the source (`source.groupby(hour)[meter].nunique()`)
+    and drop duplicates before normalizing.
 
-32. **Sub-hourly energy is averaged per interval.** 15-minute kWh readings
-    become the 15-minute mean, a quarter of the hourly MWh **[tested]**. →
-    scale energy readings by intervals per hour
-    (`scales={"kwh": 4e-3}` for 15-minute kWh → MW); power readings (kW)
-    only need the unit factor.
+32. **`Normalize` expects energy per interval.** Because rows are summed,
+    sub-hourly kWh per interval comes out right (15-minute kWh × `1e-3` →
+    MW) **[tested]**, but sub-hourly **power** readings are summed too and
+    come out N times too large (4× for 15-minute kW). → for power
+    readings, divide by the readings per hour in `scales`
+    (`{"kw": 1e-3 / 4}`).
 
 33. **Meter data is net of rooftop PV.** Map AMI or feeder deliveries to
     `elec_net_MW`, not `elec_total_MW`, and compare with model net load
