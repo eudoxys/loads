@@ -59,8 +59,12 @@ archive, `github.com/eudoxys/wecc`, which holds the latest version of each
 county's `R`, `C`, building type and training files). Don't read
 `cache.pathname` after only `cache.exists()`: `exists()` is also `True` for a
 file that is only in the archive, and the read then fails and the data is
-rebuilt. `Residential` and `Commercial` use `download()`; the other modules
-still use the older `exists()` pattern and so never use the archive.
+rebuilt. Every module uses `download()` before reading a cache file. Keep
+`exists()` only for checks that don't read the file, and use
+`os.path.exists(cache.pathname)` when only the local cache should count (as
+the calibration test's skip check does). The `weather` package (a sibling
+repo) still uses the `exists()` pattern, so `Weather` doesn't use the archive
+yet.
 
 Each class has a `CACHEDIR = None` class attribute and a `refresh:bool=False`
 argument. Cache file names encode the source (`R` residential, `C`

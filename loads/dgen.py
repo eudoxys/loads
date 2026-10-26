@@ -360,7 +360,7 @@ class DG(pd.DataFrame):
         """@private Get a year of county DG (cached)"""
         cache = Cache(package="loads",version=0,path=[state,county,f"DG_{profile}_{year}.csv.gz"])
         data = None
-        if cache.exists() and not refresh:
+        if not refresh and cache.download():
             try:
                 data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
                 data.index = pd.DatetimeIndex(data.index).tz_convert("UTC")

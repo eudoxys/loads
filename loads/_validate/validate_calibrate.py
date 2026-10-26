@@ -96,14 +96,18 @@ def missing_inputs(year:int=YEAR) -> list[str]:
 
     The cache files are named exactly as `loads.total.Total` (version 2
     training data) and `weather.Weather` (version 0) name them. The padded
-    prediction window reaches into the previous and next years.
+    prediction window reaches into the previous and next years. Only the
+    local cache folder is checked: a file that is only in the `cache`
+    archive counts as missing.
     """
     missing = []
     for state,county in wecc_units():
         training = Cache(package="loads",version=2,path=[state,county,"T_elec_1h_training.csv.gz"])
         weather = [Cache([state,county,f"W_{x}.csv.gz"],package="weather",version=0)
             for x in (year-1,year,year+1)]
-        if not training.exists() or not all(x.exists() for x in weather):
+        # local cache only: files that are only in the cache archive are
+        # not counted as available (see the docstring)
+        if not os.path.exists(training.pathname) or not all(os.path.exists(x.pathname) for x in weather):
             missing.append(f"{county} {state}")
     return missing
 
@@ -145,7 +149,7 @@ def gross_load(year:int=YEAR,
         county
     """
     cache = load_cache(year)
-    if cache.exists() and not refresh:
+    if not refresh and cache.download():
         try:
             return pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
         except Exception as err: # pylint: disable=broad-exception-caught
@@ -231,7 +235,7 @@ def calibrated_load(year:int=YEAR,
         (per-month state energy)
     """
     caches = result_caches(year)
-    if all(x.exists() for x in caches.values()) and not refresh:
+    if not refresh and all(x.download() for x in caches.values()):
         try:
             result = {"load":pd.read_csv(caches["load"].pathname,index_col=[0],parse_dates=[0])}
             for name in ["summary","regions","states"]:
@@ -240,8 +244,7 @@ def calibrated_load(year:int=YEAR,
         except Exception as err: # pylint: disable=broad-exception-caught
             _logger.debug(f"{caches=} {err}")
             for cache in caches.values():
-                if cache.exists():
-                    cache.delete()
+                cache.delete()
 
     from loads.calibrate import Calibrate # pylint: disable=import-outside-toplevel
     load = gross_load(year)

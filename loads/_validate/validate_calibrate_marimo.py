@@ -81,12 +81,12 @@ def _(ExitStack, YEAR, build_button, mo, vc):
     _cache = vc.load_cache(YEAR)
     _run = build_button.value or mo.app_meta().mode == "script"
     _note = ""
-    if not _cache.exists() and not _run:
+    if not _cache.download() and not _run:
         _missing = vc.missing_inputs(YEAR)
         _note = (f" The cache lacks the training data or weather of {len(_missing)} WECC "
             f"counties (e.g. {_missing[0]}), which will be downloaded and can take hours."
             if _missing else " All the county inputs are in the cache.")
-    mo.stop(not _cache.exists() and not _run,mo.vstack([
+    mo.stop(not _cache.download() and not _run,mo.vstack([
         mo.callout(mo.md(
             f"The {YEAR} load matrix is not in the cache. Build it with "
             "`python loads/_validate/validate_calibrate.py` and rerun this "
@@ -111,7 +111,7 @@ def _(ExitStack, YEAR, build_button, mo, vc):
 @app.cell
 def _(ExitStack, YEAR, calibrate_button, mo, vc):
     _caches = vc.result_caches(YEAR)
-    _cached = all(x.exists() for x in _caches.values())
+    _cached = all(x.download() for x in _caches.values())
     mo.stop(not _cached and not (calibrate_button.value or mo.app_meta().mode == "script"),mo.vstack([
         mo.callout(mo.md(
             f"The {YEAR} calibration is not in the cache. Run "

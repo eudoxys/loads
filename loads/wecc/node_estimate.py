@@ -204,7 +204,7 @@ def get_county_estimate(county_st:list[str]) -> pd.DataFrame:
     for name in county_st:
         state,county = name.split()[-1]," ".join(name.split()[:-1])
         cache = Cache(package="loads",version=0,path=[state,county,CACHE_NAME])
-        if not cache.exists():
+        if not cache.download():
             missing.append(name)
             continue
         data[name] = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0]).iloc[:,0]

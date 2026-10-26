@@ -67,7 +67,7 @@ def _(Cache, Path, os, pd):
 
 @app.cell
 def _(DATA, PACKAGE, START, load_cache, mo, pd):
-    mo.stop(not load_cache.exists(),mo.callout(mo.md(
+    mo.stop(not load_cache.download(),mo.callout(mo.md(
         "The August 2020 load matrix is not in the cache. Build it with "
         "`python loads/_test/test_calibrate.py` (or run the calibration test) "
         "and rerun this notebook."),kind="warn"))
@@ -130,7 +130,7 @@ def _(Calibrate, ExitStack, dg, energy, load, mo, peak, pd, regions, report_swee
                 search=True,progress=_progress)
         sweep = _result.sweep.copy()
         sweep.to_csv(sweep_cache.pathname,index=False,compression="gzip")
-    elif sweep_cache.exists():
+    elif sweep_cache.download():
         sweep = pd.read_csv(sweep_cache.pathname)
     elif report_sweep.exists():
         sweep = pd.read_csv(report_sweep)

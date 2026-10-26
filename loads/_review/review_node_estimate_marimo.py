@@ -66,7 +66,7 @@ def _(Cache, json, mo, urllib):
     _url = "https://raw.githubusercontent.com/python-visualization/folium/main/examples/data/us-states.json"
     _cache = Cache(package="loads",version=0,path=["us-states.json"])
     try:
-        if not _cache.exists():
+        if not _cache.download():
             with mo.status.spinner("Downloading state borders"):
                 with urllib.request.urlopen(_url,timeout=30) as _response:
                     _text = _response.read().decode("utf-8")

@@ -129,11 +129,11 @@ class Units(float):
         cache = Cache(package="loads",version=0,path=[state,"units.csv.gz"])
 
         data = None
-        if cache.exists() and not refresh:
+        if not refresh and cache.download():
             try:
                 data = pd.read_csv(cache.pathname,index_col=[0])
                 _logger.debug(f"{cache=} ok")
-            except:
+            except Exception as err: # pylint: disable=broad-exception-caught
                 data = None
                 cache.delete()
                 _logger.debug(f"{cache=} {err}")

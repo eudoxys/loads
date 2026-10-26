@@ -113,7 +113,7 @@ class Energy(pd.DataFrame):
                 1 if month==12 or month is None else month+1,
                 1,0,0,0,0,dt.timezone.utc) - dt.timedelta(seconds=1)
         date_range = pd.date_range(start,stop,freq="1h")
-        if cache.exists() and not refresh:
+        if not refresh and cache.download():
             try:
                 energy = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
             except Exception as err:
@@ -171,7 +171,7 @@ if __name__ == '__main__':
     for n,state in enumerate(sorted(states)):
 
         cache = Cache(package="loads",version=0,path=[state,f"MWH_{'-'.join(map(str,years))}.csv"])
-        if cache.exists() and not refresh:
+        if not refresh and cache.download():
             energy = pd.read_csv(cache.pathname,index_col=[0])
         else:
             print(f"Processing {state} ({n+1} of {len(states)} states in WECC)...",flush=True)
@@ -183,7 +183,7 @@ if __name__ == '__main__':
             energy.round(3).to_csv(cache.pathname,index=True,header=True)
 
         cache = Cache(package="loads",version=0,path=[state,f"CF_{'-'.join(map(str,years))}.csv"])
-        if cache.exists() and not refresh:
+        if not refresh and cache.download():
             fraction = pd.read_csv(cache.pathname,index_col=[0])
         else:
             total = energy.sum(axis=1)

@@ -129,7 +129,7 @@ class Floorarea(pd.DataFrame):
 
         # load county commercial floor area data from cache if possible
         cache = Cache(f"floorarea_{self.YEAR}.csv.gz",package="loads",version=0)
-        if cache.exists() and not refresh:
+        if not refresh and cache.download():
             try:
                 data = pd.read_csv(cache.pathname)
                 _logger.debug(f"{cache=} ok")
@@ -154,11 +154,11 @@ class Floorarea(pd.DataFrame):
                 ]):
 
                 file = Cache(package="loads",version=0,path=f"floorarea_region{n}_{self.YEAR}.csv.gz")
-                if file.exists() and not refresh:
+                if not refresh and file.download():
                     try:
                         result = pd.read_csv(file.pathname)
                         _logger.debug(f"{file=} ok")
-                    except:
+                    except Exception as err: # pylint: disable=broad-exception-caught
                         result = None
                         _logger.error(f"{file=} {err}")
                 else:

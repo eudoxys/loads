@@ -1,13 +1,19 @@
-"""Test that `Residential` and `Commercial` use the cache archive
+"""Test that `loads` classes use the cache archive
 
-When `R.csv.gz` or `C.csv.gz` is not in the local cache, `Residential` and
-`Commercial` must download it from the `cache` package archive (by default
-the Eudoxys WECC data archive, https://github.com/eudoxys/wecc) instead of
-building it from RESstock/COMstock data.
+When a cache file is not in the local cache, the `loads` classes must
+download it from the `cache` package archive (by default the Eudoxys WECC
+data archive, https://github.com/eudoxys/wecc) instead of building it from
+the original sources.
 
-These tests run offline in seconds: the archive is a temporary folder served
-through a `file://` URL template, and the RESstock/COMstock/Units/Floorarea
-builders are replaced by stubs that fail if called.
+The `Residential` and `Commercial` tests run offline in seconds: the archive
+is a temporary folder served through a `file://` URL template, and the
+RESstock/COMstock/Units/Floorarea builders are replaced by stubs that fail if
+called.
+
+The `network` tests read the real archive for Alameda County CA into an
+empty temporary cache, with every original source pointed at an invalid
+host, so a rebuild from source fails instead of passing silently. They
+download about 25 MB.
 """
 
 import os
@@ -21,8 +27,18 @@ from cache import Cache
 
 from loads import residential as residential_module
 from loads import commercial as commercial_module
+from loads import industry as industry_module
+from loads import agriculture as agriculture_module
+from loads import total as total_module
 from loads.residential import Residential
 from loads.commercial import Commercial
+from loads.resstock import RESstock
+from loads.comstock import COMstock
+from loads.units import Units
+from loads.floorarea import Floorarea
+from loads.industry import Industry
+from loads.agriculture import Agriculture
+from loads.total import Total
 
 STATE,COUNTY = "CA","Alameda"
 
@@ -106,3 +122,64 @@ def test_missing_from_archive(archive,monkeypatch,tmp_path,cls):
     monkeypatch.setattr(cache_module,"ARCHIVES",[f"file://{tmp_path}/empty/{{package}}/{{path}}"])
     with pytest.raises(AssertionError,match="built from source"):
         cls(STATE,COUNTY)
+
+INVALID = "https://invalid.invalid"
+"""Source URL that cannot be reached, so a rebuild from source fails"""
+
+@pytest.fixture
+def real_archive(tmp_path,monkeypatch):
+    """Empty local cache, the default archive, and unreachable original sources"""
+    cachedir = str(tmp_path / "cache")
+    monkeypatch.setattr(Cache,"CACHEDIR",cachedir)
+    for cls in [Residential,Commercial,RESstock,COMstock,Units,Floorarea,Industry,Agriculture]:
+        monkeypatch.setattr(cls,"CACHEDIR",cachedir)
+    for cls in [RESstock,COMstock,Units,Floorarea,Industry,Agriculture]:
+        monkeypatch.setattr(cls,"SOURCE",INVALID)
+    monkeypatch.setattr(industry_module,"CACHE",None)
+    monkeypatch.setattr(agriculture_module,"CACHE",None)
+    monkeypatch.setattr(total_module,"Weather",_fail)
+    return cachedir
+
+def _local(cachedir:str,version:int,*path:str) -> str:
+    """Path of a file in the local cache"""
+    return os.path.join(cachedir,"loads",str(version),*path)
+
+@pytest.mark.network
+@pytest.mark.parametrize("cls,building_type",[
+    (RESstock,"RSD"),
+    (COMstock,"CMO"),
+    ])
+def test_stock_from_archive(real_archive,cls,building_type):
+    """Raw ResStock/ComStock data comes from the archive"""
+    data = cls(STATE,COUNTY,building_type)
+    assert os.path.exists(_local(real_archive,0,STATE,COUNTY,f"{building_type}.csv.gz"))
+    assert len(data) == 8760
+    assert data.select_dtypes("number").abs().sum().sum() > 0
+
+@pytest.mark.network
+def test_units_from_archive(real_archive):
+    """Census housing units come from the archive"""
+    units = Units(STATE,COUNTY,2020)
+    assert os.path.exists(_local(real_archive,0,STATE,"units.csv.gz"))
+    assert units > 0
+
+@pytest.mark.network
+@pytest.mark.parametrize("cls,name",[
+    (Floorarea,"floorarea_2019.csv.gz"),
+    (Industry,"industry.csv.gz"),
+    (Agriculture,"agriculture.csv.gz"),
+    ])
+def test_national_from_archive(real_archive,cls,name):
+    """Package-wide inventories come from the archive"""
+    data = cls(STATE,COUNTY)
+    assert os.path.exists(_local(real_archive,0,name))
+    assert len(data) > 0
+
+@pytest.mark.network
+def test_training_from_archive(real_archive):
+    """`Total` training data comes from the archive (weather is not built)"""
+    X = Total.EXOGENOUS_VARIABLES["elec_total_MW"]
+    data = Total._get_training(STATE,COUNTY,X,"elec_total_MW") # pylint: disable=protected-access
+    assert os.path.exists(_local(real_archive,2,STATE,COUNTY,"T_elec_1h_training.csv.gz"))
+    assert "elec_total_MW" in data.columns
+    assert data["elec_total_MW"].sum() > 0

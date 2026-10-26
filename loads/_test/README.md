@@ -51,13 +51,20 @@ system in seconds and always runs.
 Cache archive test
 ------------------
 
-`test_archive.py` checks that `Residential` and `Commercial` download a
-missing `R.csv.gz`/`C.csv.gz` from the `cache` package archive (the Eudoxys
-WECC data archive, https://github.com/eudoxys/wecc) instead of building it,
-that `refresh=True` rebuilds instead of downloading, and that a file missing
-from the archive is built. It runs offline in seconds: the archive is a
-temporary folder served by a `file://` URL and the RESstock/COMstock builders
-are stubbed.
+`test_archive.py` checks that missing cache files are downloaded from the
+`cache` package archive (the Eudoxys WECC data archive,
+https://github.com/eudoxys/wecc) instead of being built.
+
+  - The `Residential` and `Commercial` tests also check that `refresh=True`
+    rebuilds instead of downloading and that a file missing from the archive
+    is built. They run offline in seconds: the archive is a temporary folder
+    served by a `file://` URL and the RESstock/COMstock builders are stubbed.
+
+  - The `network` tests read the real archive for Alameda County CA into an
+    empty temporary cache (`RESstock`, `COMstock`, `Units`, `Floorarea`,
+    `Industry`, `Agriculture`, and `Total` training data), with every
+    original source pointed at an invalid host so a rebuild fails. They
+    download about 25 MB and take about 20 seconds.
 
 	pytest test_archive.py
 

@@ -199,7 +199,7 @@ def aggregate(
     else:
         mapping_cache = Cache(package="loads",version=0,path=["aggregated",f"{start}-{end}",f"mapping.csv"])
         data_cache = Cache(package="loads",version=0,path=["aggregated",f"{start}-{end}",f"{column}.csv"])            
-    if data_cache.exists() and mapping_cache.exists() and not refresh:
+    if not refresh and data_cache.download() and mapping_cache.download():
 
         # read mapping
         try:
