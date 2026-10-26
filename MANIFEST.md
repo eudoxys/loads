@@ -32,12 +32,12 @@ Update this file in the same PR that adds, moves, or deletes a file.
 |---|---|---|
 | `loads/__init__.py` | package docs, module list | pdoc landing page; no re-exports yet (see `DESIGN.md`) |
 | `loads/cli.py` | `loads` command, `main()` | entry point `loads`; `viewer`/`test`/`help`/`info` not functional |
-| `loads/resstock.py` | `RESstock`: raw NREL ResStock 2018 end uses by building type | downloads OEDI S3; no direct test |
-| `loads/comstock.py` | `COMstock`: raw NREL ComStock 2018 end uses by building type | downloads OEDI S3; no direct test |
+| `loads/resstock.py` | `RESstock`: raw NREL ResStock 2018 end uses by building type | downloads OEDI S3; archive use tested by `_test/test_archive.py` |
+| `loads/comstock.py` | `COMstock`: raw NREL ComStock 2018 end uses by building type | downloads OEDI S3; archive use tested by `_test/test_archive.py` |
 | `loads/units.py` | `Units`: Census housing units (a `float`) | scales residential |
 | `loads/floorarea.py` | `Floorarea`: OpenEI commercial floor area | scales commercial |
-| `loads/residential.py` | `Residential`: ResStock → `elec_*_MW`/`nonelec_*_MW` | cache `R.csv.gz` v1 |
-| `loads/commercial.py` | `Commercial`: ComStock → `elec_*_MW`/`nonelec_*_MW` | cache `C.csv.gz` v2 |
+| `loads/residential.py` | `Residential`: ResStock → `elec_*_MW`/`nonelec_*_MW` | cache `R.csv.gz` v1; archive use tested by `_test/test_archive.py` |
+| `loads/commercial.py` | `Commercial`: ComStock → `elec_*_MW`/`nonelec_*_MW` | cache `C.csv.gz` v2; archive use tested by `_test/test_archive.py` |
 | `loads/industry.py` | `Industry`: NREL county industrial energy, flat shape | 2019 data |
 | `loads/agriculture.py` | `Agriculture`: NREL county agricultural energy, flat shape | 2019 data |
 | `loads/transportation.py` | `Transportation`: stub | raises `NotImplementedError`; `Total` uses 0 |
@@ -113,6 +113,7 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/_test/conftest.py` | cache location from `LOADS_CACHEDIR` | |
 | `loads/_test/test_calibrate_synthetic.py` | `Calibrate` on a small synthetic system | fast, offline |
 | `loads/_test/test_calibrate.py` | `Calibrate` on all WECC counties, August 2020 | network; skipped unless the cache holds the inputs |
+| `loads/_test/test_archive.py` | classes download cache files from the cache archive instead of rebuilding | `Residential`/`Commercial` tests fast, offline (`file://` archive); others `network` (real archive, Alameda CA, about 25 MB) |
 | `loads/_test/test_energy.py` | `Energy` with a stubbed `Total` | fast, offline |
 | `loads/_test/test_estimator.py` | `Estimator` holdout and year handling | network (weather, stock data) |
 | `loads/_test/test_skill_*.py` | `loads.skill` tests; `test_skill_loads_api.py` pins documented `loads` behavior | offline except `test_skill_network.py` (`LOADS_TEST_SKILL=1`) |
@@ -162,6 +163,7 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `DESIGN.md` | package design | |
 | `MANIFEST.md` | this file | |
 | `TODO.md` | roadmap | |
+| `CONTRIBUTING.md` | contributor guide: issues, approved-issue rule, pull requests | comment text must match `approved-issue.yaml` |
 | `pyproject.toml` | packaging | version here; `package-data` is `*.py`, the skill's markdown, and the `loads/wecc` files the code reads (`county_mwh.csv`, `county_dg*.csv.gz`, `wecc_estimate.csv.gz`, `node_estimate.csv.gz`; about 126 MB) |
 | `requirements.txt` | dependencies (dynamic) | sibling packages via `git+` |
 | `Makefile` | `make docs` | `test` target is broken (no `./test/`) |
@@ -172,6 +174,7 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `.github/workflows/validate.yaml` | CI: pip install, pylint, pytest | non-editable install |
 | `.github/workflows/deploy-pages.yaml` | CI: `make docs` → GitHub Pages | |
 | `.github/workflows/assign-issues.yaml` | assigns new and unassigned issues to the owner | |
+| `.github/workflows/approved-issue.yaml` | closes new contributors' PRs that don't reference an `approved` open issue | `pull_request_target`; never checks out PR code |
 | `.github/check_manifest.py` | checks this file against `git ls-files` | |
 
 ## Don't read

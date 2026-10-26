@@ -43,7 +43,7 @@ work in `__init__` and ends with `super().__init__(data)`. `Units` subclasses
 if self.CACHEDIR:
     Cache.CACHEDIR = self.CACHEDIR
 cache = Cache(package="loads", version=0, path=[state, county, "R.csv.gz"])
-if cache.exists() and not refresh:
+if not refresh and cache.download():  # local file, or fetched from the archive
     try: data = pd.read_csv(cache.pathname, index_col=[0], parse_dates=[0])
     except Exception: data = None; cache.delete()
 else:
@@ -52,6 +52,19 @@ if data is None:
     ...build from source...
     data.to_csv(cache.pathname, index=True, header=True)
 ```
+
+`Cache.download()` returns `True` when the file is in the local cache or was
+just downloaded from a `cache` archive (by default the Eudoxys WECC data
+archive, `github.com/eudoxys/wecc`, which holds the latest version of each
+county's `R`, `C`, building type and training files). Don't read
+`cache.pathname` after only `cache.exists()`: `exists()` is also `True` for a
+file that is only in the archive, and the read then fails and the data is
+rebuilt. Every module uses `download()` before reading a cache file. Keep
+`exists()` only for checks that don't read the file, and use
+`os.path.exists(cache.pathname)` when only the local cache should count (as
+the calibration test's skip check does). The `weather` package (a sibling
+repo) still uses the `exists()` pattern, so `Weather` doesn't use the archive
+yet.
 
 Each class has a `CACHEDIR = None` class attribute and a `refresh:bool=False`
 argument. Cache file names encode the source (`R` residential, `C`

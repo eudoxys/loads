@@ -82,6 +82,12 @@ ls.configure(cachedir="/data/eudoxys-cache")   # or env LOADS_CACHEDIR
 
 - Cache files are CSV(.gz) keyed by state/county/source; delete a county
   folder to force a rebuild of just that county, or pass `refresh=True`.
+  A cache file missing locally is first downloaded from the `cache` archive
+  (the Eudoxys WECC data archive, github.com/eudoxys/wecc) when the archive
+  has it, so deleting a WECC county folder re-downloads that county's files
+  rather than rebuilding them; use `refresh=True` to rebuild from the
+  original sources. Weather (`weather` package) does not use the archive
+  yet.
 - `cache` has backup/restore (`cache backup -f file.tar.gz`, `cache
   restore -f file.tar.gz`) for moving a warmed cache between machines; a
   warmed cache is the practical way to run `loads` where the data hosts are

@@ -401,6 +401,15 @@ Caveats
     with performance. However, some of the initial downloads can take several
     minutes to complete before being cached.
 
+  - A cache file that is not in the local cache is first downloaded from the
+    `cache` package archive, the Eudoxys WECC data archive
+    (https://github.com/eudoxys/wecc), which holds prebuilt files for the
+    WECC counties (raw ResStock/ComStock data, sector loads, training data,
+    and the national inventories). Only files the archive does not have, or
+    all files when `refresh=True` is given, are built from the original
+    sources. Offline, a failed archive download falls back to building from
+    source.
+
   - Some residential and commercial building types are not available in some
     counties. In such cases a zero data frame is constructed (and an error is
     logged if the download failed for a reason other than missing data).

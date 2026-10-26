@@ -191,7 +191,7 @@ class RESstock(pd.DataFrame):
             cache = Cache(package="loads",version=0,path=[state,county,f"{building_type}.csv.gz"])
 
         # check cache
-        if cache.exists() and not refresh:
+        if not refresh and cache.download():
             try:
                 data = pd.read_csv(cache.pathname,dtype=str,na_filter=False,low_memory=False)
                 _logger.debug(f"{cache=} ok")

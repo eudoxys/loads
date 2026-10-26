@@ -232,7 +232,7 @@ class Industry(pd.DataFrame):
         global CACHE
         if CACHE is None:
             cache = Cache(package="loads",version=0,path=["industry.csv.gz"])
-            if cache.exists() and not refresh:
+            if not refresh and cache.download():
                 try:
                     data = pd.read_csv(cache.pathname,low_memory=False)
                     _logger.debug(f"{cache=} ok")

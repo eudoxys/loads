@@ -483,7 +483,7 @@ class Total(pd.DataFrame):
 
         # load refresh from cache
         data = None
-        if cache.exists() and not refresh:
+        if not refresh and cache.download():
 
             try:
                 data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])

@@ -197,7 +197,7 @@ def estimate_county(
     - `pd.Series`: hourly `elec_total_MW` from `START` to `STOP`
     """
     cache = Cache(package="loads",version=0,path=[state,county,CACHE_NAME])
-    if cache.exists() and not refresh:
+    if not refresh and cache.download():
         try:
             _logger.debug(f"cache hit {cache.pathname}")
             data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0]).iloc[:,0]

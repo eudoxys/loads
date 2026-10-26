@@ -265,12 +265,24 @@ class Residential(pd.DataFrame):
         RESstock columns, scaling by the number of housing units, and finally
         computing the electric and non-electric total and net loads in MW.
 
+        The result is cached as `R.csv.gz`. When the file is not in the local
+        cache, it is downloaded from the `cache` package archive (the
+        Eudoxys WECC data archive, https://github.com/eudoxys/wecc) if the
+        archive has it, and is only built from RESstock data if it does not
+        (or if the download fails, e.g., offline).
+
         Caveats
         -------
 
           - The result is cached regardless of `collect`, so a cached result
             is returned for a custom `collect` unless `refresh=True` is
             given.
+
+          - `refresh=True` always rebuilds the result from RESstock data and
+            never downloads it from the archive.
+
+          - The archive holds only the latest version of each file, so an
+            archived file is assumed to match this cache version.
         """
 
         # pylint: disable=too-many-locals
@@ -282,9 +294,12 @@ class Residential(pd.DataFrame):
             Cache.CACHEDIR = self.CACHEDIR
         cache = Cache(package="loads",version=1,path=[state,county,"R.csv.gz"])
 
-        # load data from cache
-        if cache.exists() and not refresh:
+        # load data from cache, downloading it from the cache archive (the
+        # eudoxys/wecc repository) if it is not in the local cache yet
+        if not refresh and cache.download():
 
+            if cache.archive:
+                _logger.debug(f"{cache=} downloaded from {cache.archive}")
             try:
                 data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
                 _logger.debug(f"{cache=} ok")

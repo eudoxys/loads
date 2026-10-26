@@ -88,15 +88,19 @@ def _missing_inputs() -> list[str]:
     """Counties whose TSGAM training data or 2020 weather is not in the cache
 
     The cache files are named exactly as `loads.total.Total` (version 2
-    training data) and `weather.Weather` (version 0) name them.
+    training data) and `weather.Weather` (version 0) name them. Only the
+    local cache folder is checked: a file that is only in the `cache`
+    archive counts as missing, so the test stays skipped on an empty cache.
     """
-    if _load_cache().exists():
+    if os.path.exists(_load_cache().pathname):
         return []
     missing = []
     for state,county in _wecc_units():
         training = Cache(package="loads",version=2,path=[state,county,"T_elec_1h_training.csv.gz"])
         weather = Cache([state,county,f"W_{START.year}.csv.gz"],package="weather",version=0)
-        if not training.exists() or not weather.exists():
+        # local cache only: files that are only in the cache archive are
+        # not counted, so the test is still skipped on an empty cache
+        if not os.path.exists(training.pathname) or not os.path.exists(weather.pathname):
             missing.append(f"{county} {state}")
     return missing
 
@@ -104,7 +108,7 @@ def _missing_inputs() -> list[str]:
 def august_2020_load(refresh:bool=False) -> pd.DataFrame:
     """Gross county load for August 2020 (MW), from the cached TSGAM models"""
     cache = _load_cache()
-    if cache.exists() and not refresh:
+    if not refresh and cache.download():
         try:
             return pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
         except Exception as err: # pylint: disable=broad-exception-caught

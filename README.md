@@ -53,7 +53,10 @@ relevant modules, e.g.,
     python3 -m loads.commercial --refresh
 
 Building the cache for all WECC counties downloads a large amount of data and
-can take many hours.
+can take many hours. Without `--refresh`, cache files missing locally are
+first downloaded from the Eudoxys WECC data archive
+(https://github.com/eudoxys/wecc), which holds prebuilt files for the WECC
+counties, so filling an empty cache is much faster than rebuilding it.
 
 To save the cache run the command
 
