@@ -162,6 +162,31 @@ make docs                           # pdoc → ./docs (creates its own .venv)
   `loads/clusters.csv` (current `elec_total_MW` k=6 medoids) and
   `loads/configs.csv` (TSGAM configs for an earlier medoid set).
 
+## Agent skill (`loads/skill/`)
+
+`loads/skill/` is both an agent skill for *users* of the package
+(`SKILL.md` + `reference/`, linked into `~/.claude/skills/`) and the
+`loads.skill` helper package (`import loads.skill as ls`; CLI
+`python3 -m loads.skill`). Conventions there differ from the rest of the
+package: PEP 8 spacing, prose docstrings, provenance in
+`frame.attrs["loadskill"]`, `loads` imported lazily so the frame helpers
+work offline.
+
+- Every statement about `loads` in `SKILL.md` and `reference/` must be true
+  of the code in this repository. Read the module before documenting it;
+  copy signatures from source.
+- `loads/_test/test_skill_loads_api.py` reproduces, offline, the behaviors
+  the skill documents (signatures, `Total` modes, `Calibrate` input rules,
+  DG sign conventions, ...). When a change to `loads` makes one fail,
+  update `SKILL.md`, `reference/` (usually `api.md` and `footguns.md`) and
+  `loads/skill/schema.py` in the same PR, then the test; don't just relax
+  it. When a rough edge is fixed, remove or rewrite its footgun.
+- Helpers never change model output beyond documented, opt-in
+  post-processing (edge fill, DG clip to ≤ 0, scaling the user asked for),
+  and record each such step in the frame's provenance.
+- Run snippets you add to `SKILL.md`/`reference/`; mark the ones that need
+  network as such.
+
 ## Working rules
 
 - Don't commit large generated data (cache files, `*_errors.csv`,

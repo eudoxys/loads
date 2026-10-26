@@ -18,7 +18,12 @@ following operations are performed
    necessary. The default timezone for the primary date/index is `"UTC"` but
    can be changed using the `timezone` argument.
 
-   Sub-hourly data is down-sampled to hourly using the `mean()` aggregator.
+   Values are aggregated to hourly by summing all the source rows that fall
+   in the same hour (and the same group, if any), so the source values must
+   be energy per interval, e.g., kWh per 15 minutes, which the `scales`
+   argument converts to MWh per hour, i.e., average MW. Power readings,
+   e.g., kW sampled every 15 minutes, must also be divided by the number of
+   readings per hour using `scales`. Hours with no source rows are `NaN`.
    Super-hourly data cannot be up-sampled.
 
 3. The `mapping` argument is used to indicate which standard columns are
@@ -31,7 +36,8 @@ following operations are performed
 5. The `groups` column is used to return grouped results, e.g.,
    `{"kwh_delta": ["circuit_id","meter_id"]}` to specify the `kwh_delta` source
    columns should be grouped using the `circuit_id` and then the `meter_id`.
-   All grouped data is summed.
+   Without `groups`, all the source rows in each hour are summed, e.g., all
+   the meters in a meter data file.
 
    This results in a non-standard multi-index where the leading index columns
    are the requests groups based on the source group columns. To get a
@@ -39,7 +45,7 @@ following operations are performed
    subgroup that results in a simple date/time indexed dataframe.
 
 6. Weather data can be merged by specifying the county name and state code
-   with the `weather` argument, e.g., `state="Alameda CA"`.
+   with the `weather` argument, e.g., `weather="Alameda CA"`.
 
 Examples
 --------
@@ -76,7 +82,7 @@ generates the following output
 	2016-01-02 06:00:00+00:00    22.303888
 	2016-01-02 07:00:00+00:00    20.543920
 
-	[8784 rows x 6 columns]
+	[8784 rows x 1 columns]
 """
 
 from zoneinfo import ZoneInfo
@@ -200,7 +206,7 @@ class Normalize(pd.DataFrame):
 			df = df.set_index(grouper).groupby(
 				[pd.Grouper(level=x) for x in grouper[:-1]] +
 				[pd.Grouper(level="timestamp",freq="1h")]
-				).mean().reset_index()
+				).sum(min_count=1).reset_index()
 			data.append(df.groupby(grouper).sum())
 
 		# assemble final data frame
