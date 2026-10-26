@@ -48,6 +48,19 @@ system in seconds and always runs.
 
 	pytest -s test_calibrate.py
 
+Cache archive test
+------------------
+
+`test_archive.py` checks that `Residential` and `Commercial` download a
+missing `R.csv.gz`/`C.csv.gz` from the `cache` package archive (the Eudoxys
+WECC data archive, https://github.com/eudoxys/wecc) instead of building it,
+that `refresh=True` rebuilds instead of downloading, and that a file missing
+from the archive is built. It runs offline in seconds: the archive is a
+temporary folder served by a `file://` URL and the RESstock/COMstock builders
+are stubbed.
+
+	pytest test_archive.py
+
 Agent skill tests
 -----------------
 

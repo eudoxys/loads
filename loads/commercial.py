@@ -158,6 +158,25 @@ class Commercial(pd.DataFrame):
         This class compiles the building type data for a county by collecting
         COMstock columns, scaling by the floor area, and computing total
         electric and non-electric loads in MW.
+
+        With the default `collect`, the result is cached as `C.csv.gz`. When
+        the file is not in the local cache, it is downloaded from the `cache`
+        package archive (the Eudoxys WECC data archive,
+        https://github.com/eudoxys/wecc) if the archive has it, and is only
+        built from COMstock data if it does not (or if the download fails,
+        e.g., offline).
+
+        Caveats
+        -------
+
+          - A custom `collect` is never cached or downloaded; it is always
+            built from COMstock data.
+
+          - `refresh=True` always rebuilds the result from COMstock data and
+            never downloads it from the archive.
+
+          - The archive holds only the latest version of each file, so an
+            archived file is assumed to match this cache version.
         """
         # pylint: disable=too-many-locals
 
@@ -185,7 +204,11 @@ class Commercial(pd.DataFrame):
                 #       by similar actions in other classes that use Cache
                 Cache.CACHEDIR = self.CACHEDIR
             cache = Cache(package="loads",version=2,path=[state,county,"C.csv.gz"])
-            if cache.exists() and not refresh:
+            # download the cache file from the cache archive (the
+            # eudoxys/wecc repository) if it is not in the local cache yet
+            if not refresh and cache.download():
+                if cache.archive:
+                    _logger.debug(f"{cache=} downloaded from {cache.archive}")
                 try:
                     data = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
                     _logger.debug(f"{cache=} ok")

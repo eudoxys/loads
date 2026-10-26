@@ -36,8 +36,8 @@ Update this file in the same PR that adds, moves, or deletes a file.
 | `loads/comstock.py` | `COMstock`: raw NREL ComStock 2018 end uses by building type | downloads OEDI S3; no direct test |
 | `loads/units.py` | `Units`: Census housing units (a `float`) | scales residential |
 | `loads/floorarea.py` | `Floorarea`: OpenEI commercial floor area | scales commercial |
-| `loads/residential.py` | `Residential`: ResStock → `elec_*_MW`/`nonelec_*_MW` | cache `R.csv.gz` v1 |
-| `loads/commercial.py` | `Commercial`: ComStock → `elec_*_MW`/`nonelec_*_MW` | cache `C.csv.gz` v2 |
+| `loads/residential.py` | `Residential`: ResStock → `elec_*_MW`/`nonelec_*_MW` | cache `R.csv.gz` v1, downloaded from the `eudoxys/wecc` archive when missing; tested by `_test/test_archive.py` |
+| `loads/commercial.py` | `Commercial`: ComStock → `elec_*_MW`/`nonelec_*_MW` | cache `C.csv.gz` v2, downloaded from the `eudoxys/wecc` archive when missing; tested by `_test/test_archive.py` |
 | `loads/industry.py` | `Industry`: NREL county industrial energy, flat shape | 2019 data |
 | `loads/agriculture.py` | `Agriculture`: NREL county agricultural energy, flat shape | 2019 data |
 | `loads/transportation.py` | `Transportation`: stub | raises `NotImplementedError`; `Total` uses 0 |
@@ -113,6 +113,7 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/_test/conftest.py` | cache location from `LOADS_CACHEDIR` | |
 | `loads/_test/test_calibrate_synthetic.py` | `Calibrate` on a small synthetic system | fast, offline |
 | `loads/_test/test_calibrate.py` | `Calibrate` on all WECC counties, August 2020 | network; skipped unless the cache holds the inputs |
+| `loads/_test/test_archive.py` | `Residential`/`Commercial` download `R`/`C.csv.gz` from the cache archive | fast, offline (`file://` archive, stubbed sources) |
 | `loads/_test/test_energy.py` | `Energy` with a stubbed `Total` | fast, offline |
 | `loads/_test/test_estimator.py` | `Estimator` holdout and year handling | network (weather, stock data) |
 | `loads/_test/test_skill_*.py` | `loads.skill` tests; `test_skill_loads_api.py` pins documented `loads` behavior | offline except `test_skill_network.py` (`LOADS_TEST_SKILL=1`) |
