@@ -195,32 +195,37 @@ WEATHER_CONFIG = {
     'temperature_degF': TsgamSplineConfig(
         n_knots=10,
         lags=[-3, -2, -1, 0],  # Current and 1-3 hours back
-        reg_weight=6e-5,
-        diff_reg_weight=0.5
+        reg_weight=1e-4,
+        diff_reg_weight=1.0,
+        whiten=True,
     ),
     'humidity_pc': TsgamSplineConfig(
         n_knots=8,
         lags=[-2, -1, 0],  # Current and 1-2 hours back
-        reg_weight=6e-5,
-        diff_reg_weight=0.5
+        reg_weight=1e-4,
+        diff_reg_weight=1.0,
+        whiten=True,
     ),
     'global_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
-        reg_weight=6e-5,
-        diff_reg_weight=0.5
+        reg_weight=1e-4,
+        diff_reg_weight=1.0,
+        whiten=True,
     ),
     'direct_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
-        reg_weight=6e-5,
-        diff_reg_weight=0.5
+        reg_weight=1e-4,
+        diff_reg_weight=1.0,
+        whiten=True,
     ),
     'diffuse_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
-        reg_weight=6e-5,
-        diff_reg_weight=0.5
+        reg_weight=1e-4,
+        diff_reg_weight=1.0,
+        whiten=True,
     ),
 }
 """Default configuration for exogenous weather variables"""
@@ -555,7 +560,7 @@ class Estimator(pd.DataFrame):
         multi_periodic_config = TsgamMultiPeriodicConfig(
             num_harmonics=config.harmonics,
             periods=[PERIOD_HOURLY_YEARLY, PERIOD_HOURLY_WEEKLY, PERIOD_HOURLY_DAILY],
-            reg_weight=6e-5
+            reg_weight=1e-4,
         )
 
         # construct exogenous variables configuration
