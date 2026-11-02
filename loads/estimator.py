@@ -247,7 +247,7 @@ class EstimatorConfig(NamedTuple):
     outlier_regularizer = None
     """Outlier regularizer, use `None` to disable outlier model component"""
 
-    solver:str = "OSQP"
+    solver:str = "SCS"
     """Solver selection"""
 
     harmonics:list[int]=(3,3,8) # year, week, day
