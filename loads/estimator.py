@@ -195,35 +195,35 @@ WEATHER_CONFIG = {
         lags=[-3, -2, -1, 0],  # Current and 1-3 hours back
         reg_weight=1e-4,
         diff_reg_weight=1.0,
-        whiten=True,
+        whiten=False,
     ),
     'humidity_pc': TsgamSplineConfig(
         n_knots=8,
         lags=[-2, -1, 0],  # Current and 1-2 hours back
         reg_weight=1e-4,
         diff_reg_weight=1.0,
-        whiten=True,
+        whiten=False,
     ),
     'global_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
         diff_reg_weight=1.0,
-        whiten=True,
+        whiten=False,
     ),
     'direct_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
         diff_reg_weight=1.0,
-        whiten=True,
+        whiten=False,
     ),
     'diffuse_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
         diff_reg_weight=1.0,
-        whiten=True,
+        whiten=False,
     ),
 }
 """Default configuration for exogenous weather variables"""
@@ -250,7 +250,7 @@ class EstimatorConfig(NamedTuple):
     solver:str = "OSQP"
     """Solver selection"""
 
-    harmonics:list[int]=[3,3,8] # year, week, day
+    harmonics:list[int]=(3,3,8) # year, week, day
     """Yearly, weekly, and daily harmonics to use"""
 
     sectors:list[str] = ["residential","commercial","industrial","agricultural"]
