@@ -154,15 +154,16 @@ Apply growth yourself (e.g. scale a predicted residential series by
 ```python
 Estimator(county_st: str, years: list[int] = None, *, config: EstimatorConfig = None)
 EstimatorConfig(verbose=False, debug=False, log=True, ar=False,
-                solver="CLARABEL", harmonics=[4, 4, 6],
+                solver="OSQP", harmonics=(3, 3, 8),
                 sectors=["residential","commercial","industrial","agricultural"],
                 enduse="elec_total_MW", weather=["temperature_degF","humidity_pc"],
-                keep_actuals=True, holdout="5d", fold=0)
+                keep_actuals=True, holdout="5w", fold=0)
 ```
 
-`outlier_regularizer` (1e-4) and `outlier_threshold` (5.0) are class
-attributes of `EstimatorConfig`, not fields: they cannot be passed to the
-constructor, and the threshold is not applied to the training data.
+`outlier_regularizer` (default `None`) is a class attribute of
+`EstimatorConfig`, not a field: it cannot be passed to the constructor.
+With the default `None` the TSGAM outlier component is not used.
+`debug=True` adds the fitted model's `decomposition` to `attrs`.
 
 Newer TSGAM front end, one string location (`"Alameda CA"`).
 

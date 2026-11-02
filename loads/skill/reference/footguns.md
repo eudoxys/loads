@@ -61,7 +61,7 @@ the tracking issues above or open a new one.
    `ls.series` predicts each contiguous block separately.
 
 10. **`Estimator` vs `Total`.** Different TSGAM configs (Estimator: log
-    space, no AR, 4/4/6 harmonics, outlier model; Total: linear, AR 1–9,
+    space, no AR, 3/3/8 harmonics, OSQP, no outlier model; Total: linear, AR 1–9,
     4/4/12 harmonics), different results, different location argument
     (`"Alameda CA"`). `Estimator` cannot model DG or net (log of ≤ 0).
     `wecc_estimate.csv.gz` is `Estimator`-based. → pick one per study and

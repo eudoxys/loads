@@ -11,10 +11,9 @@ logarithm of the specified `EstimatorConfig.enduse` field.
 For information on `EstimatorConfig.ar`, `EstimatorConfig.solver`, and
 `EstimatorConfig.harmonics` see [TSGAM estimator](https://github.com/nimish/estimator).
 
-When `EstimatorConfig.outlier_threshold` is nonzero, the TSGAM outlier
+When `EstimatorConfig.outlier_regularizer` is positive, the TSGAM outlier
 component (with regularization weight `EstimatorConfig.outlier_regularizer`)
-is included in the model. The threshold value itself is not yet applied to
-the training data.
+is included in the model. 
 
 When `EstimatorConfig.keep_actuals` is `True`, then the reference data is kept
 instead of predicted data for the reference year. This is the default.
@@ -139,10 +138,9 @@ area used by `loads.residential` and `loads.commercial`, and the NLR
 industrial and agricultural estimates), so predictions for other years only
 reflect differences in weather and the calendar.
 
-3. `EstimatorConfig.outlier_regularizer` and
-`EstimatorConfig.outlier_threshold` are class attributes rather than
+3. `EstimatorConfig.outlier_regularizer` is a class attribute rather than
 `NamedTuple` fields, so they cannot be changed with the `EstimatorConfig`
-constructor.
+constructor. 
 
 See also
 --------
@@ -196,35 +194,35 @@ WEATHER_CONFIG = {
         n_knots=10,
         lags=[-3, -2, -1, 0],  # Current and 1-3 hours back
         reg_weight=1e-4,
-        diff_reg_weight=1.0,
+        diff_reg_weight=1e0,
         whiten=True,
     ),
     'humidity_pc': TsgamSplineConfig(
         n_knots=8,
         lags=[-2, -1, 0],  # Current and 1-2 hours back
         reg_weight=1e-4,
-        diff_reg_weight=1.0,
+        diff_reg_weight=1e0,
         whiten=True,
     ),
     'global_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
-        diff_reg_weight=1.0,
+        diff_reg_weight=1e0,
         whiten=True,
     ),
     'direct_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
-        diff_reg_weight=1.0,
+        diff_reg_weight=1e0,
         whiten=True,
     ),
     'diffuse_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
-        diff_reg_weight=1.0,
+        diff_reg_weight=1e0,
         whiten=True,
     ),
 }
@@ -237,7 +235,7 @@ class EstimatorConfig(NamedTuple):
     """Enable verbose output"""
 
     debug:bool = False
-    """Enable TSGAM debugging"""
+    """Enable TSGAM debugging (includes `decomposition` in `attrs`)"""
 
     log:bool = True
     """Enable use of log values"""
@@ -246,17 +244,13 @@ class EstimatorConfig(NamedTuple):
     """Enable autoregression model (`True` uses lags 1 to 4, an integer `n`
     uses lags 1 to `n`)"""
 
-    outlier_regularizer = 1e-4
-    """Outlier regularizer"""
+    outlier_regularizer = None
+    """Outlier regularizer, use `None` to disable outlier model component"""
 
-    outlier_threshold = 5.0
-    """Outlier threshold sigmas (in space of Y or log Y depending on value
-    `log`); a nonzero value enables the TSGAM outlier component"""
-
-    solver:str = "CLARABEL"
+    solver:str = "OSQP"
     """Solver selection"""
 
-    harmonics:list[int]=[4,4,6] # year, week, day
+    harmonics:list[int]=(3,3,8) # year, week, day
     """Yearly, weekly, and daily harmonics to use"""
 
     sectors:list[str] = ["residential","commercial","industrial","agricultural"]
@@ -271,7 +265,7 @@ class EstimatorConfig(NamedTuple):
     keep_actuals:bool = True
     """Flag to keep actual data in reference year"""
 
-    holdout:str|Callable = "5d"
+    holdout:str|Callable = "5w"
     """Holdout frequency for testing, e.g., `'6h'`, `'5d'`, `'4w'`, `'3m'`, or a
     function returning the holdout index of a training data frame"""
 
@@ -383,8 +377,16 @@ def _holdout_errors(
         "MAPE": float((error/actual).abs().mean()*100),
         }
 
+def _as_dict(info):
+    return {
+        attr: getattr(info, attr) 
+        for attr in dir(info) 
+        if not attr.startswith('_') and not callable(getattr(info, attr))
+    }
+
 class Estimator(pd.DataFrame):
     """Load estimator results"""
+
     def __init__(self,
         county_st:str,
         years:list[int]=None,
@@ -409,6 +411,7 @@ class Estimator(pd.DataFrame):
         `actual`, `prediction`, and `status` columns (and the `fold` column
         and `attrs["folds"]` summary when `EstimatorConfig.fold` is `True`).
         """
+
         assert isinstance(county_st,str), f"{county_st=} must be valid county name"
 
         county = " ".join(county_st.split()[:-1])
@@ -472,10 +475,13 @@ class Estimator(pd.DataFrame):
 
                 # get estimator
                 fit = training.drop(holdout)
-                estimator = self._get_model(
+                model = self._get_model(
                     X=fit[config.weather],
                     Y=fit[config.enduse],
                     config=_config)
+                estimator = lambda x:model.predict(x)
+                if config.debug:
+                    attrs["decomposition"] = _as_dict(model.decomposition_)
 
                 # generate predictions
                 prediction = pd.Series(backward(estimator(inputs)),index=inputs.index)
@@ -493,17 +499,20 @@ class Estimator(pd.DataFrame):
                 summary = pd.DataFrame(summary).T
                 summary.index.name = "fold"
                 summary.loc["mean"] = summary.mean()
-                attrs = {"folds":summary}
+                attrs["folds"] = summary
 
         else: # predict for specified
 
             assert hasattr(years,"__iter__"), f"{years=} must be iterable"
             years = sorted(set(years)) # make sure years are unique and ordered
 
-            estimator = self._get_model(
+            model = self._get_model(
                 X=reference[config.weather],
                 Y=reference[config.enduse],
                 config=_config)
+            estimator = lambda x:model.predict(x)
+            if config.debug:
+                attrs["decomposition"] = _as_dict(model.decomposition_)
 
             # assemble inputs
             X = []
@@ -578,7 +587,7 @@ class Estimator(pd.DataFrame):
         outlier_config = TsgamOutlierConfig(
             reg_weight=config.outlier_regularizer,
             period_hours=24.0  # Daily outliers
-        ) if config.outlier_threshold else None
+        ) if config.outlier_regularizer else None
 
         # solver configuration
         solver_config = TsgamSolverConfig(
@@ -602,7 +611,8 @@ class Estimator(pd.DataFrame):
         X:pd.DataFrame,
         Y:pd.DataFrame,
         config:TsgamEstimatorConfig,
-        ) -> Callable:
+        debug:bool=False,
+        ) -> TsgamEstimator:
         """Run training
 
         Arguments
@@ -613,14 +623,12 @@ class Estimator(pd.DataFrame):
 
         Returns
         -------
-        - `Callable`: estimator function (takes only an input dataframe)
+        - `TsgamEstimator`: estimator object
         """
-
-        # TODO: apply outlier threshold to Y values
 
         model = TsgamEstimator(config)
         model.fit(X,Y.values.ravel())
-        return lambda x:model.predict(x)
+        return model
 
     @classmethod
     def _load_sectors(cls,
@@ -669,7 +677,9 @@ if __name__ == '__main__':
 
     print("Example 1")
     print("---------")
-    print(Estimator("Alameda CA",[2025]))
+    config = EstimatorConfig(verbose=True)
+    result = Estimator("Alameda CA",[2025],config=config)
+    print(result)
 
     print("Example 2")
     print("---------")

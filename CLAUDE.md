@@ -166,9 +166,9 @@ make docs                           # pdoc → ./docs (creates its own .venv)
 - `Energy` requires a list/tuple `year` (the cache name uses `min(year)`),
   its cache ignores `counties`, and a failing county appends the previous
   county's result.
-- `EstimatorConfig.outlier_regularizer`/`outlier_threshold` lack annotations,
-  so they are class attributes, not `NamedTuple` fields; the threshold is
-  never applied (`TODO` in `_get_model`).
+- `EstimatorConfig.outlier_regularizer` lacks an annotation, so it is a
+  class attribute (default `None`, outlier component off), not a
+  `NamedTuple` field.
 - `tsgam_evaluate.py` writes `tests/test_config.csv` but then reads
   `tests/best_config.csv`. It and `Total`'s `__main__` use the gitignored
   `tests/` scratch folder; the checked-in cluster files are
