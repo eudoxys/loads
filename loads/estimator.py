@@ -195,28 +195,28 @@ WEATHER_CONFIG = {
         lags=[-3, -2, -1, 0],  # Current and 1-3 hours back
         reg_weight=1e-4,
         diff_reg_weight=1e1,
-        whiten=False,
+        whiten=True,
     ),
     'humidity_pc': TsgamSplineConfig(
         n_knots=8,
         lags=[-2, -1, 0],  # Current and 1-2 hours back
         reg_weight=1e-4,
         diff_reg_weight=1e1,
-        whiten=False,
+        whiten=True,
     ),
     'global_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
         diff_reg_weight=1e1,
-        whiten=False,
+        whiten=True,
     ),
     'direct_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
         diff_reg_weight=1e1,
-        whiten=False,
+        whiten=True,
     ),
     'diffuse_Wpms': TsgamSplineConfig(
         n_knots=8,
