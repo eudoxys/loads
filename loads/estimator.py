@@ -194,36 +194,36 @@ WEATHER_CONFIG = {
         n_knots=10,
         lags=[-3, -2, -1, 0],  # Current and 1-3 hours back
         reg_weight=1e-4,
-        diff_reg_weight=1e1,
+        diff_reg_weight=1e0,
         whiten=True,
     ),
     'humidity_pc': TsgamSplineConfig(
         n_knots=8,
         lags=[-2, -1, 0],  # Current and 1-2 hours back
         reg_weight=1e-4,
-        diff_reg_weight=1e1,
+        diff_reg_weight=1e0,
         whiten=True,
     ),
     'global_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
-        diff_reg_weight=1e1,
+        diff_reg_weight=1e0,
         whiten=True,
     ),
     'direct_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
-        diff_reg_weight=1e1,
+        diff_reg_weight=1e0,
         whiten=True,
     ),
     'diffuse_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
-        diff_reg_weight=1e1,
-        whiten=False,
+        diff_reg_weight=1e0,
+        whiten=True,
     ),
 }
 """Default configuration for exogenous weather variables"""
