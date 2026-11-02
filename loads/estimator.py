@@ -194,35 +194,35 @@ WEATHER_CONFIG = {
         n_knots=10,
         lags=[-3, -2, -1, 0],  # Current and 1-3 hours back
         reg_weight=1e-4,
-        diff_reg_weight=1.0,
+        diff_reg_weight=1e1,
         whiten=False,
     ),
     'humidity_pc': TsgamSplineConfig(
         n_knots=8,
         lags=[-2, -1, 0],  # Current and 1-2 hours back
         reg_weight=1e-4,
-        diff_reg_weight=1.0,
+        diff_reg_weight=1e1,
         whiten=False,
     ),
     'global_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
-        diff_reg_weight=1.0,
+        diff_reg_weight=1e1,
         whiten=False,
     ),
     'direct_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
-        diff_reg_weight=1.0,
+        diff_reg_weight=1e1,
         whiten=False,
     ),
     'diffuse_Wpms': TsgamSplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
-        diff_reg_weight=1.0,
+        diff_reg_weight=1e1,
         whiten=False,
     ),
 }
@@ -234,8 +234,8 @@ class EstimatorConfig(NamedTuple):
     verbose:bool = False
     """Enable verbose output"""
 
-    debug:bool = True
-    """Enable TSGAM debugging (includes `decomposition`)"""
+    debug:bool = False
+    """Enable TSGAM debugging (includes `decomposition` in `attrs`)"""
 
     log:bool = True
     """Enable use of log values"""
