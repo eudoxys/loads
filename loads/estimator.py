@@ -623,7 +623,7 @@ class Estimator(pd.DataFrame):
 
         Returns
         -------
-        - `Callable`: estimator function (takes only an input dataframe)
+        - `TsgamEstimator`: estimator object
         """
 
         model = TsgamEstimator(config)
