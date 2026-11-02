@@ -234,8 +234,8 @@ class EstimatorConfig(NamedTuple):
     verbose:bool = False
     """Enable verbose output"""
 
-    debug:bool = False
-    """Enable TSGAM debugging"""
+    debug:bool = True
+    """Enable TSGAM debugging (includes `decomposition`)"""
 
     log:bool = True
     """Enable use of log values"""
@@ -377,6 +377,13 @@ def _holdout_errors(
         "MAPE": float((error/actual).abs().mean()*100),
         }
 
+def _as_dict(info):
+    return {
+        attr: getattr(info, attr) 
+        for attr in dir(info) 
+        if not attr.startswith('_') and not callable(getattr(info, attr))
+    }
+
 class Estimator(pd.DataFrame):
     """Load estimator results"""
 
@@ -468,12 +475,13 @@ class Estimator(pd.DataFrame):
 
                 # get estimator
                 fit = training.drop(holdout)
-                estimator,model = self._get_estimator(
+                model = self._get_model(
                     X=fit[config.weather],
                     Y=fit[config.enduse],
                     config=_config)
+                estimator = lambda x:model.predict(x)
                 if config.debug:
-                    attrs["decomposition"] = model.decomposition_
+                    attrs["decomposition"] = _as_dict(model.decomposition_)
 
                 # generate predictions
                 prediction = pd.Series(backward(estimator(inputs)),index=inputs.index)
@@ -498,12 +506,13 @@ class Estimator(pd.DataFrame):
             assert hasattr(years,"__iter__"), f"{years=} must be iterable"
             years = sorted(set(years)) # make sure years are unique and ordered
 
-            estimator,model = self._get_estimator(
+            model = self._get_model(
                 X=reference[config.weather],
                 Y=reference[config.enduse],
                 config=_config)
+            estimator = lambda x:model.predict(x)
             if config.debug:
-                attrs["decomposition"] = model.decomposition_
+                attrs["decomposition"] = _as_dict(model.decomposition_)
 
             # assemble inputs
             X = []
@@ -598,12 +607,12 @@ class Estimator(pd.DataFrame):
         )
 
     @classmethod
-    def _get_estimator(cls,
+    def _get_model(cls,
         X:pd.DataFrame,
         Y:pd.DataFrame,
         config:TsgamEstimatorConfig,
         debug:bool=False,
-        ) -> tuple[Callable,TsgamEstimator]:
+        ) -> TsgamEstimator:
         """Run training
 
         Arguments
@@ -619,7 +628,7 @@ class Estimator(pd.DataFrame):
 
         model = TsgamEstimator(config)
         model.fit(X,Y.values.ravel())
-        return lambda x:model.predict(x),model
+        return model
 
     @classmethod
     def _load_sectors(cls,
