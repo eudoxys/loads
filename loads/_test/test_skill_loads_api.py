@@ -141,7 +141,7 @@ def test_estimator_uses_county_st():
     assert list(p)[1] == "county_st"
     from loads.estimator import EstimatorConfig
     assert EstimatorConfig().log is True and EstimatorConfig().holdout == "5w"
-    assert EstimatorConfig().solver == "OSQP" and tuple(EstimatorConfig().harmonics) == (3, 3, 8)
+    assert EstimatorConfig().solver == "SCS" and tuple(EstimatorConfig().harmonics) == (3, 3, 8)
     assert EstimatorConfig.outlier_regularizer is None and "outlier_regularizer" not in EstimatorConfig._fields
     assert EstimatorConfig().fold == 0 and "fold" in EstimatorConfig._fields  # #38 folds
 
