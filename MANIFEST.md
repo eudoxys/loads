@@ -124,7 +124,7 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/_test/data/README.md` | provenance of test data | |
 | `loads/_test/data/*_target.csv` | monthly state energy and CAISO/WECC peak targets | curated |
 | `loads/_test/data/state_groups.csv` | county CAISO/WECC membership (0–1) | curated |
-| `loads/_test/data/WECC_*_2018-2022.csv` | cleaned EIA-930 BA/WECC/CAISO hourly load | curated; 2.6–7.3 MB, use `head` |
+| `loads/_test/data/WECC_CAISO_hourly_load_2018-2022.csv` | cleaned EIA-930 WECC and CAISO hourly load (source of `peak_target.csv`) | curated; 2.6 MB, use `head` |
 | `loads/_validate/README.md` | validation question, inputs, procedure, results | update numbers when the model changes |
 | `loads/_validate/validate_calibrate.py` | builds 2020 inputs and calibration in the cache | hours on an empty cache |
 | `loads/_validate/validate_calibrate_marimo.py` | calibrated 2020 CAISO load vs reported | `marimo run` |

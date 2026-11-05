@@ -13,10 +13,11 @@ Retrieved 2026-10-19. Starting series: EIA's "Demand (MW) (Adjusted)".
   - `CAISO_load_MW` — CISO demand, cleaned
   - `CAISO_EIA_reported_MW` — CISO "Demand (MW)" as originally reported, uncleaned
   - `WECC_BAs_filled`, `WECC_filled_MW`, `CAISO_filled` — how much of each hour was filled/estimated
-- `WECC_BA_hourly_load_2018-2022.csv` — the cleaned per-BA series that sum to WECC_load_MW
-- `WECC_BA_filled_flags_2018-2022.csv` — 1 where a BA-hour was filled
 
-BAs: AVA AZPS BANC BPAT CHPD CISO DOPD EPE GCPD IID IPCO LDWP NEVP NWMT PACE PACW PGE PNM PSCO PSEI SCL SRP TEPC TIDC TPWR WACM WALC WAUW
+The cleaned per-BA series that sum to `WECC_load_MW`, and their per-BA-hour fill flags, are no longer
+kept here because no code uses them; they are in the git history (removed after commit 0598e69).
+
+BAs summed in `WECC_load_MW`: AVA AZPS BANC BPAT CHPD CISO DOPD EPE GCPD IID IPCO LDWP NEVP NWMT PACE PACW PGE PNM PSCO PSEI SCL SRP TEPC TIDC TPWR WACM WALC WAUW
 
 ## Cleaning
 1. EIA adjusted values flagged bad if: an isolated single-hour spike (>30% off both neighbors),
