@@ -229,3 +229,12 @@ the tracking issues above or open a new one.
 33. **Meter data is net of rooftop PV.** Map AMI or feeder deliveries to
     `elec_net_MW`, not `elec_total_MW`, and compare with model net load
     (and say which DG the model used).
+
+34. **`CalibratePeaks` leaves hours above the observed peak on purpose.**
+    With `peak=0.95` up to 5% of each interval's hours exceed the observed
+    `max` (and with `trough=0.05` up to 5% fall below `min`); only the
+    defaults `peak=1.0, trough=0.0` reproduce the extremes **[tested]**.
+    A multi-column load is matched on its column sum, not per column, and
+    hours outside the `peaks` intervals are returned unchanged. → check
+    `.parameters.fraction_above` and `.calibrated.all()`, and say which
+    percentiles were used.

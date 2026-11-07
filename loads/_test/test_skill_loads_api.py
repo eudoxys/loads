@@ -129,6 +129,43 @@ def test_calibrate_is_affine_per_utc_month():
     assert par.offset_MW.abs().max() > 0  # an offset, not a proportional rescale
 
 
+# --- CalibratePeaks ----------------------------------------------------------------
+
+def test_calibrate_peaks_signature():
+    p = params(loads.CalibratePeaks.__init__)
+    assert list(p)[:3] == ["self", "load", "peaks"]
+    assert p["peak"].kind is inspect.Parameter.KEYWORD_ONLY and p["peak"].default == 1.0
+    assert p["trough"].kind is inspect.Parameter.KEYWORD_ONLY and p["trough"].default == 0.0
+
+
+def _peaks_case():
+    X, _, _, _ = _panel()
+    days = pd.date_range("2020-07-01", periods=31, freq="D", tz="UTC", name="timestamp")
+    daily = X.sum(axis=1).resample("D")
+    peaks = pd.DataFrame({"max": daily.max().values * 1.2, "min": daily.min().values * 0.8}, index=days)
+    return X, peaks
+
+
+def test_calibrate_peaks_percentiles_leave_hours_above_peak():
+    # footguns.md #34: percentiles, not extremes; matched on the column sum
+    X, peaks = _peaks_case()
+    out = loads.CalibratePeaks(X, peaks, peak=0.9, trough=0.1)
+    assert out.calibrated.all()
+    assert (out.parameters.fraction_above <= 0.1).all() and (out.parameters.fraction_above > 0).any()
+    total = out.sum(axis=1).resample("D").max().values
+    assert (total > peaks["max"].values).any()
+    exact = loads.CalibratePeaks(X, peaks).sum(axis=1).resample("D")
+    assert np.allclose(exact.max().values, peaks["max"].values)
+    assert np.allclose(exact.min().values, peaks["min"].values)
+
+
+def test_calibrate_peaks_outside_intervals_unchanged():
+    X, peaks = _peaks_case()
+    out = loads.CalibratePeaks(X, peaks.iloc[:10])
+    assert out.calibrated.sum() == 10 * 24
+    assert np.allclose(out[~out.calibrated], X[~out.calibrated])
+
+
 def test_cast_module_removed():
     with pytest.raises(ModuleNotFoundError):
         __import__("loads.cast")

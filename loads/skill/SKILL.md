@@ -173,7 +173,9 @@ Read [workflows.md](reference/workflows.md) for complete recipes:
 - calibration: proportional to a county's energy (`scale_to_energy`,
   `scale_monthly`), affine energy + peak (`fit_energy_peak`), and panel
   shaping to state energy and regional peak targets with
-  `loads.calibrate.Calibrate` (`shape_to_targets`);
+  `loads.calibrate.Calibrate` (`shape_to_targets`), and percentile matching
+  to observed interval peaks and troughs with
+  `loads.calibrate.CalibratePeaks` (no solver);
 - uncertainty bands and peak distributions from sample ensembles;
 - hold-out skill testing (`Estimator(county_st)`, cross-validated with
   `EstimatorConfig(fold=True)`, `Total.test`) and comparison with measured
@@ -199,6 +201,10 @@ These fail silently or late. The full list with source references is in
   offset per unit per UTC month to *net-load* state energy and regional
   peak targets, needs at least one peak region, and rejects NaN. See
   [api.md](reference/api.md#calibrate).
+- **`CalibratePeaks` matches percentiles, not extremes.** With
+  `peak=0.95` up to 5% of each interval's hours lie *above* the observed
+  peak by design; multi-column loads are matched on their column sum. See
+  [api.md](reference/api.md#calibratepeaks).
 - **Ambiguous county names.** `fips` has Baltimore city and Baltimore
   County, St. Louis city and County, several Virginia pairs. `loads` keys on
   `(state, county)` only and cannot tell them apart; `resolve()` sets

@@ -50,6 +50,10 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
    (see `loads/_validate/README.md`): every state within 0.5% of its energy
    target; CAISO-region net load vs CAISO's reported load −3.7% energy,
    −0.7% peak, 11.2% MAPE.
+   `loads.calibrate.CalibratePeaks` is a simpler alternative for a single
+   load series or panel: per interval of observed peak/trough data, an
+   affine map that sends chosen percentiles of the load to the observed
+   peak and trough (no solver, no energy target).
 8. **Precomputed WECC estimate.** `loads/wecc/wecc_estimate.py` predicts
    every WECC county for 2018–2022 with `loads.estimator.Estimator` (using
    the harmonics chosen for the county's cluster medoid) and rescales each

@@ -122,6 +122,21 @@ Monthly targets may be given as data frames indexed by month start (e.g.,
 read from `energy_target.csv` and `peak_target.csv`); each month of `X` is
 then calibrated against its own row.
 
+Peak and trough calibration
+---------------------------
+
+`CalibratePeaks` is a simpler alternative that needs no solver. It maps the
+uncalibrated load of each interval (e.g., each day) affinely so that
+user-specified percentiles of the load match the observed peak and trough
+of that interval:
+
+    from loads.calibrate import CalibratePeaks
+    result = CalibratePeaks(load,peaks,peak=0.95,trough=0.05)
+
+where `peaks` has columns `max` and `min` indexed by interval start. With
+`peak=0.95` no more than 5% of the hours of an interval exceed its observed
+peak.
+
 Caveats
 -------
 
@@ -842,3 +857,211 @@ class Calibrate(pd.DataFrame):
             "summary": summary,
             "sweep": sweep,
             }
+
+
+class CalibratePeaks(pd.DataFrame):
+    r"""Load calibrated to observed interval peaks and troughs
+
+    The data frame contains the calibrated load (MW) with the same index and
+    columns as the uncalibrated load. Only the observed peak (`max`) and
+    trough (`min`) of each interval are used; no energy targets and no
+    optimization solver are involved.
+
+    Within each interval $i$ the total uncalibrated load
+    $x_t=\sum_jX_{tj}$ is mapped by the affine function
+
+    $$
+        y_t = a_i x_t + b_i, \qquad
+        a_i = \frac{P_i-V_i}{Q_i(p)-Q_i(v)}, \qquad
+        b_i = P_i - a_i Q_i(p),
+    $$
+
+    where $P_i$ and $V_i$ are the observed peak and trough, and $Q_i(p)$
+    and $Q_i(v)$ are the `peak` and `trough` percentiles of $x$ in the
+    interval. Thus with `peak=0.95` no more than 5% of the calibrated hours
+    in an interval exceed the observed peak, and with `trough=0.05` no more
+    than 5% fall below the observed trough. The upper percentile is taken
+    with the `"higher"` method and the lower with the `"lower"` method so
+    these fractions are never exceeded. With the defaults `peak=1.0` and
+    `trough=0.0` the calibrated load reproduces the observed peak and trough
+    exactly.
+
+    When the load has more than one column, every column is scaled by $a_i$
+    and the offset $b_i$ is shared among columns in proportion to their mean
+    load in the interval, so the columns sum to $y$.
+
+    Calibration results are available as attributes:
+
+      - `parameters`: per-interval start, end, hours, observed `max` and
+        `min` (MW), uncalibrated `peak_quantile` and `trough_quantile` (MW),
+        `scale`, `offset_MW`, and the achieved `fraction_above` the observed
+        peak and `fraction_below` the observed trough
+
+      - `uncalibrated`: the uncalibrated load (MW)
+
+      - `calibrated`: boolean series, `True` for the hours that fall in an
+        interval with valid peak and trough data
+
+    Examples
+    --------
+
+    Calibrate hourly load so that 5% of the hours of each day are above the
+    observed daily peak and 5% are below the observed daily trough:
+
+        from loads.calibrate import CalibratePeaks
+        peaks = pd.DataFrame({"max":[...],"min":[...]},
+            index=pd.date_range("2020-08-01",periods=31,freq="1D",tz="UTC",name="timestamp"))
+        result = CalibratePeaks(load,peaks,peak=0.95,trough=0.05)
+        result               # calibrated load (MW), same shape as load
+        result.parameters    # per-day scale, offset and achieved fractions
+
+    Caveats
+    -------
+
+      - Interval $i$ spans from its timestamp up to the next one. The last
+        interval has the frequency of the peak/trough index when it can be
+        inferred, otherwise the length of the preceding interval. Hours
+        outside every interval, and hours in intervals whose `max` or `min`
+        is missing, are returned unchanged (see `calibrated`).
+
+      - An interval whose uncalibrated load has no spread between the two
+        percentiles cannot be scaled; it is shifted (scale one) so that its
+        percentile value lies midway between the observed peak and trough.
+
+      - The offset may be negative, so a calibrated load can be negative
+        when the observed trough is much lower relative to the peak than in
+        the uncalibrated load.
+    """
+
+    _metadata = ["parameters","uncalibrated","calibrated"]
+
+    def __init__(self,
+        load:pd.DataFrame|pd.Series,
+        peaks:pd.DataFrame,
+        *,
+        peak:float=1.0,
+        trough:float=0.0,
+        ):
+        r"""Construct a calibrated load data frame
+
+        Arguments
+        ---------
+
+          - `load`: uncalibrated hourly load (MW), indexed by timestamp, one
+            or more columns
+
+          - `peaks`: observed peak and trough load (MW) of each interval, with
+            columns `max` and `min`, indexed by the interval start timestamp
+
+          - `peak`: percentile (fraction in $[0,1]$) of the uncalibrated load
+            in each interval that is mapped to the observed peak
+
+          - `trough`: percentile (fraction in $[0,1]$) of the uncalibrated
+            load in each interval that is mapped to the observed trough; must
+            be less than `peak`
+
+        Raises
+        ------
+
+          - `CalibrationError`: invalid inputs
+        """
+
+        # uncalibrated load
+        X = load.to_frame() if isinstance(load,pd.Series) else pd.DataFrame(load).copy()
+        if not isinstance(X.index,pd.DatetimeIndex):
+            raise CalibrationError("load must be indexed by timestamp")
+        if not np.isfinite(X.values.astype(float)).all():
+            raise CalibrationError("load contains missing or infinite values")
+        if not 0.0 <= trough < peak <= 1.0:
+            raise CalibrationError("peak and trough must satisfy 0 <= trough < peak <= 1")
+
+        # observed peaks and troughs
+        if not isinstance(peaks,pd.DataFrame):
+            raise CalibrationError("peaks must be a DataFrame with columns 'max' and 'min'")
+        missing = {"max","min"} - set(peaks.columns)
+        if missing:
+            raise CalibrationError(f"peaks is missing columns {sorted(missing)}")
+        if not isinstance(peaks.index,pd.DatetimeIndex):
+            raise CalibrationError("peaks must be indexed by timestamp")
+        peaks = peaks[["max","min"]].astype(float).sort_index()
+        if peaks.index.has_duplicates:
+            raise CalibrationError("peaks has duplicate timestamps")
+        if (peaks["max"] < peaks["min"]).any():
+            raise CalibrationError("peaks has 'max' values less than 'min' values")
+
+        def utc(index):
+            return index.tz_convert("UTC") if index.tz else index.tz_localize("UTC")
+        times = utc(X.index)
+        starts = utc(peaks.index)
+
+        # interval ends: next start, and the inferred frequency for the last
+        ends = list(starts[1:])
+        if len(starts) > 0:
+            freq = pd.infer_freq(starts) if len(starts) > 2 else None
+            if freq is not None:
+                ends.append(starts[-1] + pd.tseries.frequencies.to_offset(freq))
+            elif len(starts) > 1:
+                ends.append(starts[-1] + (starts[-1] - starts[-2]))
+            else:
+                ends.append(times.max() + pd.Timedelta(1,"ns"))
+
+        values = X.values.astype(float)
+        result = values.copy()
+        calibrated = np.zeros(len(X),dtype=bool)
+        records = []
+        for start,end,(observed_max,observed_min) in zip(starts,ends,peaks.values):
+            rows = np.asarray((times >= start) & (times < end))
+            record = {"start":start,"end":end,"hours":int(rows.sum()),
+                "max":observed_max,"min":observed_min}
+            if not rows.any() or np.isnan(observed_max) or np.isnan(observed_min):
+                if not rows.any():
+                    _logger.debug(f"{start}: no load data in interval")
+                else:
+                    _logger.warning(f"{start}: missing peak or trough, load not calibrated")
+                records.append(record)
+                continue
+
+            block = values[rows]
+            total = block.sum(axis=1)
+            upper = float(np.quantile(total,peak,method="higher"))
+            lower = float(np.quantile(total,trough,method="lower"))
+            if upper - lower > np.finfo(float).eps * max(1.0,abs(upper)):
+                scale = (observed_max - observed_min) / (upper - lower)
+                offset = observed_max - scale * upper
+            else:
+                _logger.warning(f"{start}: no load spread between percentiles, load shifted only")
+                scale = 1.0
+                offset = 0.5 * (observed_max + observed_min) - upper
+
+            # share the offset among columns by their mean load
+            means = block.mean(axis=0)
+            share = means / means.sum() if means.sum() != 0 else np.full(block.shape[1],1.0/block.shape[1])
+            result[rows] = scale * block + offset * share[None,:]
+            calibrated[rows] = True
+
+            shaped = scale * total + offset
+            tol = 1.0e-9 * max(1.0,abs(observed_max),abs(observed_min))
+            record.update({
+                "peak_quantile": upper,
+                "trough_quantile": lower,
+                "scale": scale,
+                "offset_MW": offset,
+                "fraction_above": float(np.mean(shaped > observed_max + tol)),
+                "fraction_below": float(np.mean(shaped < observed_min - tol)),
+                })
+            records.append(record)
+
+        if not calibrated.all():
+            _logger.warning(f"{int((~calibrated).sum())} hours of load are outside the calibrated intervals")
+
+        super().__init__(pd.DataFrame(result,index=X.index,columns=X.columns))
+        columns = ["start","end","hours","max","min","peak_quantile","trough_quantile",
+            "scale","offset_MW","fraction_above","fraction_below"]
+        self.parameters = pd.DataFrame(records,columns=columns).set_index("start")
+        self.uncalibrated = X
+        self.calibrated = pd.Series(calibrated,index=X.index,name="calibrated")
+
+    @property
+    def _constructor(self):
+        # derived frames are plain data frames
+        return pd.DataFrame

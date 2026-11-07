@@ -237,6 +237,28 @@ shaped_net = out.net                                 # L - D_output, MW
   fractions summing to 1) because the state can no longer be read from a
   `"County ST"` name.
 
+### Percentiles to observed peaks and troughs (`CalibratePeaks`)
+
+When only the observed peak and trough of each interval are known (e.g.
+daily max/min from a SCADA summary), map percentiles of the modeled load to
+them; no solver and no energy target are involved:
+
+```python
+from loads.calibrate import CalibratePeaks
+load = df[["elec_total_MW"]]                         # hourly MW
+days = pd.date_range("2020-08-01", periods=31, freq="D", tz="UTC", name="timestamp")
+peaks = pd.DataFrame({"max": observed_max, "min": observed_min}, index=days)
+cal = CalibratePeaks(load, peaks, peak=0.95, trough=0.05)
+print(cal.parameters[["scale", "offset_MW", "fraction_above", "fraction_below"]])
+```
+
+- With `peak=0.95` up to 5% of each day's hours lie above the observed
+  peak, by design; use the defaults (`peak=1.0`, `trough=0.0`) to hit the
+  observed extremes exactly.
+- Each interval gets its own scale and offset, so expect steps at interval
+  boundaries. Hours outside the intervals are unchanged
+  (`cal.calibrated`).
+
 ## 6. Uncertainty and peaks
 
 ```python

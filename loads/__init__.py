@@ -110,7 +110,9 @@ How the estimate is produced
 
   - Calibration to published totals is a separate step.
     `loads.calibrate.Calibrate` shapes a panel of county (or node) loads so
-    that it honors monthly state energy targets and regional peak ceilings,
+    that it honors monthly state energy targets and regional peak ceilings;
+    `loads.calibrate.CalibratePeaks` instead maps percentiles of a load to
+    observed interval peaks and troughs without a solver;
     and `loads/wecc/wecc_estimate.py` rescales each county's monthly energy
     to its gross load, i.e., the EIA 861M retail sales allocated to it plus
     its distributed generation.
@@ -260,7 +262,7 @@ flowchart TB
         FIT --> SAMPLE --> NET
     end
 
-    CAL(["calibrate.py · Calibrate<br/>state energy & regional peaks"])
+    CAL(["calibrate.py · Calibrate<br/>state energy & regional peaks<br/>CalibratePeaks<br/>interval peaks & troughs"])
     NET --> CAL
 
     RESID --> FIT
@@ -324,7 +326,8 @@ flowchart TB
 
   - `loads.agriculture`: 2019 agricultural load data
 
-  - `loads.calibrate`: net-load shaping to state energy and regional peak targets
+  - `loads.calibrate`: net-load shaping to state energy and regional peak targets,
+    and percentile calibration to observed interval peaks and troughs
 
   - `loads.cast`: weather-based back/forecast of a 2018 load to another year
 
@@ -453,7 +456,7 @@ Package information
 
 from loads.aggregate import Aggregator
 from loads.agriculture import Agriculture
-from loads.calibrate import Calibrate
+from loads.calibrate import Calibrate, CalibratePeaks
 from loads.cli import main
 from loads.cluster import Cluster
 from loads.commercial import Commercial
