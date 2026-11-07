@@ -172,6 +172,7 @@ def _(CalibratePeaks, factors, net, pd, targets):
     def combine(calibrated,columns):
         """Sum the calibrated BA shares into one column per county"""
         return sum(x.reindex(columns=columns,fill_value=0.0) for x in calibrated.values())
+
     return calibrate_month, combine
 
 
@@ -196,70 +197,6 @@ def _(
     # combine all WECC county net loads into one table
     combined = combine(calibrated,uncalibrated.columns).round(3)
     return ba_summary, calibrated, combined, shares, start, uncalibrated
-
-
-@app.cell
-def _(
-    calibrate_month,
-    combine,
-    dg,
-    gzip,
-    io,
-    mo,
-    net,
-    node_cf,
-    np,
-    pd,
-    peak_ui,
-    targets,
-    trough_ui,
-):
-    # download the 2018-2022 calibration of all WECC counties
-    _cache = {}
-    _names = {"total":"county_total.csv.gz","net":"county_net.csv.gz","node":"node_total.csv.gz"}
-    def _calibrate_all():
-        _key = (peak_ui.value,trough_ui.value)
-        if _key not in _cache:
-            _months = []
-            for _start in sorted(targets.timestamp.unique()):
-                _month,_,_calibrated,_ = calibrate_month(pd.Timestamp(_start),*_key)
-                if not _month.empty:
-                    _months.append(combine(_calibrated,_month.columns))
-            _net = pd.concat(_months).reindex(net.index)
-            _total = _net + np.abs(dg)   # DG taken as given
-            _net.index.name = _total.index.name = "timestamp"
-            _node = _total[node_cf.index] @ node_cf   # county total load on WECC240 load nodes
-            _node.index.name = "timestamp"
-            _cache[_key] = {"net":_net.round(4),"total":_total.round(4),"node":_node.round(4)}
-        return _cache[_key]
-    def _csv_gz(kind):
-        def _data():
-            with mo.status.spinner(f"Calibrating 2018-2022 and writing {_names[kind]}"):
-                _buffer = io.BytesIO()
-                with gzip.GzipFile(fileobj=_buffer,mode="wb",mtime=0) as _fh:
-                    _calibrate_all()[kind].to_csv(_fh,index=True,header=True)
-                return _buffer.getvalue()
-        return _data
-    mo.vstack([
-        mo.md(f"""### Download
-
-    The calibration of every WECC county for every month of 2018-2022 with
-    the percentiles above (peak {peak_ui.value}, trough {trough_ui.value}):
-    calibrated net load `county_net.csv.gz`, and gross load
-    `county_total.csv.gz` = net load + the given DG, in MW with one column per
-    `"County ST"`, hour-beginning UTC. `node_total.csv.gz` is the county gross
-    load allocated to the WECC240 load nodes (one column per node geohash)
-    with the contribution factors in `loads/wecc/node_estimate_cf.csv`
-    (in-county load busses by bus load, otherwise the nearest load node); it
-    holds the US county load only, not the Canadian and Mexican nodes.
-    Building the files takes a minute or two."""),
-        mo.hstack([
-            mo.download(data=_csv_gz(_kind),filename=_name,
-                mimetype="application/gzip",label=_name)
-            for _kind,_name in _names.items()
-            ],justify="start"),
-        ])
-    return
 
 
 @app.cell
@@ -379,6 +316,70 @@ def _(columns, combined, factors, mo, overrides, pd, uncalibrated):
     if not _overrides.empty:
         _items += [mo.md("#### BA factor overrides"),mo.ui.table(_overrides,selection=None)]
     mo.vstack(_items)
+    return
+
+
+@app.cell
+def _(
+    calibrate_month,
+    combine,
+    dg,
+    gzip,
+    io,
+    mo,
+    net,
+    node_cf,
+    np,
+    pd,
+    peak_ui,
+    targets,
+    trough_ui,
+):
+    # download the 2018-2022 calibration of all WECC counties
+    _cache = {}
+    _names = {"total":"county_total.csv.gz","net":"county_net.csv.gz","node":"node_total.csv.gz"}
+    def _calibrate_all():
+        _key = (peak_ui.value,trough_ui.value)
+        if _key not in _cache:
+            _months = []
+            for _start in sorted(targets.timestamp.unique()):
+                _month,_,_calibrated,_ = calibrate_month(pd.Timestamp(_start),*_key)
+                if not _month.empty:
+                    _months.append(combine(_calibrated,_month.columns))
+            _net = pd.concat(_months).reindex(net.index)
+            _total = _net + np.abs(dg)   # DG taken as given
+            _net.index.name = _total.index.name = "timestamp"
+            _node = _total[node_cf.index] @ node_cf   # county total load on WECC240 load nodes
+            _node.index.name = "timestamp"
+            _cache[_key] = {"net":_net.round(4),"total":_total.round(4),"node":_node.round(4)}
+        return _cache[_key]
+    def _csv_gz(kind):
+        def _data():
+            with mo.status.spinner(f"Calibrating 2018-2022 and writing {_names[kind]}"):
+                _buffer = io.BytesIO()
+                with gzip.GzipFile(fileobj=_buffer,mode="wb",mtime=0) as _fh:
+                    _calibrate_all()[kind].to_csv(_fh,index=True,header=True)
+                return _buffer.getvalue()
+        return _data
+    mo.vstack([
+        mo.md(f"""### Download
+
+    The calibration of every WECC county for every month of 2018-2022 with
+    the percentiles above (peak {peak_ui.value}, trough {trough_ui.value}):
+    calibrated net load `county_net.csv.gz`, and gross load
+    `county_total.csv.gz` = net load + the given DG, in MW with one column per
+    `"County ST"`, hour-beginning UTC. `node_total.csv.gz` is the county gross
+    load allocated to the WECC240 load nodes (one column per node geohash)
+    with the contribution factors in `loads/wecc/node_estimate_cf.csv`
+    (in-county load busses by bus load, otherwise the nearest load node); it
+    holds the US county load only, not the Canadian and Mexican nodes.
+    Building the files takes a minute or two."""),
+        mo.hstack([
+            mo.download(data=_csv_gz(_kind),filename=_name,
+                mimetype="application/gzip",label=_name)
+            for _kind,_name in _names.items()
+            ],justify="start"),
+        ])
     return
 
 
