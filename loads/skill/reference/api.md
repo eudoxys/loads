@@ -7,7 +7,7 @@ frame contains. Read [footguns.md](footguns.md) for the traps each entry
 mentions.
 
 Public exports (`from loads import ...`): `Aggregator`, `Agriculture`,
-`Calibrate`, `COMstock`, `Cluster`, `Commercial`, `DG`, `Energy`,
+`Calibrate`, `CalibratePeaks`, `COMstock`, `Cluster`, `Commercial`, `DG`, `Energy`,
 `Estimator`, `Floorarea`, `Industry`, `Normalize`, `RESstock`,
 `Residential`, `Total`, `Transportation`, `Units`, `main` (CLI). `aggregate()` lives in
 `loads.aggregate` (`loads.aggregate` is the module, not the function);
@@ -291,6 +291,62 @@ provenance). For a proportional match to one county's energy use
 series, `fit_energy_peak`. The pre-rewrite API (`fit_load`, `integrate`,
 `Calibrate.load`, `Calibrate.solar`, `start`/`end`/`scale`/`offset`) no
 longer exists.
+
+## CalibratePeaks
+
+```python
+CalibratePeaks(load: pd.DataFrame | pd.Series, peaks: pd.DataFrame, *,
+               peak: float = 1.0, trough: float = 0.0,
+               basis: str | list[str] | None = None,
+               columns: str | list[str] | None = None)
+```
+
+Solver-free calibration (no CVXPY) of a load to observed peaks and
+troughs only; no energy targets, no DG.
+
+- `load`: uncalibrated load (MW), timestamp index, one or more columns (a
+  Series becomes a one-column frame). The `basis` and `columns` columns
+  must be numeric with no NaN (`CalibrationError`); other columns may hold
+  anything and are passed through.
+- `peaks`: observed peak and trough (MW) per interval, columns `max` and
+  `min`, indexed by interval **start** timestamp (e.g. daily or monthly).
+  Interval `i` runs to the next timestamp; the last one has the index's
+  inferred frequency, else the length of the one before. Naive timestamps
+  in either frame are taken as UTC. `max < min` raises.
+- `basis`: column name or list whose **sum** is the basis `x` (default
+  every column whose name ends in `_MW`). `columns`: column name or list
+  to calibrate (default every `_MW` column); the rest are returned
+  unchanged. Unknown, repeated, empty or non-numeric selections, and a
+  default when no column ends in `_MW`, raise `CalibrationError`.
+- `peak`, `trough`: fractions with `0 <= trough < peak <= 1`. In each
+  interval the basis `x` is mapped affinely, `y = a·x + b`, so its
+  `peak` percentile (numpy method `"higher"`) equals `max` and its `trough`
+  percentile (method `"lower"`) equals `min`. Hence at most `1 − peak` of
+  the interval's hours exceed `max` and at most `trough` fall below `min`.
+  The defaults reproduce `max` and `min` exactly.
+- Every calibrated column `k` becomes `a·X_k + b·mean(X_k)/mean(x)` (means
+  over the interval): calibrated columns that sum to the basis still sum to
+  `y`, and a calibrated column that *is* the basis maps to `y` exactly.
+  With the defaults this means the `_MW` columns sum to `y`.
+- BA load reports (EIA-930) are net of behind-the-meter DG: use
+  `basis="elec_net_MW"`. DG known from another source (NSRDB via
+  `Total(dg=True)`/`DG`, dGen) is not calibrated: keep `elec_dg_MW` out of
+  `columns`, calibrate `elec_net_MW` alone and rebuild
+  `elec_total_MW = elec_net_MW + np.abs(elec_dg_MW)` (and the sectors in
+  proportion); see [workflows.md](workflows.md). Uncalibrated columns are
+  not recomputed, so cross-column identities are yours to restore. Fractions in
+  `parameters` refer to `y`, not to the individual columns.
+- Hours outside every interval, or in an interval with NaN `max`/`min`,
+  are returned unchanged (warning logged). An interval with no spread
+  between the two percentiles is only shifted (`scale` 1). Negative output
+  is possible when the offset is large and negative.
+
+Returns the calibrated load (same index/columns) with attributes
+`parameters` (per interval start: `end`, `hours`, `max`, `min`,
+`peak_quantile`, `trough_quantile`, `scale`, `offset_MW`,
+`fraction_above`, `fraction_below`), `uncalibrated` (the input),
+`calibrated` (bool Series of the hours that were calibrated), `basis` and
+`calibrated_columns` (the resolved column lists).
 
 ## Energy
 

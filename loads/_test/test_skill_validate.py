@@ -18,7 +18,7 @@ def test_leap_year_rows(total2020):
 def test_positive_dg_is_error(total2018):
     df = total2018.copy()
     df.iloc[100, df.columns.get_loc("elec_dg_MW")] = 5.0
-    df["elec_net_MW"] = df["elec_total_MW"] + df["elec_dg_MW"]
+    df["elec_net_MW"] = df["elec_total_MW"] - np.abs(df["elec_dg_MW"])
     rep = validate(df)
     assert not rep.ok
     assert any(i.check == "dg-sign" for i in rep.errors())
@@ -34,7 +34,7 @@ def test_net_identity(total2018):
 def test_sector_sum(total2018):
     df = total2018.copy()
     df["elec_total_MW"] *= 1.01
-    df["elec_net_MW"] = df["elec_total_MW"] + df["elec_dg_MW"]
+    df["elec_net_MW"] = df["elec_total_MW"] - np.abs(df["elec_dg_MW"])
     rep = validate(df)
     assert [i.check for i in rep.errors()] == ["sector-sum"]
 

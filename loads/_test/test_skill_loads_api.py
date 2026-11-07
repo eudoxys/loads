@@ -129,6 +129,84 @@ def test_calibrate_is_affine_per_utc_month():
     assert par.offset_MW.abs().max() > 0  # an offset, not a proportional rescale
 
 
+# --- CalibratePeaks ----------------------------------------------------------------
+
+def test_calibrate_peaks_signature():
+    p = params(loads.CalibratePeaks.__init__)
+    assert list(p)[:3] == ["self", "load", "peaks"]
+    assert p["peak"].kind is inspect.Parameter.KEYWORD_ONLY and p["peak"].default == 1.0
+    assert p["trough"].kind is inspect.Parameter.KEYWORD_ONLY and p["trough"].default == 0.0
+    for name in ("basis", "columns"):
+        assert p[name].kind is inspect.Parameter.KEYWORD_ONLY and p[name].default is None
+
+
+def _peaks_case():
+    X, _, _, _ = _panel()
+    X = X.add_suffix("_MW")  # the default basis and columns are the _MW columns
+    days = pd.date_range("2020-07-01", periods=31, freq="D", tz="UTC", name="timestamp")
+    daily = X.sum(axis=1).resample("D")
+    peaks = pd.DataFrame({"max": daily.max().values * 1.2, "min": daily.min().values * 0.8}, index=days)
+    return X, peaks
+
+
+def test_calibrate_peaks_percentiles_leave_hours_above_peak():
+    # footguns.md #34: percentiles, not extremes; matched on the column sum
+    X, peaks = _peaks_case()
+    out = loads.CalibratePeaks(X, peaks, peak=0.9, trough=0.1)
+    assert out.calibrated.all()
+    assert (out.parameters.fraction_above <= 0.1).all() and (out.parameters.fraction_above > 0).any()
+    total = out.sum(axis=1).resample("D").max().values
+    assert (total > peaks["max"].values).any()
+    exact = loads.CalibratePeaks(X, peaks).sum(axis=1).resample("D")
+    assert np.allclose(exact.max().values, peaks["max"].values)
+    assert np.allclose(exact.min().values, peaks["min"].values)
+
+
+def test_calibrate_peaks_basis_and_columns():
+    # api.md: percentiles of the basis sum; only `columns` change, offset shared by mean / basis mean
+    X, peaks = _peaks_case()
+    parts = list(X.columns)
+    X["Total"] = X.sum(axis=1)
+    out = loads.CalibratePeaks(X, peaks, basis="Total", columns=parts + ["Total"])
+    assert np.allclose(out[parts].sum(axis=1), out["Total"])
+    assert np.allclose(out["Total"].resample("D").max().values, peaks["max"].values)
+    one = loads.CalibratePeaks(X, peaks, basis="Total", columns="Kern CA_MW")
+    assert np.allclose(one.drop(columns="Kern CA_MW"), X.drop(columns="Kern CA_MW"))
+
+
+def test_calibrate_peaks_default_is_mw_columns():
+    # api.md / footguns.md #34: defaults are the _MW columns; none raises
+    from loads.calibrate import CalibrationError
+    X, peaks = _peaks_case()
+    X["temperature_degF"] = 70.0
+    out = loads.CalibratePeaks(X, peaks)
+    assert out.basis == out.calibrated_columns == [c for c in X if c.endswith("_MW")]
+    assert (out["temperature_degF"] == 70.0).all()
+    with pytest.raises(CalibrationError, match="_MW"):
+        loads.CalibratePeaks(X[["temperature_degF"]], peaks)
+
+
+def test_calibrate_peaks_ba_net_basis_keeps_dg_fixed():
+    # footguns.md #34 / workflows.md: BA demand is net load; NSRDB/dGen DG is not calibrated
+    X, peaks = _peaks_case()
+    h = np.arange(len(X))
+    X = pd.DataFrame({"elec_total_MW": X.sum(axis=1)})
+    X["elec_dg_MW"] = -50 * np.clip(np.sin(2 * np.pi * ((h - 14) % 24) / 24), 0, None)
+    X["elec_net_MW"] = X["elec_total_MW"] - np.abs(X["elec_dg_MW"])
+    out = loads.CalibratePeaks(X, peaks, basis="elec_net_MW", columns="elec_net_MW")
+    assert np.allclose(out["elec_dg_MW"], X["elec_dg_MW"])
+    assert np.allclose(out["elec_net_MW"].resample("D").max().values, peaks["max"].values)
+    both = loads.CalibratePeaks(X, peaks, basis="elec_net_MW", columns=["elec_total_MW", "elec_net_MW"])
+    assert not np.allclose(both["elec_total_MW"] - np.abs(both["elec_dg_MW"]), both["elec_net_MW"])
+
+
+def test_calibrate_peaks_outside_intervals_unchanged():
+    X, peaks = _peaks_case()
+    out = loads.CalibratePeaks(X, peaks.iloc[:10])
+    assert out.calibrated.sum() == 10 * 24
+    assert np.allclose(out[~out.calibrated], X[~out.calibrated])
+
+
 def test_cast_module_removed():
     with pytest.raises(ModuleNotFoundError):
         __import__("loads.cast")

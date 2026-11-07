@@ -237,6 +237,61 @@ shaped_net = out.net                                 # L - D_output, MW
   fractions summing to 1) because the state can no longer be read from a
   `"County ST"` name.
 
+### Percentiles to observed peaks and troughs (`CalibratePeaks`)
+
+When only the observed peak and trough of each interval are known (e.g.
+daily max/min from a SCADA summary), map percentiles of the modeled load to
+them; no solver and no energy target are involved:
+
+```python
+from loads.calibrate import CalibratePeaks
+days = pd.date_range("2020-08-01", periods=31, freq="D", tz="UTC", name="timestamp")
+peaks = pd.DataFrame({"max": observed_max, "min": observed_min}, index=days)
+sectors = [c for c in df if c.startswith("elec_") and c.endswith("_MW")
+           and c not in ("elec_total_MW", "elec_dg_MW", "elec_net_MW")]
+cal = CalibratePeaks(df, peaks, peak=0.95, trough=0.05,
+                     basis="elec_total_MW", columns=sectors + ["elec_total_MW"])
+cal["elec_net_MW"] = cal["elec_total_MW"] - np.abs(cal["elec_dg_MW"])   # not recomputed for you
+print(cal.parameters[["scale", "offset_MW", "fraction_above", "fraction_below"]])
+```
+
+- `basis` picks the column(s) whose sum is matched to the observed peaks
+  and troughs; `columns` picks what changes. Both default to every column
+  ending in `_MW` (weather is left alone), which on a full `loads` frame
+  would still add the total, DG and net columns into the basis. The offset
+  is shared by each column's mean relative to the basis, so sectors that
+  sum to `elec_total_MW` still do.
+
+**Balancing-authority reports (EIA-930 and similar).** A BA's reported
+demand is the load it serves, i.e. *net* of behind-the-meter DG, so use
+`basis="elec_net_MW"`. When the DG comes from another source (NSRDB-shaped
+EIA small-scale PV from `Total(dg=True)` / `loads.dgen.DG`, or dGen), keep
+it fixed: leave `elec_dg_MW` out of `columns`, calibrate the net load
+alone, and rebuild the gross load and sectors from it:
+
+```python
+cal = CalibratePeaks(df, peaks, peak=0.95, trough=0.05,
+                     basis="elec_net_MW", columns="elec_net_MW")
+gross = cal["elec_net_MW"] + np.abs(cal["elec_dg_MW"])    # DG unchanged; abs guards the sign
+cal[sectors] = df[sectors].mul(gross / df["elec_total_MW"], axis=0)
+cal["elec_total_MW"] = gross
+ls.validate(cal).raise_if_failed()                        # sector sum and net identity
+```
+
+- Calibrating `elec_net_MW` together with `elec_total_MW` or the sectors
+  breaks `elec_net_MW = elec_total_MW + elec_dg_MW`, because the scale
+  then also applies to the DG implied in the net load.
+- Peaks from EIA-930 are BA-wide: the frame must cover the BA's footprint
+  (e.g. sum the counties first), and EIA-930 hours are hour-ending UTC
+  while `loads` is hour-beginning; align before building `peaks`.
+
+- With `peak=0.95` up to 5% of each day's hours lie above the observed
+  peak, by design; use the defaults (`peak=1.0`, `trough=0.0`) to hit the
+  observed extremes exactly.
+- Each interval gets its own scale and offset, so expect steps at interval
+  boundaries. Hours outside the intervals are unchanged
+  (`cal.calibrated`).
+
 ## 6. Uncertainty and peaks
 
 ```python

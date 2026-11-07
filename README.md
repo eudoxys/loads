@@ -158,8 +158,20 @@ which adds the `elec_dg_MW` (never positive) and `elec_net_MW` columns. The
 same DG is available on its own with `loads.dgen.DG("CA","Alameda",date_range)`,
 and `loads.dgen.DG.merge` adds it to any hourly load data frame.
 
-See https://www.eudoxys.com/loads for the `Estimator`, `Calibrate`, `Cluster`,
-and `Aggregator` tools.
+See https://www.eudoxys.com/loads for the `Estimator`, `Calibrate`,
+`CalibratePeaks`, `Cluster`, and `Aggregator` tools. `CalibratePeaks` is a
+solver-free calibration of a load to observed interval peaks and troughs,
+e.g., so that only 5% of the hours of each day exceed the observed daily
+peak:
+
+    from loads.calibrate import CalibratePeaks
+    result = CalibratePeaks(load,peaks,peak=0.95,trough=0.05)  # peaks: columns max, min
+
+By default the percentiles are taken of the sum of the columns whose names
+end in `_MW` and those columns are calibrated (others, e.g., weather, are
+unchanged); `basis=` names the column(s) to take the percentiles
+of and `columns=` the column(s) to calibrate, e.g.,
+`basis="elec_total_MW",columns=["elec_residential_MW",...,"elec_total_MW"]`.
 
 # Agent skill
 
