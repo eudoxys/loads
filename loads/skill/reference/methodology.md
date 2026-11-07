@@ -52,8 +52,9 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
    −0.7% peak, 11.2% MAPE.
    `loads.calibrate.CalibratePeaks` is a simpler alternative for a single
    load series or panel: per interval of observed peak/trough data, an
-   affine map that sends chosen percentiles of the load to the observed
-   peak and trough (no solver, no energy target).
+   affine map that sends chosen percentiles of a basis load (the sum of
+   chosen columns) to the observed peak and trough, applied to the chosen
+   columns (no solver, no energy target).
 8. **Precomputed WECC estimate.** `loads/wecc/wecc_estimate.py` predicts
    every WECC county for 2018–2022 with `loads.estimator.Estimator` (using
    the harmonics chosen for the county's cluster medoid) and rescales each

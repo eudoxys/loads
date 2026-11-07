@@ -203,7 +203,9 @@ These fail silently or late. The full list with source references is in
   [api.md](reference/api.md#calibrate).
 - **`CalibratePeaks` matches percentiles, not extremes.** With
   `peak=0.95` up to 5% of each interval's hours lie *above* the observed
-  peak by design; multi-column loads are matched on their column sum. See
+  peak by design. Percentiles come from the sum of the `basis` columns and
+  only `columns` change; both default to *all* columns, which on a `Total`
+  frame includes weather and totals, so set them. See
   [api.md](reference/api.md#calibratepeaks).
 - **Ambiguous county names.** `fips` has Baltimore city and Baltimore
   County, St. Louis city and County, several Virginia pairs. `loads` keys on

@@ -48,7 +48,7 @@ reversed decision in place and note the date.
 | 10 | DG is a negative load in `elec_dg_MW`; `elec_net_MW = elec_total_MW + elec_dg_MW`. |
 | 12 | Calibration solves the Meyers–Chassin hierarchical net-load shaping SOCP: per-unit affine map $L=sX+b$, soft per-state energy targets, hard regional peak ceilings, DG fixed; solved independently per UTC calendar month. |
 | 12b | Calibration weights are not tuned per run: with `search=True` a predeclared grid (`Calibrate.GRID`) is solved and a fixed rule selects the result (peak shortfall ≤ `PEAK_SHORTFALL_TOL`, state energy error ≤ `STATE_ENERGY_TOL`, nonnegative load, then least shape RMSE). |
-| 12c | `CalibratePeaks` is the solver-free alternative: within each interval of the observed peak/trough data (columns `max`, `min`, indexed by interval start) the total load is mapped affinely so its `peak` percentile (method `higher`) equals the observed max and its `trough` percentile (method `lower`) equals the observed min; columns share the offset by interval mean load. Hours outside the intervals are unchanged. |
+| 12c | `CalibratePeaks` is the solver-free alternative: within each interval of the observed peak/trough data (columns `max`, `min`, indexed by interval start) the sum of the `basis` columns is mapped affinely so its `peak` percentile (method `higher`) equals the observed max and its `trough` percentile (method `lower`) equals the observed min; each of the `columns` to calibrate is scaled and gets the offset times its interval mean over the basis mean. Both default to all columns. Other columns and hours outside the intervals are unchanged. |
 | 13 | Counties are clustered by SVD + k-means on `elec_total_MW`; k = 6 (`loads/clusters.csv`). A cluster's medoid stands in for its members when per-county tuning is too costly. |
 | 14 | Estimator harmonics for each medoid are the most parsimonious within 1% of the best found in the sweep (`_explore/explore_estimator_clusters.csv`); the WECC estimate uses the MAPE row. |
 | 15 | The WECC county estimate keeps 2018 actual sector loads and rescales each month of 2018–2022 so its energy equals the EIA 861M retail sales allocated to the county plus the county's DG (gross load). |
@@ -97,7 +97,7 @@ loads/
   estimator.py       Estimator(county_st,years=None,*,config=EstimatorConfig())
   energy.py          Energy(state,counties,year,month=None,*,groupby="1MS",...)
   calibrate.py       Calibrate(load,*,energy,peak,dg=None,states=None,regions=None,search=False,...)
-                     CalibratePeaks(load,peaks,*,peak=1.0,trough=0.0)
+                     CalibratePeaks(load,peaks,*,peak=1.0,trough=0.0,basis=None,columns=None)
   cluster.py         Cluster(counties,column,threshold=0.99,...)
   aggregate.py       Aggregator(targets,start,end); aggregate(targets,dt_range,column)
   clusters.csv       county_st -> medoid
@@ -132,7 +132,7 @@ accessor takes `refresh:bool=False`.
 | `Estimator` | `timestamp` (`years`) | weather, `enduse`; with `years=None` also `status` (`T`/`H`), `actual`, `prediction` |
 | `Energy` | period start | one column per county, MWh |
 | `Calibrate` | as `load` | shaped load (MW); `.parameters`, `.summary`, `.states`, `.constraints` |
-| `CalibratePeaks` | as `load` | calibrated load (MW); `.parameters`, `.uncalibrated`, `.calibrated` |
+| `CalibratePeaks` | as `load` | calibrated load (MW); `.parameters`, `.uncalibrated`, `.calibrated`, `.basis`, `.calibrated_columns` |
 
 Composition: `Total` sums the sector frames on the 2018 index;
 `elec_total_MW` is their sum and excludes DG. Predictions return only `X`

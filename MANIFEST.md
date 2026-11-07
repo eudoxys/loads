@@ -111,7 +111,7 @@ Maintenance scripts and their curated or generated data. Run from the folder
 |---|---|---|
 | `loads/_test/README.md` | how to run tests, what they download | |
 | `loads/_test/conftest.py` | cache location from `LOADS_CACHEDIR` | |
-| `loads/_test/test_calibrate_peaks.py` | `CalibratePeaks` on synthetic hourly load and daily peaks/troughs | fast, offline |
+| `loads/_test/test_calibrate_peaks.py` | `CalibratePeaks` on synthetic hourly load and daily peaks/troughs, `basis`/`columns` options | fast, offline |
 | `loads/_test/test_calibrate_synthetic.py` | `Calibrate` on a small synthetic system | fast, offline |
 | `loads/_test/test_calibrate.py` | `Calibrate` on all WECC counties, August 2020 | network; skipped unless the cache holds the inputs |
 | `loads/_test/test_archive.py` | classes download cache files from the cache archive instead of rebuilding | `Residential`/`Commercial` tests fast, offline (`file://` archive); others `network` (real archive, Alameda CA, about 25 MB) |

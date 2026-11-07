@@ -96,3 +96,75 @@ def test_invalid_peaks(load,peaks):
         CalibratePeaks(load,peaks[["max"]])
     with pytest.raises(CalibrationError):
         CalibratePeaks(load,peaks.rename(columns={"max":"min","min":"max"}))
+
+
+@pytest.fixture(scope="module")
+def sectors(load) -> pd.DataFrame:
+    """Load with a total column, its two parts, and a weather column"""
+    frame = load.rename(columns={"A CA":"elec_residential_MW","B NV":"elec_commercial_MW"})
+    frame["elec_total_MW"] = frame.sum(axis=1)
+    frame["temperature_degF"] = 70 + 10*np.sin(2*np.pi*np.arange(len(frame))/24)
+    return frame
+
+
+def test_defaults_are_all_columns(load,peaks):
+    """The defaults use the sum of all columns and calibrate every column"""
+    default = CalibratePeaks(load,peaks,peak=0.95,trough=0.05)
+    explicit = CalibratePeaks(load,peaks,peak=0.95,trough=0.05,
+        basis=list(load.columns),columns=list(load.columns))
+    pd.testing.assert_frame_equal(pd.DataFrame(default),pd.DataFrame(explicit))
+    assert default.basis == list(load.columns)
+    assert default.calibrated_columns == list(load.columns)
+
+
+def test_basis_column(sectors,peaks):
+    """A single basis column is matched and its parts stay consistent"""
+    parts = ["elec_residential_MW","elec_commercial_MW"]
+    result = CalibratePeaks(sectors,peaks,peak=0.95,trough=0.05,
+        basis="elec_total_MW",columns=parts+["elec_total_MW"])
+    assert result.basis == ["elec_total_MW"]
+    assert np.allclose(result[parts].sum(axis=1),result["elec_total_MW"])
+    pd.testing.assert_series_equal(result["temperature_degF"],sectors["temperature_degF"])
+    total = result["elec_total_MW"]
+    for day,row in peaks.iterrows():
+        values = total[(total.index >= day) & (total.index < day + pd.Timedelta("1D"))]
+        assert np.mean(values > row["max"] + 1e-9) <= 0.05 + 1e-12
+        assert np.mean(values < row["min"] - 1e-9) <= 0.05 + 1e-12
+    # same as calibrating the parts on the sum of the parts
+    plain = CalibratePeaks(sectors[parts],peaks,peak=0.95,trough=0.05)
+    assert np.allclose(result[parts].values,plain.values)
+
+
+def test_columns_subset(sectors,peaks):
+    """Only the named columns change; the basis may be left uncalibrated"""
+    result = CalibratePeaks(sectors,peaks,basis="elec_total_MW",columns="elec_residential_MW")
+    assert result.calibrated_columns == ["elec_residential_MW"]
+    for column in ["elec_commercial_MW","elec_total_MW","temperature_degF"]:
+        pd.testing.assert_series_equal(result[column],sectors[column])
+    day = slice("2020-08-10","2020-08-10")
+    x,y = sectors.loc[day,"elec_residential_MW"].values,result.loc[day,"elec_residential_MW"].values
+    slope,_ = np.polyfit(x,y,1)
+    assert np.isclose(slope,result.parameters.loc[pd.Timestamp("2020-08-10",tz="UTC"),"scale"])
+
+
+def test_basis_ignores_other_columns(sectors,peaks):
+    """Non-numeric or missing values outside basis and columns are allowed"""
+    frame = sectors.copy()
+    frame["note"] = "x"
+    frame.iloc[0,frame.columns.get_loc("temperature_degF")] = np.nan
+    result = CalibratePeaks(frame,peaks,basis="elec_total_MW",columns="elec_total_MW")
+    assert (result["note"] == "x").all()
+    exact = result["elec_total_MW"].resample("1D")
+    assert np.allclose(exact.max().values,peaks["max"].values)
+
+
+@pytest.mark.parametrize("kwargs",[
+    {"basis":"nope"},{"columns":["elec_total_MW","nope"]},{"basis":[]},
+    {"columns":["elec_total_MW","elec_total_MW"]},{"basis":"note"},
+    ])
+def test_invalid_selection(sectors,peaks,kwargs):
+    """Basis and columns must name distinct, existing, numeric columns"""
+    frame = sectors.copy()
+    frame["note"] = "x"
+    with pytest.raises(CalibrationError):
+        CalibratePeaks(frame,peaks,**kwargs)

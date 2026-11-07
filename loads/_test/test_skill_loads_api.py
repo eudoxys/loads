@@ -136,6 +136,8 @@ def test_calibrate_peaks_signature():
     assert list(p)[:3] == ["self", "load", "peaks"]
     assert p["peak"].kind is inspect.Parameter.KEYWORD_ONLY and p["peak"].default == 1.0
     assert p["trough"].kind is inspect.Parameter.KEYWORD_ONLY and p["trough"].default == 0.0
+    for name in ("basis", "columns"):
+        assert p[name].kind is inspect.Parameter.KEYWORD_ONLY and p[name].default is None
 
 
 def _peaks_case():
@@ -157,6 +159,18 @@ def test_calibrate_peaks_percentiles_leave_hours_above_peak():
     exact = loads.CalibratePeaks(X, peaks).sum(axis=1).resample("D")
     assert np.allclose(exact.max().values, peaks["max"].values)
     assert np.allclose(exact.min().values, peaks["min"].values)
+
+
+def test_calibrate_peaks_basis_and_columns():
+    # api.md: percentiles of the basis sum; only `columns` change, offset shared by mean / basis mean
+    X, peaks = _peaks_case()
+    X["Total"] = X.sum(axis=1)
+    parts = ["Alameda CA", "Kern CA", "Washoe NV"]
+    out = loads.CalibratePeaks(X, peaks, basis="Total", columns=parts + ["Total"])
+    assert np.allclose(out[parts].sum(axis=1), out["Total"])
+    assert np.allclose(out["Total"].resample("D").max().values, peaks["max"].values)
+    one = loads.CalibratePeaks(X, peaks, basis="Total", columns="Kern CA")
+    assert np.allclose(one.drop(columns="Kern CA"), X.drop(columns="Kern CA"))
 
 
 def test_calibrate_peaks_outside_intervals_unchanged():

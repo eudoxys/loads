@@ -135,7 +135,9 @@ of that interval:
 
 where `peaks` has columns `max` and `min` indexed by interval start. With
 `peak=0.95` no more than 5% of the hours of an interval exceed its observed
-peak.
+peak. The percentiles are taken of the sum of all columns unless `basis`
+names the column(s) to use, and all columns are calibrated unless
+`columns` names the ones to change.
 
 Caveats
 -------
@@ -867,8 +869,9 @@ class CalibratePeaks(pd.DataFrame):
     trough (`min`) of each interval are used; no energy targets and no
     optimization solver are involved.
 
-    Within each interval $i$ the total uncalibrated load
-    $x_t=\sum_jX_{tj}$ is mapped by the affine function
+    Within each interval $i$ the uncalibrated basis load
+    $x_t=\sum_{j\in B}X_{tj}$, the sum of the `basis` columns $B$ (by
+    default all columns), is mapped by the affine function
 
     $$
         y_t = a_i x_t + b_i, \qquad
@@ -886,9 +889,19 @@ class CalibratePeaks(pd.DataFrame):
     `trough=0.0` the calibrated load reproduces the observed peak and trough
     exactly.
 
-    When the load has more than one column, every column is scaled by $a_i$
-    and the offset $b_i$ is shared among columns in proportion to their mean
-    load in the interval, so the columns sum to $y$.
+    The map is applied to each column $k$ in `columns` (by default all
+    columns) as
+
+    $$
+        L_{tk} = a_i X_{tk} + b_i \frac{\bar X_{ik}}{\bar x_i},
+    $$
+
+    where $\bar X_{ik}$ and $\bar x_i$ are the interval means of column $k$
+    and of the basis. The offset is thus shared in proportion to mean load,
+    so any set of calibrated columns that sums to the basis sums to $y$, and
+    a calibrated column that is itself the basis is mapped to $y$ exactly.
+    With the defaults the columns sum to $y$. Columns not in `columns` are
+    returned unchanged.
 
     Calibration results are available as attributes:
 
@@ -902,6 +915,10 @@ class CalibratePeaks(pd.DataFrame):
       - `calibrated`: boolean series, `True` for the hours that fall in an
         interval with valid peak and trough data
 
+      - `basis`: list of the basis columns
+
+      - `calibrated_columns`: list of the calibrated columns
+
     Examples
     --------
 
@@ -914,6 +931,14 @@ class CalibratePeaks(pd.DataFrame):
         result = CalibratePeaks(load,peaks,peak=0.95,trough=0.05)
         result               # calibrated load (MW), same shape as load
         result.parameters    # per-day scale, offset and achieved fractions
+
+    Calibrate the sector columns of a `Total` frame using the percentiles of
+    its total load, leaving the weather columns unchanged:
+
+        sectors = ["elec_residential_MW","elec_commercial_MW",
+            "elec_industrial_MW","elec_agricultural_MW"]
+        result = CalibratePeaks(total,peaks,peak=0.95,trough=0.05,
+            basis="elec_total_MW",columns=sectors+["elec_total_MW"])
 
     Caveats
     -------
@@ -931,9 +956,13 @@ class CalibratePeaks(pd.DataFrame):
       - The offset may be negative, so a calibrated load can be negative
         when the observed trough is much lower relative to the peak than in
         the uncalibrated load.
+
+      - The achieved fractions in `parameters` refer to the mapped basis
+        $y$. Calibrated columns whose sum is not the basis are not checked
+        against the observed peak and trough.
     """
 
-    _metadata = ["parameters","uncalibrated","calibrated"]
+    _metadata = ["parameters","uncalibrated","calibrated","basis","calibrated_columns"]
 
     def __init__(self,
         load:pd.DataFrame|pd.Series,
@@ -941,6 +970,8 @@ class CalibratePeaks(pd.DataFrame):
         *,
         peak:float=1.0,
         trough:float=0.0,
+        basis:str|list[str]|None=None,
+        columns:str|list[str]|None=None,
         ):
         r"""Construct a calibrated load data frame
 
@@ -960,6 +991,13 @@ class CalibratePeaks(pd.DataFrame):
             load in each interval that is mapped to the observed trough; must
             be less than `peak`
 
+          - `basis`: column or list of columns whose sum is the basis load
+            whose percentiles are matched to the observed peak and trough
+            (default all columns)
+
+          - `columns`: column or list of columns to calibrate (default all
+            columns); the others are returned unchanged
+
         Raises
         ------
 
@@ -970,7 +1008,27 @@ class CalibratePeaks(pd.DataFrame):
         X = load.to_frame() if isinstance(load,pd.Series) else pd.DataFrame(load).copy()
         if not isinstance(X.index,pd.DatetimeIndex):
             raise CalibrationError("load must be indexed by timestamp")
-        if not np.isfinite(X.values.astype(float)).all():
+
+        def selection(value,name):
+            if value is None:
+                return list(X.columns)
+            value = [value] if isinstance(value,str) or not isinstance(value,(list,tuple,pd.Index)) else list(value)
+            if not value:
+                raise CalibrationError(f"{name} must name at least one column")
+            unknown = [x for x in value if x not in X.columns]
+            if unknown:
+                raise CalibrationError(f"{name} names unknown columns {unknown}")
+            if len(set(value)) < len(value):
+                raise CalibrationError(f"{name} names a column more than once")
+            return value
+        basis = selection(basis,"basis")
+        columns = selection(columns,"columns")
+        used = list(dict.fromkeys(basis + columns))
+        try:
+            finite = np.isfinite(X[used].values.astype(float)).all()
+        except (TypeError,ValueError) as err:
+            raise CalibrationError("basis and calibrated columns must be numeric") from err
+        if not finite:
             raise CalibrationError("load contains missing or infinite values")
         if not 0.0 <= trough < peak <= 1.0:
             raise CalibrationError("peak and trough must satisfy 0 <= trough < peak <= 1")
@@ -1005,7 +1063,8 @@ class CalibratePeaks(pd.DataFrame):
             else:
                 ends.append(times.max() + pd.Timedelta(1,"ns"))
 
-        values = X.values.astype(float)
+        base = X[basis].values.astype(float).sum(axis=1)
+        values = X[columns].values.astype(float)
         result = values.copy()
         calibrated = np.zeros(len(X),dtype=bool)
         records = []
@@ -1022,7 +1081,7 @@ class CalibratePeaks(pd.DataFrame):
                 continue
 
             block = values[rows]
-            total = block.sum(axis=1)
+            total = base[rows]
             upper = float(np.quantile(total,peak,method="higher"))
             lower = float(np.quantile(total,trough,method="lower"))
             if upper - lower > np.finfo(float).eps * max(1.0,abs(upper)):
@@ -1033,9 +1092,9 @@ class CalibratePeaks(pd.DataFrame):
                 scale = 1.0
                 offset = 0.5 * (observed_max + observed_min) - upper
 
-            # share the offset among columns by their mean load
-            means = block.mean(axis=0)
-            share = means / means.sum() if means.sum() != 0 else np.full(block.shape[1],1.0/block.shape[1])
+            # share the offset among columns by their mean load relative to the basis
+            mean = total.mean()
+            share = block.mean(axis=0) / mean if mean != 0 else np.full(block.shape[1],1.0/block.shape[1])
             result[rows] = scale * block + offset * share[None,:]
             calibrated[rows] = True
 
@@ -1054,12 +1113,17 @@ class CalibratePeaks(pd.DataFrame):
         if not calibrated.all():
             _logger.warning(f"{int((~calibrated).sum())} hours of load are outside the calibrated intervals")
 
-        super().__init__(pd.DataFrame(result,index=X.index,columns=X.columns))
-        columns = ["start","end","hours","max","min","peak_quantile","trough_quantile",
+        output = X.copy()
+        for n,column in enumerate(columns):
+            output[column] = result[:,n]
+        super().__init__(output)
+        fields = ["start","end","hours","max","min","peak_quantile","trough_quantile",
             "scale","offset_MW","fraction_above","fraction_below"]
-        self.parameters = pd.DataFrame(records,columns=columns).set_index("start")
+        self.parameters = pd.DataFrame(records,columns=fields).set_index("start")
         self.uncalibrated = X
         self.calibrated = pd.Series(calibrated,index=X.index,name="calibrated")
+        self.basis = basis
+        self.calibrated_columns = columns
 
     @property
     def _constructor(self):

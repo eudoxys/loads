@@ -245,12 +245,21 @@ them; no solver and no energy target are involved:
 
 ```python
 from loads.calibrate import CalibratePeaks
-load = df[["elec_total_MW"]]                         # hourly MW
 days = pd.date_range("2020-08-01", periods=31, freq="D", tz="UTC", name="timestamp")
 peaks = pd.DataFrame({"max": observed_max, "min": observed_min}, index=days)
-cal = CalibratePeaks(load, peaks, peak=0.95, trough=0.05)
+sectors = [c for c in df if c.startswith("elec_") and c.endswith("_MW")
+           and c not in ("elec_total_MW", "elec_dg_MW", "elec_net_MW")]
+cal = CalibratePeaks(df, peaks, peak=0.95, trough=0.05,
+                     basis="elec_total_MW", columns=sectors + ["elec_total_MW"])
+cal["elec_net_MW"] = cal["elec_total_MW"] + cal["elec_dg_MW"]   # not recomputed for you
 print(cal.parameters[["scale", "offset_MW", "fraction_above", "fraction_below"]])
 ```
+
+- `basis` picks the column(s) whose sum is matched to the observed peaks
+  and troughs; `columns` picks what changes. Both default to every column,
+  which on a full `loads` frame would add weather and totals into the
+  basis. The offset is shared by each column's mean relative to the
+  basis, so sectors that sum to `elec_total_MW` still do.
 
 - With `peak=0.95` up to 5% of each day's hours lie above the observed
   peak, by design; use the defaults (`peak=1.0`, `trough=0.0`) to hit the
