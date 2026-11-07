@@ -13,8 +13,9 @@ def _(mo):
 
 
 @app.cell
-def _(pd):
-    node_total = pd.read_csv("node_total.csv.gz",index_col=[0],parse_dates=[0])
+def _(os, pd):
+    _file = os.path.join(os.path.dirname(os.path.dirname(__file__)),"wecc","node_total.csv.gz")
+    node_total = pd.read_csv(_file,index_col=[0],parse_dates=[0])
     return (node_total,)
 
 
@@ -72,9 +73,10 @@ def _(mo, month_ui, node_total, node_ui, plot_options, year_ui):
 def _():
     import marimo as mo
     import pandas as pd
+    import os
     import calendar
 
-    return calendar, mo, pd
+    return calendar, mo, os, pd
 
 
 if __name__ == "__main__":
