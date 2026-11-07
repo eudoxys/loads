@@ -314,9 +314,10 @@ troughs only; no energy targets, no DG.
   inferred frequency, else the length of the one before. Naive timestamps
   in either frame are taken as UTC. `max < min` raises.
 - `basis`: column name or list whose **sum** is the basis `x` (default
-  all columns). `columns`: column name or list to calibrate (default all
-  columns); the rest are returned unchanged. Unknown, repeated or empty
-  selections raise `CalibrationError`.
+  every column whose name ends in `_MW`). `columns`: column name or list
+  to calibrate (default every `_MW` column); the rest are returned
+  unchanged. Unknown, repeated, empty or non-numeric selections, and a
+  default when no column ends in `_MW`, raise `CalibrationError`.
 - `peak`, `trough`: fractions with `0 <= trough < peak <= 1`. In each
   interval the basis `x` is mapped affinely, `y = a·x + b`, so its
   `peak` percentile (numpy method `"higher"`) equals `max` and its `trough`
@@ -326,7 +327,7 @@ troughs only; no energy targets, no DG.
 - Every calibrated column `k` becomes `a·X_k + b·mean(X_k)/mean(x)` (means
   over the interval): calibrated columns that sum to the basis still sum to
   `y`, and a calibrated column that *is* the basis maps to `y` exactly.
-  With the defaults this means the columns sum to `y`. Fractions in
+  With the defaults this means the `_MW` columns sum to `y`. Fractions in
   `parameters` refer to `y`, not to the individual columns.
 - Hours outside every interval, or in an interval with NaN `max`/`min`,
   are returned unchanged (warning logged). An interval with no spread

@@ -142,6 +142,7 @@ def test_calibrate_peaks_signature():
 
 def _peaks_case():
     X, _, _, _ = _panel()
+    X = X.add_suffix("_MW")  # the default basis and columns are the _MW columns
     days = pd.date_range("2020-07-01", periods=31, freq="D", tz="UTC", name="timestamp")
     daily = X.sum(axis=1).resample("D")
     peaks = pd.DataFrame({"max": daily.max().values * 1.2, "min": daily.min().values * 0.8}, index=days)
@@ -164,13 +165,25 @@ def test_calibrate_peaks_percentiles_leave_hours_above_peak():
 def test_calibrate_peaks_basis_and_columns():
     # api.md: percentiles of the basis sum; only `columns` change, offset shared by mean / basis mean
     X, peaks = _peaks_case()
+    parts = list(X.columns)
     X["Total"] = X.sum(axis=1)
-    parts = ["Alameda CA", "Kern CA", "Washoe NV"]
     out = loads.CalibratePeaks(X, peaks, basis="Total", columns=parts + ["Total"])
     assert np.allclose(out[parts].sum(axis=1), out["Total"])
     assert np.allclose(out["Total"].resample("D").max().values, peaks["max"].values)
-    one = loads.CalibratePeaks(X, peaks, basis="Total", columns="Kern CA")
-    assert np.allclose(one.drop(columns="Kern CA"), X.drop(columns="Kern CA"))
+    one = loads.CalibratePeaks(X, peaks, basis="Total", columns="Kern CA_MW")
+    assert np.allclose(one.drop(columns="Kern CA_MW"), X.drop(columns="Kern CA_MW"))
+
+
+def test_calibrate_peaks_default_is_mw_columns():
+    # api.md / footguns.md #34: defaults are the _MW columns; none raises
+    from loads.calibrate import CalibrationError
+    X, peaks = _peaks_case()
+    X["temperature_degF"] = 70.0
+    out = loads.CalibratePeaks(X, peaks)
+    assert out.basis == out.calibrated_columns == [c for c in X if c.endswith("_MW")]
+    assert (out["temperature_degF"] == 70.0).all()
+    with pytest.raises(CalibrationError, match="_MW"):
+        loads.CalibratePeaks(X[["temperature_degF"]], peaks)
 
 
 def test_calibrate_peaks_outside_intervals_unchanged():

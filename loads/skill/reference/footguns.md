@@ -234,13 +234,14 @@ the tracking issues above or open a new one.
     With `peak=0.95` up to 5% of each interval's hours exceed the observed
     `max` (and with `trough=0.05` up to 5% fall below `min`); only the
     defaults `peak=1.0, trough=0.0` reproduce the extremes **[tested]**.
-    A multi-column load is matched on the sum of its `basis` columns (all
-    columns by default), not per column; columns not in `columns` (e.g.
+    A multi-column load is matched on the sum of its `basis` columns (every
+    `_MW` column by default), not per column; columns not in `columns` (e.g.
     `elec_net_MW`, `elec_dg_MW` or weather when you pass only sectors) are
     left as they were, so identities such as `elec_net_MW = elec_total_MW +
     elec_dg_MW` are not recomputed **[tested]**; and hours outside the
     `peaks` intervals are returned unchanged. With the default `basis` on a
-    `Total` frame, weather and total columns are summed with the sectors,
-    which is rarely meant. → pass `basis="elec_total_MW"` and the columns
+    `Total` frame, `elec_total_MW`, `elec_dg_MW` and `elec_net_MW` are
+    summed with the sectors, which is rarely meant; a frame with no `_MW`
+    column raises unless `basis` and `columns` are given **[tested]**. → pass `basis="elec_total_MW"` and the columns
     to change, check `.parameters.fraction_above` and `.calibrated.all()`,
     recompute net load, and say which percentiles were used.

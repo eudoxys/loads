@@ -135,9 +135,9 @@ of that interval:
 
 where `peaks` has columns `max` and `min` indexed by interval start. With
 `peak=0.95` no more than 5% of the hours of an interval exceed its observed
-peak. The percentiles are taken of the sum of all columns unless `basis`
-names the column(s) to use, and all columns are calibrated unless
-`columns` names the ones to change.
+peak. The percentiles are taken of the sum of the columns whose names end
+in `_MW` unless `basis` names the column(s) to use, and the `_MW` columns
+are calibrated unless `columns` names the ones to change.
 
 Caveats
 -------
@@ -871,7 +871,8 @@ class CalibratePeaks(pd.DataFrame):
 
     Within each interval $i$ the uncalibrated basis load
     $x_t=\sum_{j\in B}X_{tj}$, the sum of the `basis` columns $B$ (by
-    default all columns), is mapped by the affine function
+    default the columns whose names end in `_MW`), is mapped by the affine
+    function
 
     $$
         y_t = a_i x_t + b_i, \qquad
@@ -889,8 +890,8 @@ class CalibratePeaks(pd.DataFrame):
     `trough=0.0` the calibrated load reproduces the observed peak and trough
     exactly.
 
-    The map is applied to each column $k$ in `columns` (by default all
-    columns) as
+    The map is applied to each column $k$ in `columns` (by default the
+    columns whose names end in `_MW`) as
 
     $$
         L_{tk} = a_i X_{tk} + b_i \frac{\bar X_{ik}}{\bar x_i},
@@ -900,7 +901,11 @@ class CalibratePeaks(pd.DataFrame):
     and of the basis. The offset is thus shared in proportion to mean load,
     so any set of calibrated columns that sums to the basis sums to $y$, and
     a calibrated column that is itself the basis is mapped to $y$ exactly.
-    With the defaults the columns sum to $y$. Columns not in `columns` are
+    The `_MW` default suits a single-quantity frame such as a panel of
+    `elec_total_MW` loads; on a full `loads` frame it also sums the total,
+    DG and net columns with the sectors, so name `basis` and `columns`.
+    With the defaults the `_MW` columns sum to $y$. Columns not in
+    `columns` (by default those not ending in `_MW`, e.g., weather) are
     returned unchanged.
 
     Calibration results are available as attributes:
@@ -993,15 +998,17 @@ class CalibratePeaks(pd.DataFrame):
 
           - `basis`: column or list of columns whose sum is the basis load
             whose percentiles are matched to the observed peak and trough
-            (default all columns)
+            (default the columns whose names end in `_MW`)
 
-          - `columns`: column or list of columns to calibrate (default all
-            columns); the others are returned unchanged
+          - `columns`: column or list of columns to calibrate (default the
+            columns whose names end in `_MW`); the others are returned
+            unchanged
 
         Raises
         ------
 
-          - `CalibrationError`: invalid inputs
+          - `CalibrationError`: invalid inputs, including a default `basis`
+            or `columns` when no column name ends in `_MW`
         """
 
         # uncalibrated load
@@ -1011,7 +1018,10 @@ class CalibratePeaks(pd.DataFrame):
 
         def selection(value,name):
             if value is None:
-                return list(X.columns)
+                value = [x for x in X.columns if isinstance(x,str) and x.endswith("_MW")]
+                if not value:
+                    raise CalibrationError(f"no column name ends in '_MW'; specify {name}")
+                return value
             value = [value] if isinstance(value,str) or not isinstance(value,(list,tuple,pd.Index)) else list(value)
             if not value:
                 raise CalibrationError(f"{name} must name at least one column")

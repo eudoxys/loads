@@ -167,8 +167,9 @@ peak:
     from loads.calibrate import CalibratePeaks
     result = CalibratePeaks(load,peaks,peak=0.95,trough=0.05)  # peaks: columns max, min
 
-By default the percentiles are taken of the sum of all columns and every
-column is calibrated; `basis=` names the column(s) to take the percentiles
+By default the percentiles are taken of the sum of the columns whose names
+end in `_MW` and those columns are calibrated (others, e.g., weather, are
+unchanged); `basis=` names the column(s) to take the percentiles
 of and `columns=` the column(s) to calibrate, e.g.,
 `basis="elec_total_MW",columns=["elec_residential_MW",...,"elec_total_MW"]`.
 

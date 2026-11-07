@@ -256,9 +256,9 @@ print(cal.parameters[["scale", "offset_MW", "fraction_above", "fraction_below"]]
 ```
 
 - `basis` picks the column(s) whose sum is matched to the observed peaks
-  and troughs; `columns` picks what changes. Both default to every column,
-  which on a full `loads` frame would add weather and totals into the
-  basis. The offset is shared by each column's mean relative to the
+  and troughs; `columns` picks what changes. Both default to every column
+  ending in `_MW` (weather is left alone), which on a full `loads` frame
+  would still add the total, DG and net columns into the basis. The offset is shared by each column's mean relative to the
   basis, so sectors that sum to `elec_total_MW` still do.
 
 - With `peak=0.95` up to 5% of each day's hours lie above the observed

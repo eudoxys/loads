@@ -20,8 +20,8 @@ def load() -> pd.DataFrame:
     index = pd.date_range("2020-08-01 00:00:00+00:00","2020-08-31 23:00:00+00:00",freq="1h",name="timestamp")
     hour = np.arange(len(index))
     return pd.DataFrame({
-        "A CA":100*(1+0.3*np.sin(2*np.pi*hour/24)) + 5*rng.random(len(hour)),
-        "B NV":40*(1+0.2*np.sin(2*np.pi*(hour+3)/24)) + 2*rng.random(len(hour)),
+        "A_MW":100*(1+0.3*np.sin(2*np.pi*hour/24)) + 5*rng.random(len(hour)),
+        "B_MW":40*(1+0.2*np.sin(2*np.pi*(hour+3)/24)) + 2*rng.random(len(hour)),
         },index=index)
 
 
@@ -79,8 +79,8 @@ def test_partial_coverage(load,peaks):
 
 def test_series_input(load,peaks):
     """A series load is accepted and returned as a one-column frame"""
-    result = CalibratePeaks(load.sum(axis=1).rename("total"),peaks)
-    assert list(result.columns) == ["total"]
+    result = CalibratePeaks(load.sum(axis=1).rename("total_MW"),peaks)
+    assert list(result.columns) == ["total_MW"]
 
 
 @pytest.mark.parametrize("kwargs",[{"peak":0.5,"trough":0.5},{"peak":1.1},{"trough":-0.1}])
@@ -101,20 +101,43 @@ def test_invalid_peaks(load,peaks):
 @pytest.fixture(scope="module")
 def sectors(load) -> pd.DataFrame:
     """Load with a total column, its two parts, and a weather column"""
-    frame = load.rename(columns={"A CA":"elec_residential_MW","B NV":"elec_commercial_MW"})
+    frame = load.rename(columns={"A_MW":"elec_residential_MW","B_MW":"elec_commercial_MW"})
     frame["elec_total_MW"] = frame.sum(axis=1)
     frame["temperature_degF"] = 70 + 10*np.sin(2*np.pi*np.arange(len(frame))/24)
     return frame
 
 
-def test_defaults_are_all_columns(load,peaks):
-    """The defaults use the sum of all columns and calibrate every column"""
+def test_defaults_are_mw_columns(load,peaks):
+    """With only _MW columns the defaults use their sum and calibrate them all"""
     default = CalibratePeaks(load,peaks,peak=0.95,trough=0.05)
     explicit = CalibratePeaks(load,peaks,peak=0.95,trough=0.05,
         basis=list(load.columns),columns=list(load.columns))
     pd.testing.assert_frame_equal(pd.DataFrame(default),pd.DataFrame(explicit))
     assert default.basis == list(load.columns)
     assert default.calibrated_columns == list(load.columns)
+
+
+def test_defaults_skip_non_mw_columns(sectors,peaks):
+    """The defaults use and calibrate only the columns whose names end in _MW"""
+    frame = sectors.drop(columns="elec_total_MW")
+    result = CalibratePeaks(frame,peaks)
+    assert result.basis == ["elec_residential_MW","elec_commercial_MW"]
+    assert result.calibrated_columns == result.basis
+    pd.testing.assert_series_equal(result["temperature_degF"],frame["temperature_degF"])
+    total = result[result.basis].sum(axis=1).resample("1D")
+    assert np.allclose(total.max().values,peaks["max"].values)
+    assert np.allclose(total.min().values,peaks["min"].values)
+
+
+def test_defaults_need_mw_columns(load,peaks):
+    """A frame with no _MW column needs explicit basis and columns"""
+    frame = load.rename(columns={"A_MW":"A","B_MW":"B"})
+    with pytest.raises(CalibrationError,match="_MW"):
+        CalibratePeaks(frame,peaks)
+    with pytest.raises(CalibrationError,match="_MW"):
+        CalibratePeaks(frame,peaks,basis="A")
+    result = CalibratePeaks(frame,peaks,basis=["A","B"],columns=["A","B"])
+    assert np.allclose(result.values,CalibratePeaks(load,peaks).values)
 
 
 def test_basis_column(sectors,peaks):
