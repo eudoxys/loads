@@ -28,7 +28,8 @@ loads into a single table for review.
   uncalibrated.
 
 Pick the year and month, then WECC, a state, or a BA, and optionally one
-county of that state or BA.
+county of that state or BA. The download buttons save the calibrated net
+and gross (total) load of every WECC county for 2018-2022.
 """
 
 import marimo
@@ -72,7 +73,7 @@ def _(mo, np, pathlib, pd):
         reported = reported[["WECC_load_MW","CAISO_load_MW"]]
     bas = sorted(targets.ba.unique())
     states = sorted({x.rsplit(" ",1)[1] for x in net.columns})
-    return bas, factors, net, overrides, reported, states, targets
+    return bas, dg, factors, net, overrides, reported, states, targets
 
 
 @app.cell
@@ -117,12 +118,65 @@ def _(county_ui, mo, month_ui, peak_ui, region_ui, trough_ui, year_ui):
 
 
 @app.cell
+def _(CalibratePeaks, factors, net, pd, targets):
+    def calibrate_month(start,peak,trough):
+        """Calibrate each BA's county shares for the month starting at `start`
+
+        Returns the uncalibrated county net load of the month, the
+        uncalibrated and calibrated county shares by BA, and the BA
+        calibration summary. Shares in BAs without EIA-930 targets are left
+        as is.
+        """
+        _rows = (net.index >= start) & (net.index < start + pd.DateOffset(months=1))
+        _month = net.loc[_rows]
+        _targets = targets[targets.timestamp == start].set_index("ba")
+        _shares,_calibrated,_records = {},{},[]
+        for _ba,_group in factors.groupby("ba"):
+            _weights = _group.set_index("county_st").factor
+            _frame = _month[_weights.index] * _weights
+            _shares[_ba] = _frame
+            if _ba not in _targets.index or _month.empty:
+                _calibrated[_ba] = _frame   # no EIA-930 demand: left as is
+                continue
+            _peaks = pd.DataFrame({"max":[_targets.loc[_ba,"max"]],"min":[_targets.loc[_ba,"min"]]},
+                index=pd.DatetimeIndex([start],name="timestamp"))
+            _result = CalibratePeaks(_frame.add_suffix("_MW"),_peaks,peak=peak,trough=trough)
+            _calibrated[_ba] = pd.DataFrame(_result).rename(columns=lambda x:x[:-3])
+            _total = _frame.sum(axis=1)
+            _shaped = _calibrated[_ba].sum(axis=1)
+            _parameters = _result.parameters.iloc[0]
+            _records.append({
+                "BA": _ba,
+                "counties": len(_weights),
+                "target max (MW)": _targets.loc[_ba,"max"],
+                "target min (MW)": _targets.loc[_ba,"min"],
+                "model max (MW)": _total.max(),
+                "model min (MW)": _total.min(),
+                "scale": _parameters.scale,
+                "offset (MW)": _parameters.offset_MW,
+                "calibrated max (MW)": _shaped.max(),
+                "calibrated min (MW)": _shaped.min(),
+                "model energy (GWh)": _total.sum() / 1000,
+                "calibrated energy (GWh)": _shaped.sum() / 1000,
+                "energy change (%)": 100 * (_shaped.sum() / _total.sum() - 1),
+                "hours above max": int((_shaped > _targets.loc[_ba,"max"] + 1e-6).sum()),
+                "hours below min": int((_shaped < _targets.loc[_ba,"min"] - 1e-6).sum()),
+                })
+        _summary = pd.DataFrame(_records).set_index("BA") if _records else pd.DataFrame()
+        return _month,_shares,_calibrated,_summary
+
+    def combine(calibrated,columns):
+        """Sum the calibrated BA shares into one column per county"""
+        return sum(x.reindex(columns=columns,fill_value=0.0) for x in calibrated.values())
+    return calibrate_month, combine
+
+
+@app.cell
 def _(
-    CalibratePeaks,
-    factors,
+    calibrate_month,
+    combine,
     mo,
     month_ui,
-    net,
     pd,
     peak_ui,
     targets,
@@ -131,53 +185,69 @@ def _(
 ):
     # calibrate each BA's county shares for the selected month
     start = pd.Timestamp(f"{year_ui.value}-{month_ui.value}-01",tz="UTC")
-    _rows = (net.index >= start) & (net.index < start + pd.DateOffset(months=1))
-    month = net.loc[_rows]
-    _targets = targets[targets.timestamp == start].set_index("ba")
-    mo.stop(month.empty or _targets.empty,mo.md(f"**No load or targets for {start:%Y-%m}.**"))
-
-    shares = {}       # BA -> uncalibrated county shares (MW)
-    calibrated = {}   # BA -> calibrated county shares (MW)
-    _records = []
-    for _ba,_group in factors.groupby("ba"):
-        _weights = _group.set_index("county_st").factor
-        _frame = month[_weights.index] * _weights
-        shares[_ba] = _frame
-        if _ba not in _targets.index:
-            calibrated[_ba] = _frame   # no EIA-930 demand: left as is
-            continue
-        _peaks = pd.DataFrame({"max":[_targets.loc[_ba,"max"]],"min":[_targets.loc[_ba,"min"]]},
-            index=pd.DatetimeIndex([start],name="timestamp"))
-        _input = _frame.add_suffix("_MW")
-        _result = CalibratePeaks(_input,_peaks,peak=peak_ui.value,trough=trough_ui.value)
-        calibrated[_ba] = pd.DataFrame(_result).rename(columns=lambda x:x[:-3])
-        _total = _frame.sum(axis=1)
-        _shaped = calibrated[_ba].sum(axis=1)
-        _parameters = _result.parameters.iloc[0]
-        _records.append({
-            "BA": _ba,
-            "counties": len(_weights),
-            "target max (MW)": _targets.loc[_ba,"max"],
-            "target min (MW)": _targets.loc[_ba,"min"],
-            "model max (MW)": _total.max(),
-            "model min (MW)": _total.min(),
-            "scale": _parameters.scale,
-            "offset (MW)": _parameters.offset_MW,
-            "calibrated max (MW)": _shaped.max(),
-            "calibrated min (MW)": _shaped.min(),
-            "model energy (GWh)": _total.sum() / 1000,
-            "calibrated energy (GWh)": _shaped.sum() / 1000,
-            "energy change (%)": 100 * (_shaped.sum() / _total.sum() - 1),
-            "hours above max": int((_shaped > _targets.loc[_ba,"max"] + 1e-6).sum()),
-            "hours below min": int((_shaped < _targets.loc[_ba,"min"] - 1e-6).sum()),
-            })
-    ba_summary = pd.DataFrame(_records).set_index("BA")
+    uncalibrated,shares,calibrated,ba_summary = calibrate_month(start,peak_ui.value,trough_ui.value)
+    mo.stop(uncalibrated.empty or not (targets.timestamp == start).any(),
+        mo.md(f"**No load or targets for {start:%Y-%m}.**"))
 
     # combine all WECC county net loads into one table
-    combined = sum(x.reindex(columns=month.columns,fill_value=0.0) for x in calibrated.values())
-    combined = combined.round(3)
-    uncalibrated = month
+    combined = combine(calibrated,uncalibrated.columns).round(3)
     return ba_summary, calibrated, combined, shares, start, uncalibrated
+
+
+@app.cell
+def _(
+    calibrate_month,
+    combine,
+    dg,
+    gzip,
+    io,
+    mo,
+    net,
+    np,
+    pd,
+    peak_ui,
+    targets,
+    trough_ui,
+):
+    # download the 2018-2022 calibration of all WECC counties
+    _cache = {}
+    def _calibrate_all():
+        _key = (peak_ui.value,trough_ui.value)
+        if _key not in _cache:
+            _months = []
+            for _start in sorted(targets.timestamp.unique()):
+                _month,_,_calibrated,_ = calibrate_month(pd.Timestamp(_start),*_key)
+                if not _month.empty:
+                    _months.append(combine(_calibrated,_month.columns))
+            _net = pd.concat(_months).reindex(net.index)
+            _total = _net + np.abs(dg)   # DG taken as given
+            _net.index.name = _total.index.name = "timestamp"
+            _cache[_key] = {"net":_net.round(4),"total":_total.round(4)}
+        return _cache[_key]
+    def _csv_gz(kind):
+        def _data():
+            with mo.status.spinner(f"Calibrating 2018-2022 and writing county_{kind}.csv.gz"):
+                _buffer = io.BytesIO()
+                with gzip.GzipFile(fileobj=_buffer,mode="wb",mtime=0) as _fh:
+                    _calibrate_all()[kind].to_csv(_fh,index=True,header=True)
+                return _buffer.getvalue()
+        return _data
+    mo.vstack([
+        mo.md(f"""### Download
+
+    The calibration of every WECC county for every month of 2018-2022 with
+    the percentiles above (peak {peak_ui.value}, trough {trough_ui.value}):
+    calibrated net load `county_net.csv.gz`, and gross load
+    `county_total.csv.gz` = net load + the given DG. MW, one column per
+    `"County ST"`, hour-beginning UTC. Building them takes a minute or two."""),
+        mo.hstack([
+            mo.download(data=_csv_gz("total"),filename="county_total.csv.gz",
+                mimetype="application/gzip",label="county_total.csv.gz"),
+            mo.download(data=_csv_gz("net"),filename="county_net.csv.gz",
+                mimetype="application/gzip",label="county_net.csv.gz"),
+            ],justify="start"),
+        ])
+    return
 
 
 @app.cell
@@ -316,13 +386,15 @@ def _(columns, combined, mo):
 @app.cell
 def _():
     import marimo as mo
+    import gzip
+    import io
     import pathlib
     import numpy as np
     import pandas as pd
     import matplotlib.pyplot as plt
     from loads.calibrate import CalibratePeaks
 
-    return CalibratePeaks, mo, np, pathlib, pd, plt
+    return CalibratePeaks, gzip, io, mo, np, pathlib, pd, plt
 
 
 if __name__ == "__main__":
