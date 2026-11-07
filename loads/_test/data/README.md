@@ -83,7 +83,7 @@ factors rise each year; for 2020 California's is 3.18 (5.48 to 17.41 TWh, peak a
 ## BA monthly min/max targets
 `ba_minmax_target.csv` holds, for each of the 28 US WECC BAs and each UTC month of 2018–2022, the maximum (`max`)
 and minimum (`min`) of the BA's cleaned EIA-930 hourly demand (MW). It is read by
-`loads/_review/review_wecc_calibrate_eia930.py`, which calibrates each BA's share of the WECC county net loads to
+`loads/_review/review_wecc_calibrate_eia930_marimo.py`, which calibrates each BA's share of the WECC county net loads to
 these values with `loads.calibrate.CalibratePeaks`, holding the unscaled rooftop PV in `loads/wecc/county_dg.csv.gz`
 fixed.
 - derived from the cleaned per-BA series `WECC_BA_hourly_load_2018-2022.csv`, which is no longer kept here (it is in
