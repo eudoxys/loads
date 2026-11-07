@@ -31,7 +31,7 @@ def synthetic(year: int, scale: float = 1.0, seed: int = 0) -> pd.DataFrame:
     df["elec_transportation_MW"] = 0.0
     df["elec_dg_MW"] = -40 * scale * sun
     df["elec_total_MW"] = df.filter(regex=r"^elec_(res|com|ind|agr|tra)").sum(axis=1)
-    df["elec_net_MW"] = df["elec_total_MW"] + df["elec_dg_MW"]
+    df["elec_net_MW"] = df["elec_total_MW"] - np.abs(df["elec_dg_MW"])
     df["temperature_degF"] = temp.round(1)
     return df
 

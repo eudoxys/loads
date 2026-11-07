@@ -70,7 +70,7 @@ def scale_to_energy(
         for c in [col] + list((also_scale or {}).get(col, [])):
             out[c] = frame[c] * k
     if recompute_net and {"elec_net_MW", "elec_total_MW", "elec_dg_MW"} <= set(out.columns):
-        out["elec_net_MW"] = out["elec_total_MW"] + out["elec_dg_MW"]
+        out["elec_net_MW"] = out["elec_total_MW"] - np.abs(out["elec_dg_MW"])
     return out, factors
 
 
@@ -97,7 +97,7 @@ def scale_monthly(
     for c in [column] + list(also_scale or []):
         out[c] = frame[c].to_numpy() * per_row
     if recompute_net and {"elec_net_MW", "elec_total_MW", "elec_dg_MW"} <= set(out.columns):
-        out["elec_net_MW"] = out["elec_total_MW"] + out["elec_dg_MW"]
+        out["elec_net_MW"] = out["elec_total_MW"] - np.abs(out["elec_dg_MW"])
     return out, factor
 
 

@@ -955,7 +955,7 @@ class CalibratePeaks(pd.DataFrame):
 
         result = CalibratePeaks(total,peaks,peak=0.95,trough=0.05,
             basis="elec_net_MW",columns="elec_net_MW")
-        gross = result["elec_net_MW"] - result["elec_dg_MW"]    # elec_dg_MW <= 0
+        gross = result["elec_net_MW"] + np.abs(result["elec_dg_MW"])  # abs: robust to DG sign
         result[sectors] = total[sectors].mul(gross/total["elec_total_MW"],axis=0)
         result["elec_total_MW"] = gross
 

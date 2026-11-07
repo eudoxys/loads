@@ -199,7 +199,7 @@ def test_ba_net_load_with_fixed_dg(sectors,peaks):
     hour = np.arange(len(sectors))
     frame = sectors.copy()
     frame["elec_dg_MW"] = -20*np.clip(np.sin(2*np.pi*(hour-6)/24),0,None)
-    frame["elec_net_MW"] = frame["elec_total_MW"] + frame["elec_dg_MW"]
+    frame["elec_net_MW"] = frame["elec_total_MW"] - np.abs(frame["elec_dg_MW"])
 
     # documented usage: calibrate the net load alone, then rebuild gross load
     result = CalibratePeaks(frame,peaks,basis="elec_net_MW",columns="elec_net_MW")
@@ -207,12 +207,12 @@ def test_ba_net_load_with_fixed_dg(sectors,peaks):
     net = result["elec_net_MW"].resample("1D")
     assert np.allclose(net.max().values,peaks["max"].values)
     assert np.allclose(net.min().values,peaks["min"].values)
-    gross = result["elec_net_MW"] - result["elec_dg_MW"]
+    gross = result["elec_net_MW"] + np.abs(result["elec_dg_MW"])
     result[parts] = frame[parts].mul(gross/frame["elec_total_MW"],axis=0)
     result["elec_total_MW"] = gross
     assert np.allclose(result[parts].sum(axis=1),result["elec_total_MW"])
-    assert np.allclose(result["elec_total_MW"] + result["elec_dg_MW"],result["elec_net_MW"])
+    assert np.allclose(result["elec_total_MW"] - np.abs(result["elec_dg_MW"]),result["elec_net_MW"])
 
     # calibrating net and gross together breaks the net identity (documented caveat)
     both = CalibratePeaks(frame,peaks,basis="elec_net_MW",columns=parts+["elec_total_MW","elec_net_MW"])
-    assert not np.allclose(both["elec_total_MW"] + both["elec_dg_MW"],both["elec_net_MW"])
+    assert not np.allclose(both["elec_total_MW"] - np.abs(both["elec_dg_MW"]),both["elec_net_MW"])

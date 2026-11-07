@@ -82,7 +82,11 @@ must match the CLI option's dest name (`state`, `county`, `year`, `building_type
 weather columns and the `Y` column). Invariants:
 - `elec_total_MW = baseload + cooling + heating`
 - `elec_net_MW = elec_total_MW + elec_dg_MW` and `elec_dg_MW <= 0`
-  (DG is a negative load)
+  (DG is a negative load). In code, always add or subtract DG through
+  `np.abs` (`elec_total_MW - np.abs(elec_dg_MW)`,
+  `elec_net_MW + np.abs(elec_dg_MW)`) so data that doesn't observe the sign
+  convention can't flip the result; validators that check the convention
+  compare against the signed identity.
 - weather columns: `temperature_degF`, `humidity_pc`, `global_Wpms`,
   `direct_Wpms`, `diffuse_Wpms`
 Raw stock columns use `{fuel}_{enduse}` (`elec_`, `gas_`, `oil_`, `lng_`

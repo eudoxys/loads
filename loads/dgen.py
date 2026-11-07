@@ -121,6 +121,7 @@ import sys
 import logging
 from warnings import warn
 
+import numpy as np
 import pandas as pd
 
 from fips import States, Counties
@@ -339,7 +340,7 @@ class DG(pd.DataFrame):
         dg = cls(state,county,date_range=pd.DatetimeIndex(result.index),**kwargs)
         result["elec_dg_MW"] = dg["elec_dg_MW"].values
         if "elec_total_MW" in result.columns:
-            result["elec_net_MW"] = result["elec_total_MW"] + result["elec_dg_MW"]
+            result["elec_net_MW"] = result["elec_total_MW"] - np.abs(result["elec_dg_MW"])
         return result
 
     @staticmethod

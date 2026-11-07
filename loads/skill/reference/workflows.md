@@ -251,7 +251,7 @@ sectors = [c for c in df if c.startswith("elec_") and c.endswith("_MW")
            and c not in ("elec_total_MW", "elec_dg_MW", "elec_net_MW")]
 cal = CalibratePeaks(df, peaks, peak=0.95, trough=0.05,
                      basis="elec_total_MW", columns=sectors + ["elec_total_MW"])
-cal["elec_net_MW"] = cal["elec_total_MW"] + cal["elec_dg_MW"]   # not recomputed for you
+cal["elec_net_MW"] = cal["elec_total_MW"] - np.abs(cal["elec_dg_MW"])   # not recomputed for you
 print(cal.parameters[["scale", "offset_MW", "fraction_above", "fraction_below"]])
 ```
 
@@ -272,7 +272,7 @@ alone, and rebuild the gross load and sectors from it:
 ```python
 cal = CalibratePeaks(df, peaks, peak=0.95, trough=0.05,
                      basis="elec_net_MW", columns="elec_net_MW")
-gross = cal["elec_net_MW"] - cal["elec_dg_MW"]             # elec_dg_MW <= 0, unchanged
+gross = cal["elec_net_MW"] + np.abs(cal["elec_dg_MW"])    # DG unchanged; abs guards the sign
 cal[sectors] = df[sectors].mul(gross / df["elec_total_MW"], axis=0)
 cal["elec_total_MW"] = gross
 ls.validate(cal).raise_if_failed()                        # sector sum and net identity

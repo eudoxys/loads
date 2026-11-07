@@ -196,7 +196,10 @@ These fail silently or late. The full list with source references is in
   WECC states). Say which. `loads` frames and `loads.dgen.DG` use
   `elec_dg_MW <= 0`; `Calibrate(dg=...)`, the bundled
   `loads/wecc/county_dg*.csv.gz` files and `dgen.compile` output use
-  positive generation. `wecc_dg` and `shape_to_targets` convert.
+  positive generation. `wecc_dg` and `shape_to_targets` convert. When
+  adding or subtracting DG, always use its magnitude,
+  `elec_total_MW - np.abs(elec_dg_MW)` and `elec_net_MW + np.abs(elec_dg_MW)`,
+  so a DG column in the wrong convention cannot flip the result.
 - **`Calibrate` shapes, it does not rescale.** It fits a scale and an
   offset per unit per UTC month to *net-load* state energy and regional
   peak targets, needs at least one peak region, and rejects NaN. See
@@ -209,7 +212,7 @@ These fail silently or late. The full list with source references is in
   with the sectors, so set them. For a BA load report (EIA-930), which is
   net of rooftop PV, use `basis="elec_net_MW"`; DG known from another
   source (NSRDB, dGen) stays fixed, so leave `elec_dg_MW` out of `columns`
-  and rebuild `elec_total_MW = elec_net_MW − elec_dg_MW`. See
+  and rebuild `elec_total_MW = elec_net_MW + np.abs(elec_dg_MW)`. See
   [api.md](reference/api.md#calibratepeaks).
 - **Ambiguous county names.** `fips` has Baltimore city and Baltimore
   County, St. Louis city and County, several Virginia pairs. `loads` keys on

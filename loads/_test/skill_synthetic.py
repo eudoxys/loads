@@ -31,5 +31,5 @@ def synthetic_total(year: int = 2018, seed: int = 0) -> pd.DataFrame:
     )
     sectors = [f"elec_{s}_MW" for s in ("residential", "commercial", "industrial", "agricultural", "transportation")]
     df["elec_total_MW"] = df[sectors].sum(axis=1)
-    df["elec_net_MW"] = df["elec_total_MW"] + df["elec_dg_MW"]
+    df["elec_net_MW"] = df["elec_total_MW"] - np.abs(df["elec_dg_MW"])
     return df
