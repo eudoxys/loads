@@ -29,7 +29,8 @@ loads into a single table for review.
 
 Pick the year and month, then WECC, a state, or a BA, and optionally one
 county of that state or BA. The download buttons save the calibrated net
-and gross (total) load of every WECC county for 2018-2022.
+and gross (total) load of every WECC county for 2018-2022, and the gross
+load aggregated onto the WECC240 load nodes.
 """
 
 import marimo
@@ -55,6 +56,7 @@ def _(mo, np, pathlib, pd):
         "dg": _root / "wecc" / "county_dg.csv.gz",
         "factors": _root / "wecc" / "county_ba.csv",
         "overrides": _root / "wecc" / "county_ba_overrides.csv",
+        "nodes": _root / "wecc" / "node_estimate_cf.csv",
         "targets": _root / "_test" / "data" / "ba_minmax_target.csv",
         "reported": _root / "_test" / "data" / "WECC_CAISO_hourly_load_2018-2022.csv",
         }
@@ -67,13 +69,15 @@ def _(mo, np, pathlib, pd):
         net = gross - np.abs(dg)
         factors = pd.read_csv(_files["factors"])
         overrides = pd.read_csv(_files["overrides"])
+        node_cf = pd.read_csv(_files["nodes"]).pivot_table(index="county_st",columns="node",
+            values="cf",aggfunc="sum",fill_value=0.0)
         targets = pd.read_csv(_files["targets"],parse_dates=["timestamp"])
         reported = pd.read_csv(_files["reported"])
         reported.index = pd.to_datetime(reported["utc_hour_ending"],utc=True) - pd.Timedelta(hours=1)
         reported = reported[["WECC_load_MW","CAISO_load_MW"]]
     bas = sorted(targets.ba.unique())
     states = sorted({x.rsplit(" ",1)[1] for x in net.columns})
-    return bas, dg, factors, net, overrides, reported, states, targets
+    return bas, dg, factors, net, node_cf, overrides, reported, states, targets
 
 
 @app.cell
@@ -203,6 +207,7 @@ def _(
     io,
     mo,
     net,
+    node_cf,
     np,
     pd,
     peak_ui,
@@ -211,6 +216,7 @@ def _(
 ):
     # download the 2018-2022 calibration of all WECC counties
     _cache = {}
+    _names = {"total":"county_total.csv.gz","net":"county_net.csv.gz","node":"node_total.csv.gz"}
     def _calibrate_all():
         _key = (peak_ui.value,trough_ui.value)
         if _key not in _cache:
@@ -222,11 +228,13 @@ def _(
             _net = pd.concat(_months).reindex(net.index)
             _total = _net + np.abs(dg)   # DG taken as given
             _net.index.name = _total.index.name = "timestamp"
-            _cache[_key] = {"net":_net.round(4),"total":_total.round(4)}
+            _node = _total[node_cf.index] @ node_cf   # county total load on WECC240 load nodes
+            _node.index.name = "timestamp"
+            _cache[_key] = {"net":_net.round(4),"total":_total.round(4),"node":_node.round(4)}
         return _cache[_key]
     def _csv_gz(kind):
         def _data():
-            with mo.status.spinner(f"Calibrating 2018-2022 and writing county_{kind}.csv.gz"):
+            with mo.status.spinner(f"Calibrating 2018-2022 and writing {_names[kind]}"):
                 _buffer = io.BytesIO()
                 with gzip.GzipFile(fileobj=_buffer,mode="wb",mtime=0) as _fh:
                     _calibrate_all()[kind].to_csv(_fh,index=True,header=True)
@@ -238,13 +246,17 @@ def _(
     The calibration of every WECC county for every month of 2018-2022 with
     the percentiles above (peak {peak_ui.value}, trough {trough_ui.value}):
     calibrated net load `county_net.csv.gz`, and gross load
-    `county_total.csv.gz` = net load + the given DG. MW, one column per
-    `"County ST"`, hour-beginning UTC. Building them takes a minute or two."""),
+    `county_total.csv.gz` = net load + the given DG, in MW with one column per
+    `"County ST"`, hour-beginning UTC. `node_total.csv.gz` is the county gross
+    load allocated to the WECC240 load nodes (one column per node geohash)
+    with the contribution factors in `loads/wecc/node_estimate_cf.csv`
+    (in-county load busses by bus load, otherwise the nearest load node); it
+    holds the US county load only, not the Canadian and Mexican nodes.
+    Building the files takes a minute or two."""),
         mo.hstack([
-            mo.download(data=_csv_gz("total"),filename="county_total.csv.gz",
-                mimetype="application/gzip",label="county_total.csv.gz"),
-            mo.download(data=_csv_gz("net"),filename="county_net.csv.gz",
-                mimetype="application/gzip",label="county_net.csv.gz"),
+            mo.download(data=_csv_gz(_kind),filename=_name,
+                mimetype="application/gzip",label=_name)
+            for _kind,_name in _names.items()
             ],justify="start"),
         ])
     return

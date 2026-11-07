@@ -148,7 +148,7 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/_review/review_commercial_marimo.py` | review `Commercial` | marimo |
 | `loads/_review/review_wecc_estimate_marimo.py` | view `wecc/wecc_estimate.csv.gz` | marimo |
 | `loads/_review/review_node_estimate_marimo.py` | view `wecc/node_estimate.csv.gz` | marimo |
-| `loads/_review/review_wecc_calibrate_eia930.py` | WECC county net load calibrated per BA to EIA-930 monthly min/max with `CalibratePeaks`; combined county table by year, month, state/BA, county; download buttons for 2018–2022 `county_total.csv.gz` and `county_net.csv.gz` | `marimo run`; reads `wecc/wecc_estimate.csv.gz`, `wecc/county_dg.csv.gz` (unscaled DG), `wecc/county_ba.csv`, `_test/data/ba_minmax_target.csv` |
+| `loads/_review/review_wecc_calibrate_eia930.py` | WECC county net load calibrated per BA to EIA-930 monthly min/max with `CalibratePeaks`; combined county table by year, month, state/BA, county; download buttons for 2018–2022 `county_total.csv.gz`, `county_net.csv.gz` and WECC240 node `node_total.csv.gz` (via `wecc/node_estimate_cf.csv`) | `marimo run`; reads `wecc/wecc_estimate.csv.gz`, `wecc/county_dg.csv.gz` (unscaled DG), `wecc/county_ba.csv`, `_test/data/ba_minmax_target.csv` |
 | `loads/_review/review_estimator_folds_marimo.py` | `Estimator` holdout fold results (`fold=True`) for any state and county | `marimo run`; fits `N` models, needs NSRDB credentials |
 
 ## Examples
