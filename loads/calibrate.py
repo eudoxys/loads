@@ -945,6 +945,20 @@ class CalibratePeaks(pd.DataFrame):
         result = CalibratePeaks(total,peaks,peak=0.95,trough=0.05,
             basis="elec_total_MW",columns=sectors+["elec_total_MW"])
 
+    Calibrate to a balancing authority (BA) load report, such as the hourly
+    demand in EIA Form 930. A BA reports the load it serves, which is net of
+    behind-the-meter DG, so the basis is `elec_net_MW`. When the DG is known
+    from another source (e.g., NSRDB irradiance via `Total(...,dg=True)` or
+    `loads.dgen.DG`), it is not calibrated, so `elec_dg_MW` is not in
+    `columns`; the gross load and sectors are then rebuilt from the
+    calibrated net load and the fixed DG:
+
+        result = CalibratePeaks(total,peaks,peak=0.95,trough=0.05,
+            basis="elec_net_MW",columns="elec_net_MW")
+        gross = result["elec_net_MW"] - result["elec_dg_MW"]    # elec_dg_MW <= 0
+        result[sectors] = total[sectors].mul(gross/total["elec_total_MW"],axis=0)
+        result["elec_total_MW"] = gross
+
     Caveats
     -------
 
@@ -965,6 +979,13 @@ class CalibratePeaks(pd.DataFrame):
       - The achieved fractions in `parameters` refer to the mapped basis
         $y$. Calibrated columns whose sum is not the basis are not checked
         against the observed peak and trough.
+
+      - Identities between columns are not maintained across columns that
+        are not calibrated. In particular, with fixed DG, calibrating
+        `elec_net_MW` together with `elec_total_MW` or the sectors does not
+        keep `elec_net_MW = elec_total_MW + elec_dg_MW` (the scale also
+        applies to the DG implicit in the net load); calibrate the net load
+        alone and rebuild the gross load as shown above.
     """
 
     _metadata = ["parameters","uncalibrated","calibrated","basis","calibrated_columns"]

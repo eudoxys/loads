@@ -186,6 +186,20 @@ def test_calibrate_peaks_default_is_mw_columns():
         loads.CalibratePeaks(X[["temperature_degF"]], peaks)
 
 
+def test_calibrate_peaks_ba_net_basis_keeps_dg_fixed():
+    # footguns.md #34 / workflows.md: BA demand is net load; NSRDB/dGen DG is not calibrated
+    X, peaks = _peaks_case()
+    h = np.arange(len(X))
+    X = pd.DataFrame({"elec_total_MW": X.sum(axis=1)})
+    X["elec_dg_MW"] = -50 * np.clip(np.sin(2 * np.pi * ((h - 14) % 24) / 24), 0, None)
+    X["elec_net_MW"] = X["elec_total_MW"] + X["elec_dg_MW"]
+    out = loads.CalibratePeaks(X, peaks, basis="elec_net_MW", columns="elec_net_MW")
+    assert np.allclose(out["elec_dg_MW"], X["elec_dg_MW"])
+    assert np.allclose(out["elec_net_MW"].resample("D").max().values, peaks["max"].values)
+    both = loads.CalibratePeaks(X, peaks, basis="elec_net_MW", columns=["elec_total_MW", "elec_net_MW"])
+    assert not np.allclose(both["elec_total_MW"] + both["elec_dg_MW"], both["elec_net_MW"])
+
+
 def test_calibrate_peaks_outside_intervals_unchanged():
     X, peaks = _peaks_case()
     out = loads.CalibratePeaks(X, peaks.iloc[:10])

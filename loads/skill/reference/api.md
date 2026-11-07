@@ -327,7 +327,14 @@ troughs only; no energy targets, no DG.
 - Every calibrated column `k` becomes `a·X_k + b·mean(X_k)/mean(x)` (means
   over the interval): calibrated columns that sum to the basis still sum to
   `y`, and a calibrated column that *is* the basis maps to `y` exactly.
-  With the defaults this means the `_MW` columns sum to `y`. Fractions in
+  With the defaults this means the `_MW` columns sum to `y`.
+- BA load reports (EIA-930) are net of behind-the-meter DG: use
+  `basis="elec_net_MW"`. DG known from another source (NSRDB via
+  `Total(dg=True)`/`DG`, dGen) is not calibrated: keep `elec_dg_MW` out of
+  `columns`, calibrate `elec_net_MW` alone and rebuild
+  `elec_total_MW = elec_net_MW − elec_dg_MW` (and the sectors in
+  proportion); see [workflows.md](workflows.md). Uncalibrated columns are
+  not recomputed, so cross-column identities are yours to restore. Fractions in
   `parameters` refer to `y`, not to the individual columns.
 - Hours outside every interval, or in an interval with NaN `max`/`min`,
   are returned unchanged (warning logged). An interval with no spread

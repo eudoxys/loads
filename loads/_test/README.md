@@ -46,7 +46,8 @@ cache already holds them; set `LOADS_TEST_BUILD=1` to build them anyway.
 `test_calibrate_synthetic.py` checks the formulation on a small synthetic
 system in seconds and always runs. `test_calibrate_peaks.py` checks
 `CalibratePeaks` on synthetic hourly load and daily peaks and troughs,
-including the `basis` and `columns` options and their `_MW` defaults, also
+including the `basis` and `columns` options, their `_MW` defaults and
+calibration of net load to a BA report with fixed DG, also
 offline and in seconds.
 
 	pytest -s test_calibrate.py

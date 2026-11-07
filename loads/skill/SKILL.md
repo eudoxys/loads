@@ -206,7 +206,10 @@ These fail silently or late. The full list with source references is in
   peak by design. Percentiles come from the sum of the `basis` columns and
   only `columns` change; both default to every column ending in `_MW`,
   which on a `Total` frame includes the total, DG and net columns along
-  with the sectors, so set them. See
+  with the sectors, so set them. For a BA load report (EIA-930), which is
+  net of rooftop PV, use `basis="elec_net_MW"`; DG known from another
+  source (NSRDB, dGen) stays fixed, so leave `elec_dg_MW` out of `columns`
+  and rebuild `elec_total_MW = elec_net_MW − elec_dg_MW`. See
   [api.md](reference/api.md#calibratepeaks).
 - **Ambiguous county names.** `fips` has Baltimore city and Baltimore
   County, St. Louis city and County, several Virginia pairs. `loads` keys on
