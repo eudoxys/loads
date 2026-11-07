@@ -7,10 +7,12 @@ balancing authority (BA) reported to EIA Form 930, using
 loads into a single table for review.
 
 - **County net load.** `elec_net_MW = elec_total_MW - |elec_dg_MW|`, from the
-  gross county load in `loads/wecc/wecc_estimate.csv.gz` and the EIA-scaled
-  rooftop PV in `loads/wecc/county_dg_scaled.csv.gz`. A BA's reported demand
-  is net of behind-the-meter DG, so the net load is the calibration basis
-  and the DG itself is held fixed.
+  gross county load in `loads/wecc/wecc_estimate.csv.gz` and the rooftop PV
+  in `loads/wecc/county_dg.csv.gz`. The DG is taken as given: it is neither
+  scaled (the EIA-scaled `county_dg_scaled.csv.gz` is not used) nor
+  calibrated, and counties missing from the file have no DG. A BA's
+  reported demand is net of behind-the-meter DG, so the net load is the
+  calibration basis.
 - **BA participation.** Each county's net load is split among the BAs that
   serve it with the factors in `loads/wecc/county_ba.csv`
   (`loads/wecc/county_ba.py`, fitted to EIA-861 2018 utility sales and
@@ -49,7 +51,7 @@ def _(mo, np, pathlib, pd):
     _root = pathlib.Path(*pathlib.Path(__file__).parts[:-2])
     _files = {
         "gross": _root / "wecc" / "wecc_estimate.csv.gz",
-        "dg": _root / "wecc" / "county_dg_scaled.csv.gz",
+        "dg": _root / "wecc" / "county_dg.csv.gz",
         "factors": _root / "wecc" / "county_ba.csv",
         "overrides": _root / "wecc" / "county_ba_overrides.csv",
         "targets": _root / "_test" / "data" / "ba_minmax_target.csv",
@@ -60,7 +62,7 @@ def _(mo, np, pathlib, pd):
     with mo.status.spinner("Loading WECC county loads and DG"):
         gross = pd.read_csv(_files["gross"],index_col=[0],parse_dates=[0])
         dg = pd.read_csv(_files["dg"],index_col=[0],parse_dates=[0])
-        dg = dg.reindex(index=gross.index,columns=gross.columns).fillna(0.0)
+        dg = dg.reindex(index=gross.index,columns=gross.columns).fillna(0.0)  # missing counties: no DG
         net = gross - np.abs(dg)
         factors = pd.read_csv(_files["factors"])
         overrides = pd.read_csv(_files["overrides"])
