@@ -155,21 +155,27 @@ maximum and minimum with `loads.calibrate.CalibratePeaks` (peak 1.0, trough
 
 	marimo run validate_calibrate_peaks_marimo.py
 
-and pick a year, a month and a node as in
+and pick a year, a month and a BA (none for all of WECC), as in
 `loads/_review/review_node_total_marimo.py`.
 
 - **Calibrated net load:** `node_total.csv.gz` is total (gross) load, while
   EIA-930 demand is net of rooftop PV. So the notebook subtracts the county
   rooftop PV of `loads/wecc/county_dg.csv.gz`, unscaled as in the
   calibration and allocated to nodes with `loads/wecc/node_estimate_cf.csv`.
-- **Reported demand:** the hourly `WECC_load_MW` of
+- **A BA:** its calibrated net load, `loads/wecc/ba_net.csv.gz` (the sum of
+  its calibrated county shares, saved from the review notebook), against its
+  reported demand in `loads/_test/data/WECC_BA_hourly_load_2018-2022.csv`.
+  The plotted total adds the BA's share of the county rooftop PV, using the
+  factors in `loads/wecc/county_ba.csv`.
+- **Reported demand for WECC:** the hourly `WECC_load_MW` of
   `loads/_test/data/WECC_CAISO_hourly_load_2018-2022.csv`, the sum of the 28
-  US WECC BAs. Only WECC as a whole (no node selected) has reported data;
-  the BA hourly series aren't kept, and nodes don't map to BAs.
+  US WECC BAs.
 - **Metrics:** MAPE, MAE, RMSE, R² and total energy error of the
   calibrated net load against reported demand, over the hours shown.
 
 ### Results
+
+WECC (calibrated net load of all WECC counties):
 
 | Period | Hours | MAPE (%) | MAE (MW) | RMSE (MW) | R² | Energy error (%) | Peak (MW) | Reported peak (MW) |
 | ------ | ----: | -------: | -------: | --------: | -: | ---------------: | --------: | -----------------: |
@@ -181,11 +187,50 @@ and pick a year, a month and a node as in
 | 2022 | 8,760 | 6.20 | 5,298 | 6,530 | 0.768 | −0.92 | 146,188 | 143,047 |
 | Aug 2020 | 744 | 6.04 | 5,703 | 6,770 | 0.867 | −0.85 | 141,026 | 140,778 |
 
+By BA, 2018–2022 (calibrated net load vs reported demand):
+
+| BA | MAPE (%) | MAE (MW) | RMSE (MW) | R² | Energy error (%) |
+| -- | -------: | -------: | --------: | -: | ---------------: |
+| AVA | 6.46 | 95 | 125 | 0.771 | −3.72 |
+| AZPS | 9.10 | 306 | 373 | 0.881 | −2.44 |
+| BANC | 8.30 | 165 | 215 | 0.834 | +0.56 |
+| BPAT | 5.39 | 351 | 467 | 0.770 | −2.52 |
+| CHPD | 8.47 | 18 | 26 | 0.852 | −0.30 |
+| CISO | 10.74 | 2,662 | 3,336 | 0.543 | +0.99 |
+| DOPD | 6.97 | 14 | 18 | 0.878 | −0.83 |
+| EPE | 6.41 | 61 | 82 | 0.923 | −1.29 |
+| GCPD | 4.83 | 31 | 40 | 0.766 | −1.95 |
+| IID | 10.60 | 42 | 59 | 0.906 | −3.39 |
+| IPCO | 6.77 | 136 | 182 | 0.853 | −2.55 |
+| LDWP | 10.26 | 311 | 397 | 0.647 | −0.40 |
+| NEVP | 6.19 | 269 | 347 | 0.914 | +1.28 |
+| NWMT | 6.21 | 86 | 121 | 0.576 | −3.90 |
+| PACE | 4.96 | 274 | 357 | 0.825 | −1.24 |
+| PACW | 7.18 | 170 | 223 | 0.733 | −2.80 |
+| PGE | 6.56 | 160 | 208 | 0.764 | −0.17 |
+| PNM | 4.89 | 77 | 97 | 0.857 | −0.59 |
+| PSCO | 5.80 | 315 | 403 | 0.827 | −0.69 |
+| PSEI | 8.96 | 266 | 381 | 0.685 | −4.56 |
+| SCL | 6.18 | 68 | 92 | 0.801 | −2.91 |
+| SRP | 6.37 | 237 | 318 | 0.926 | −3.40 |
+| TEPC | 17.15 | 233 | 303 | 0.724 | −4.88 |
+| TIDC | 8.04 | 26 | 33 | 0.859 | −4.46 |
+| TPWR | 6.89 | 38 | 51 | 0.783 | −4.00 |
+| WACM | 8.82 | 225 | 297 | 0.709 | −5.11 |
+| WALC | 11.93 | 127 | 165 | 0.592 | −6.69 |
+| WAUW | 10.32 | 10 | 12 | 0.585 | −6.46 |
+
 Each BA matches its own reported monthly maximum and minimum, so the energy
 error is small. The WECC peak is slightly high because BA peaks aren't
 simultaneous, so matching each BA's maximum doesn't fix the sum's maximum.
 The hourly shape errors (MAPE about 5–6%) come from the county estimates
-within each month.
+within each month. They're larger for single BAs (5–17%) than for WECC
+because BA errors partly cancel in the sum. CISO is notably weak (MAPE 10.7%,
+R² 0.54): its model load is about 23% above its reported demand (see
+`loads/_review/review_wecc_calibrate_eia930_marimo.py`), and the strong
+monthly scale preserves the extremes but not the daily shape. Most BAs come
+out below their reported energy (−7% to +1%), because a min/max fit doesn't
+constrain energy.
 
 ## Comparison to existing models
 

@@ -337,21 +337,27 @@ def _(
 ):
     # download the 2018-2022 calibration of all WECC counties
     _cache = {}
-    _names = {"total":"county_total.csv.gz","net":"county_net.csv.gz","node":"node_total.csv.gz"}
+    _names = {"total":"county_total.csv.gz","net":"county_net.csv.gz","node":"node_total.csv.gz",
+        "ba":"ba_net.csv.gz"}
     def _calibrate_all():
         _key = (peak_ui.value,trough_ui.value)
         if _key not in _cache:
-            _months = []
+            _months,_bas = [],[]
             for _start in sorted(targets.timestamp.unique()):
                 _month,_,_calibrated,_ = calibrate_month(pd.Timestamp(_start),*_key)
                 if not _month.empty:
                     _months.append(combine(_calibrated,_month.columns))
+                    _bas.append(pd.DataFrame({_ba:_calibrated[_ba].sum(axis=1)
+                        for _ba in sorted(targets.ba.unique())}))
             _net = pd.concat(_months).reindex(net.index)
             _total = _net + np.abs(dg)   # DG taken as given
             _net.index.name = _total.index.name = "timestamp"
             _node = _total[node_cf.index] @ node_cf   # county total load on WECC240 load nodes
             _node.index.name = "timestamp"
-            _cache[_key] = {"net":_net.round(4),"total":_total.round(4),"node":_node.round(4)}
+            _ba = pd.concat(_bas).reindex(net.index)   # calibrated net load of each EIA-930 BA
+            _ba.index.name = "timestamp"
+            _cache[_key] = {"net":_net.round(4),"total":_total.round(4),"node":_node.round(4),
+                "ba":_ba.round(4)}
         return _cache[_key]
     def _csv_gz(kind):
         def _data():
@@ -373,6 +379,8 @@ def _(
     with the contribution factors in `loads/wecc/node_estimate_cf.csv`
     (in-county load busses by bus load, otherwise the nearest load node); it
     holds the US county load only, not the Canadian and Mexican nodes.
+    `ba_net.csv.gz` is the calibrated net load of each EIA-930 BA (one
+    column per BA code), i.e., the sum of the BA's calibrated county shares.
     Building the files takes a minute or two."""),
         mo.hstack([
             mo.download(data=_csv_gz(_kind),filename=_name,

@@ -3,8 +3,9 @@
 These tests need no data downloads and run in seconds. They check the
 checked-in `loads/wecc/county_ba.csv` (built by `loads/wecc/county_ba.py`),
 its overrides, the EIA-930 BA monthly min/max targets in
-`loads/_test/data/ba_minmax_target.csv`, and the fitting step of
-`county_ba.py` on a small example.
+`loads/_test/data/ba_minmax_target.csv` against the per-BA hourly series,
+the calibrated BA net load in `loads/wecc/ba_net.csv.gz` against the
+targets, and the fitting step of `county_ba.py` on a small example.
 """
 
 # pylint: disable=redefined-outer-name
@@ -81,3 +82,30 @@ def test_fit_state(county_ba):
     assert np.allclose(fitted.sum(axis=1),rows)
     assert np.allclose(fitted.sum(axis=0),columns)
     assert (fitted.values[~support.values] == 0).all()
+
+
+def _monthly(data:pd.DataFrame) -> tuple[pd.Series,pd.Series]:
+    """@private Monthly max and min by (UTC month start, BA)"""
+    month = data.index.tz_convert("UTC").tz_localize(None).to_period("M").to_timestamp().tz_localize("UTC")
+    return data.groupby(month).max().stack(),data.groupby(month).min().stack()
+
+
+def test_targets_from_hourly(targets):
+    """The targets are the monthly max/min of the per-BA hourly series"""
+    hourly = pd.read_csv(os.path.join(DATA,"WECC_BA_hourly_load_2018-2022.csv"))
+    hourly.index = pd.to_datetime(hourly.pop("utc_hour_ending"),utc=True) - pd.Timedelta(hours=1)
+    hourly = hourly.drop(columns="pst_hour_ending").loc["2018":"2022"]
+    high,low = _monthly(hourly)
+    expected = targets.set_index(["timestamp","ba"])
+    assert np.allclose(high.reindex(expected.index),expected["max"],atol=0.5)
+    assert np.allclose(low.reindex(expected.index),expected["min"],atol=0.5)
+
+
+def test_ba_net_matches_targets(targets):
+    """The calibrated BA net load hits each BA's monthly max and min"""
+    ba_net = pd.read_csv(os.path.join(WECC,"ba_net.csv.gz"),index_col=0,parse_dates=[0])
+    assert sorted(ba_net.columns) == sorted(targets.ba.unique())
+    high,low = _monthly(ba_net)
+    expected = targets.set_index(["timestamp","ba"])
+    assert np.allclose(high.reindex(expected.index),expected["max"],atol=1e-3)
+    assert np.allclose(low.reindex(expected.index),expected["min"],atol=1e-3)
