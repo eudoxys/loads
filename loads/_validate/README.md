@@ -144,6 +144,49 @@ error is the difference between the EIA-930 CAISO peak target and the peak in
 - **Membership.** Shares are annual and based on 2020; partly non-CAISO
   counties listed above remain full members.
 
+## Peak calibration
+
+The `validate_calibrate_peaks_marimo.py` notebook validates the WECC240 node
+load in `loads/wecc/node_total.csv.gz`, made by
+`loads/_review/review_wecc_calibrate_eia930_marimo.py`, which calibrates each
+US WECC BA's share of the county net loads to the BA's EIA-930 monthly
+maximum and minimum with `loads.calibrate.CalibratePeaks` (peak 1.0, trough
+0.0). Run the marimo notebook
+
+	marimo run validate_calibrate_peaks_marimo.py
+
+and pick a year, a month and a node as in
+`loads/_review/review_node_total_marimo.py`.
+
+- **Calibrated net load:** `node_total.csv.gz` is total (gross) load, while
+  EIA-930 demand is net of rooftop PV. So the notebook subtracts the county
+  rooftop PV of `loads/wecc/county_dg.csv.gz`, unscaled as in the
+  calibration and allocated to nodes with `loads/wecc/node_estimate_cf.csv`.
+- **Reported demand:** the hourly `WECC_load_MW` of
+  `loads/_test/data/WECC_CAISO_hourly_load_2018-2022.csv`, the sum of the 28
+  US WECC BAs. Only WECC as a whole (no node selected) has reported data;
+  the BA hourly series aren't kept, and nodes don't map to BAs.
+- **Metrics:** MAPE, MAE, RMSE, R² and total energy error of the
+  calibrated net load against reported demand, over the hours shown.
+
+### Results
+
+| Period | Hours | MAPE (%) | MAE (MW) | RMSE (MW) | R² | Energy error (%) | Peak (MW) | Reported peak (MW) |
+| ------ | ----: | -------: | -------: | --------: | -: | ---------------: | --------: | -----------------: |
+| 2018–2022 | 43,816 | 5.43 | 4,526 | 5,629 | 0.832 | −0.74 | 146,188 | 143,047 |
+| 2018 | 8,752 | 4.44 | 3,709 | 4,623 | 0.886 | −0.75 | 140,346 | 139,370 |
+| 2019 | 8,760 | 5.50 | 4,536 | 5,578 | 0.826 | −1.34 | 134,577 | 132,647 |
+| 2020 | 8,784 | 5.60 | 4,572 | 5,648 | 0.838 | +0.04 | 141,026 | 140,778 |
+| 2021 | 8,760 | 5.41 | 4,514 | 5,601 | 0.832 | −0.70 | 139,823 | 135,692 |
+| 2022 | 8,760 | 6.20 | 5,298 | 6,530 | 0.768 | −0.92 | 146,188 | 143,047 |
+| Aug 2020 | 744 | 6.04 | 5,703 | 6,770 | 0.867 | −0.85 | 141,026 | 140,778 |
+
+Each BA matches its own reported monthly maximum and minimum, so the energy
+error is small. The WECC peak is slightly high because BA peaks aren't
+simultaneous, so matching each BA's maximum doesn't fix the sum's maximum.
+The hourly shape errors (MAPE about 5–6%) come from the county estimates
+within each month.
+
 ## Comparison to existing models
 
 | Method | Spatial unit | Test design | MAPE (%) |
