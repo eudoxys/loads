@@ -14,8 +14,10 @@ Retrieved 2026-10-19. Starting series: EIA's "Demand (MW) (Adjusted)".
   - `CAISO_EIA_reported_MW` — CISO "Demand (MW)" as originally reported, uncleaned
   - `WECC_BAs_filled`, `WECC_filled_MW`, `CAISO_filled` — how much of each hour was filled/estimated
 
-The cleaned per-BA series that sum to `WECC_load_MW`, and their per-BA-hour fill flags, are no longer
-kept here because no code uses them; they are in the git history (removed after commit 0598e69).
+- `WECC_BA_hourly_load_2018-2022.csv` — the cleaned per-BA series that sum to `WECC_load_MW`, the reported
+  data of `loads/_validate/validate_calibrate_peaks_marimo.py` (restored after its removal in #59)
+
+The per-BA-hour fill flags are no longer kept here; they are in the git history (removed after commit 0598e69).
 
 BAs summed in `WECC_load_MW`: AVA AZPS BANC BPAT CHPD CISO DOPD EPE GCPD IID IPCO LDWP NEVP NWMT PACE PACW PGE PNM PSCO PSEI SCL SRP TEPC TIDC TPWR WACM WALC WAUW
 
@@ -80,3 +82,17 @@ from `loads/wecc/county_dg.csv`:
 The factors are in `loads/wecc/county_dg_scaling.csv`. `county_dg.csv` has no year-to-year growth, so the
 factors rise each year; for 2020 California's is 3.18 (5.48 to 17.41 TWh, peak about 8.5 GW).
 
+## BA monthly min/max targets
+`ba_minmax_target.csv` holds, for each of the 28 US WECC BAs and each UTC month of 2018–2022, the maximum (`max`)
+and minimum (`min`) of the BA's cleaned EIA-930 hourly demand (MW). It is read by
+`loads/_review/review_wecc_calibrate_eia930_marimo.py`, which calibrates each BA's share of the WECC county net loads to
+these values with `loads.calibrate.CalibratePeaks`, holding the unscaled rooftop PV in `loads/wecc/county_dg.csv.gz`
+fixed.
+- derived from the cleaned per-BA series `WECC_BA_hourly_load_2018-2022.csv`; hours are converted from `utc_hour_ending` to UTC hour beginning before
+  grouping by UTC month, as for `peak_target.csv`;
+- long format: `timestamp` (UTC month start), `ba` (EIA-930 respondent code), `max`, `min`;
+- January 2018 lacks its first 8 UTC hours, as above; the per-BA cleaning and filling (see Cleaning) applies, so the
+  PSEI values for most 2018 and 2020 months come from filled hours.
+
+The county participation factors used with these targets are in `loads/wecc/county_ba.csv` (see
+`loads/wecc/county_ba.py`).

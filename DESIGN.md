@@ -152,6 +152,8 @@ and `Y`, not the sector breakdown.
 | DG (calibration) | NREL dGen nodal DG → `wecc/county_dg.csv.gz` | — | scaled to EIA small-scale PV (`county_dg_scale.py`) |
 | county monthly energy | EIA 861M retail sales (`HS861m`), allocated by `Energy` | — | state sales |
 | regional peaks | EIA-930 BA demand, cleaned (`_test/data`) | — | CAISO, WECC |
+| BA monthly min/max (review) | EIA-930 BA demand, cleaned (`_test/data/ba_minmax_target.csv`) | — | 28 US WECC BAs |
+| county → BA factors | EIA-861 2018 service territory and utility sales by BA, fitted to `wecc/county_mwh.csv` (`wecc/county_ba.py`) | state BA shares for unlisted counties | curated overrides (`wecc/county_ba_overrides.csv`) |
 | node map | `eudoxys/wecc240` bus GIS and county–node map | nearest load node | WECC240 bus loads |
 
 ## Method
