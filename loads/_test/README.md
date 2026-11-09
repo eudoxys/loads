@@ -48,6 +48,12 @@ system in seconds and always runs.
 
 	pytest -s test_calibrate.py
 
+`test_calibrate_form930.py` checks `loads.calibrate.CalibrateForm930` on
+six synthetic counties and three balancing authorities in seconds (offline;
+the EIA-930 download is stubbed): agreement with a direct loop, BA shares
+summing to demand, zero-estimate and missing-demand hours, unassigned
+counties, invalid inputs, and node allocation. It always runs.
+
 Cache archive test
 ------------------
 

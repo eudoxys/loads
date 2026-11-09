@@ -144,6 +144,68 @@ error is the difference between the EIA-930 CAISO peak target and the peak in
 - **Membership.** Shares are annual and based on 2020; partly non-CAISO
   counties listed above remain full members.
 
+## Calibration to EIA-930 balancing authority demand
+
+`validate_calibrate_form930.py` checks `loads.calibrate.CalibrateForm930`
+on the 2018–2022 WECC county estimate. It splits the hourly EIA-930 demand
+of each of the 28 US WECC balancing authorities (BAs) that report demand
+among the counties the BA serves, in proportion to each county's estimated
+contribution to the BA, then allocates the counties to the WECC 240 load
+nodes. The method and inputs are those of the node loads published by
+`eudoxys/wecc240` (pull request #2), so the result can be compared with them
+directly.
+
+	python validate_calibrate_form930.py --compare node_ba_load.csv.gz
+
+where `node_ba_load.csv.gz` is `wecc240/data/node_ba_load.csv.gz` from that
+pull request (omit `--compare` to skip the comparison). It takes about a
+minute.
+
+### Inputs
+
+| Input | File | Basis |
+| ----- | ---- | ----- |
+| County net load $L$ | `loads/wecc/wecc_estimate.csv.gz` − `loads/wecc/county_dg_scaled.csv.gz` | gross county estimate minus EIA-scaled rooftop PV, clipped at zero |
+| BA factors $f$ | `loads/wecc/county_ba.csv` | share of each county's load served by each BA, fitted to EIA-861 2018 sales (PR #62) |
+| BA demand $D$ | `loads/_test/data/WECC_BA_hourly_load_2018-2022.csv` | cleaned EIA-930 demand, UTC hour-ending → hour-beginning (PR #62) |
+| Node factors $g$ | `loads/wecc/node_estimate_cf.csv` | county → WECC 240 node factors (decision 16) |
+
+Until PR #62 is merged, the two PR #62 files are read from its branch at the
+commit pinned in the script (`INPUTS_COMMIT`), the commit the `wecc240`
+node loads were built from.
+
+### Results (2018–2022)
+
+- All 407 counties have factors; 29 BAs serve them, of which `SWPP` (border
+  counties) reports no WECC demand and keeps its estimated share
+  (2.99 TWh/y). 113 nodes receive load.
+- In the 43,816 hours with demand from every BA, the county total equals the
+  EIA-930 total plus the `SWPP` share to within 3×10⁻¹⁰ MW, and the node
+  total equals the county total. The first 8 hours of 2018 are missing from
+  the source and are `NaN` for the counties of the missing BAs.
+- No county or node load is negative.
+- The node loads equal the `wecc240` node loads to within 0.002 MW (the
+  4-decimal rounding of the `wecc240` county file), with the same `NaN`
+  hours.
+
+| Year | EIA-930 TWh | County TWh | Node TWh | Node peak MW |
+| ---- | ----------- | ---------- | -------- | ------------ |
+| 2018 | 728.6 | 731.6 | 731.6 | 139,897 |
+| 2019 | 718.7 | 721.7 | 721.7 | 133,141 |
+| 2020 | 718.1 | 721.1 | 721.1 | 141,288 |
+| 2021 | 724.7 | 727.6 | 727.6 | 136,203 |
+| 2022 | 744.2 | 747.1 | 747.1 | 143,500 |
+
+### Known gaps
+
+- **Hourly shape.** Each BA's hourly demand is reproduced exactly; within a
+  BA, the county shares follow the estimate's hourly shape. Errors in the
+  relative shape of counties in the same BA are not corrected.
+- **Factors.** BA factors are annual (EIA-861 2018) and constant in time.
+- **Coverage.** BC Hydro, AESO and CFE report no demand to EIA-930, so
+  Canadian and Mexican loads are not calibrated (and not in the county
+  estimate).
+
 ## Comparison to existing models
 
 | Method | Spatial unit | Test design | MAPE (%) |
