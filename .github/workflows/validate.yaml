@@ -49,7 +49,7 @@ jobs:
     - name: Setup python
       uses: actions/setup-python@v5
       with:
-        python-version: 3.12.9
+        python-version: "3.12" # latest 3.12 patch with a build for the runner image
         cache: pip
         cache-dependency-path: requirements.txt
 

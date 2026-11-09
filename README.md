@@ -158,7 +158,7 @@ which adds the `elec_dg_MW` (never positive) and `elec_net_MW` columns. The
 same DG is available on its own with `loads.dgen.DG("CA","Alameda",date_range)`,
 and `loads.dgen.DG.merge` adds it to any hourly load data frame.
 
-See https://www.eudoxys.com/loads for the `Estimator`, `Calibrate`, `Cluster`,
+See https://www.eudoxys.com/loads for the `Estimator`, `Calibrate`, `CalibrateForm930`, `Cluster`,
 and `Aggregator` tools.
 
 # Agent skill

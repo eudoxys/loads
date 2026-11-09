@@ -48,6 +48,7 @@ reversed decision in place and note the date.
 | 10 | DG is a negative load in `elec_dg_MW`; `elec_net_MW = elec_total_MW + elec_dg_MW`. |
 | 12 | Calibration solves the Meyers–Chassin hierarchical net-load shaping SOCP: per-unit affine map $L=sX+b$, soft per-state energy targets, hard regional peak ceilings, DG fixed; solved independently per UTC calendar month. |
 | 12b | Calibration weights are not tuned per run: with `search=True` a predeclared grid (`Calibrate.GRID`) is solved and a fixed rule selects the result (peak shortfall ≤ `PEAK_SHORTFALL_TOL`, state energy error ≤ `STATE_ENERGY_TOL`, nonnegative load, then least shape RMSE). |
+| 12d | Calibration to EIA-930 BA demand (`CalibrateForm930`) is a proportional disaggregation, not an optimization: each balancing authority's hourly demand is split among the units it serves in proportion to their estimated load times their BA participation factor (method of `eudoxys/wecc240` PR #2). Every BA hour with demand is matched exactly; BAs without demand keep the estimate; missing demand hours are `NaN` by default. Factors are inputs, not built by the class. EIA-930 demand is net of DG, so the result is net load and may be negative: with `dg`, the BA's gross demand (demand + the DG of its units) is split in proportion to the units' gross load and each unit's fixed DG is subtracted (as in decision 12, DG is never scaled). Without `dg` the load must be nonnegative (the `wecc240` method clips net load at zero); revised 2026-11-09. (Numbered 12d because PR #61 proposes 12c.) |
 | 13 | Counties are clustered by SVD + k-means on `elec_total_MW`; k = 6 (`loads/clusters.csv`). A cluster's medoid stands in for its members when per-county tuning is too costly. |
 | 14 | Estimator harmonics for each medoid are the most parsimonious within 1% of the best found in the sweep (`_explore/explore_estimator_clusters.csv`); the WECC estimate uses the MAPE row. |
 | 15 | The WECC county estimate keeps 2018 actual sector loads and rescales each month of 2018–2022 so its energy equals the EIA 861M retail sales allocated to the county plus the county's DG (gross load). |
@@ -96,6 +97,7 @@ loads/
   estimator.py       Estimator(county_st,years=None,*,config=EstimatorConfig())
   energy.py          Energy(state,counties,year,month=None,*,groupby="1MS",...)
   calibrate.py       Calibrate(load,*,energy,peak,dg=None,states=None,regions=None,search=False,...)
+                     CalibrateForm930(load,factors,demand=None,*,dg=None,missing="nan",refresh=False); .allocate(factors)
   cluster.py         Cluster(counties,column,threshold=0.99,...)
   aggregate.py       Aggregator(targets,start,end); aggregate(targets,dt_range,column)
   clusters.csv       county_st -> medoid
@@ -130,6 +132,7 @@ accessor takes `refresh:bool=False`.
 | `Estimator` | `timestamp` (`years`) | weather, `enduse`; with `years=None` also `status` (`T`/`H`), `actual`, `prediction` |
 | `Energy` | period start | one column per county, MWh |
 | `Calibrate` | as `load` | shaped load (MW); `.parameters`, `.summary`, `.states`, `.constraints` |
+| `CalibrateForm930` | as `load` | net load calibrated to BA demand (MW, may be negative with `dg`); `.gross`, `.dg`, `.factors`, `.demand`, `.estimate`, `.scale`, `.uncalibrated`, `.unassigned`; `.allocate(factors)` → node loads |
 
 Composition: `Total` sums the sector frames on the 2018 index;
 `elec_total_MW` is their sum and excludes DG. Predictions return only `X`
@@ -149,6 +152,7 @@ and `Y`, not the sector breakdown.
 | DG (calibration) | NREL dGen nodal DG → `wecc/county_dg.csv.gz` | — | scaled to EIA small-scale PV (`county_dg_scale.py`) |
 | county monthly energy | EIA 861M retail sales (`HS861m`), allocated by `Energy` | — | state sales |
 | regional peaks | EIA-930 BA demand, cleaned (`_test/data`) | — | CAISO, WECC |
+| BA demand (`CalibrateForm930`) | EIA-930 demand by BA, given or downloaded with `eia.Form930` | — (missing hours `NaN` or kept) | each BA's hourly demand, matched exactly |
 | node map | `eudoxys/wecc240` bus GIS and county–node map | nearest load node | WECC240 bus loads |
 
 ## Method
@@ -163,7 +167,10 @@ and `Y`, not the sector breakdown.
    and add it (negative) to total load; `dg=False` (default) adds none.
 4. **Calibration (optional).** For a panel of counties, solve decision 12
    month by month. State energy is soft (reported, not forced); regional
-   peaks are hard ceilings.
+   peaks are hard ceilings. Alternatively, `CalibrateForm930` splits each
+   balancing authority's hourly EIA-930 demand among its counties in
+   proportion to their estimated gross load, with their rooftop PV fixed, so
+   the calibrated net load may be negative (decision 12d).
 5. **WECC estimate.** For each WECC county, estimate 2018–2022 with the
    medoid's harmonics and rescale monthly to gross load (decision 15). The
    monthly energy is forced to match; the hourly shape is not adjusted.
