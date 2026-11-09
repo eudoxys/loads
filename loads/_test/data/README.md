@@ -69,8 +69,9 @@ Placer (Roseville, BANC), Shasta (Redding, BANC), Merced (TID) and San Joaquin (
 outside CAISO but remain full members.
 
 ## Distributed generation
-The calibration and validation use `loads/wecc/county_dg_scaled.csv.gz`, built by `loads/wecc/county_dg_scale.py`
-from `loads/wecc/county_dg.csv`:
+The calibration test, validation and review use the unscaled rooftop PV `loads/wecc/county_dg.csv.gz` (the compressed
+`county_dg.csv`); counties missing from it have no DG. `loads/wecc/county_dg_scaled.csv.gz`, which is not used by them,
+is built by `loads/wecc/county_dg_scale.py` from `loads/wecc/county_dg.csv`:
 - the 39 WECC counties missing from `county_dg.csv` (e.g., Kern, San Bernardino, Ada, Canyon, Bernalillo,
   Clackamas) get their state's DG profile in proportion to their share of the state's 2020 gross load;
 - each state's DG is scaled, year by year, to EIA's estimated small-scale solar generation
