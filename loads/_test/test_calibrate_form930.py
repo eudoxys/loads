@@ -219,3 +219,84 @@ def test_form930_download(system,monkeypatch):
     assert result.uncalibrated == ["XX"]
     expected = CalibrateForm930(system["load"],system["factors"],system["demand"])
     pd.testing.assert_frame_equal(pd.DataFrame(result),pd.DataFrame(expected))
+
+
+@pytest.fixture(scope="module")
+def solar(system) -> pd.DataFrame:
+    """Synthetic rooftop PV (MW, positive) large enough to make some net loads negative"""
+    hour = np.arange(len(system["load"]))
+    shape = np.clip(np.sin(2*np.pi*(hour-6)/24),0,None)
+    return pd.DataFrame({"A1 ST":8.0*shape,"B1 ST":3.0*shape,"BX ST":12.0*shape},index=system["load"].index)
+
+
+def naive_dg(gross,dg,wide,demand) -> pd.DataFrame:
+    """Reference loop: split each BA's gross demand D + P_b by gross load, subtract DG"""
+    dg = dg.reindex(columns=gross.columns).fillna(0.0)
+    result = -dg.copy()
+    for t in gross.index:
+        for ba in wide.columns:
+            units = [u for u in wide.index if wide.loc[u,ba] > 0]
+            if ba not in demand.columns:
+                for u in units:
+                    result.loc[t,u] += wide.loc[u,ba]*gross.loc[t,u]
+                continue
+            target = demand.loc[t,ba] + sum(wide.loc[u,ba]*dg.loc[t,u] for u in units)
+            total = sum(wide.loc[u,ba]*gross.loc[t,u] for u in units)
+            for u in units:
+                result.loc[t,u] += target*wide.loc[u,ba]*gross.loc[t,u]/total
+    return result
+
+
+def test_dg_negative_net(system,solar):
+    """With DG, net load may be negative and BA net shares still sum to demand"""
+    result = CalibrateForm930(system["load"],system["factors"],system["demand"],dg=solar)
+    expected = naive_dg(system["load"],solar,system["wide"],system["demand"])
+    np.testing.assert_allclose(result.values,expected.values,rtol=1e-10,atol=1e-10)
+    assert (result.values < 0).any()                   # negative net load allowed
+    assert (result.gross.values >= 0).all()            # gross load is not
+    pd.testing.assert_frame_equal(pd.DataFrame(result),result.gross - result.dg)
+    net = system["load"][system["wide"].index] - result.dg[system["wide"].index]   # net estimate
+    for ba in ["AAA","BBB"]:
+        shares = (system["load"][system["wide"].index]*result.scale[ba].values[:,None]
+            - result.dg[system["wide"].index]) * system["wide"][ba]
+        np.testing.assert_allclose(shares.sum(axis=1),system["demand"][ba],rtol=1e-12)
+    xx = (net*system["wide"]["XX"]).sum(axis=1)
+    np.testing.assert_allclose(result.sum(axis=1),system["demand"][["AAA","BBB"]].sum(axis=1)+xx,rtol=1e-12)
+    np.testing.assert_allclose(result.estimate["XX"],xx)
+
+
+def test_dg_sign_and_alignment(system,solar):
+    """DG may be given as elec_dg_MW (<= 0); mixed signs, NaN and extra columns raise"""
+    positive = CalibrateForm930(system["load"],system["factors"],system["demand"],dg=solar)
+    negative = CalibrateForm930(system["load"],system["factors"],system["demand"],dg=-solar)
+    pd.testing.assert_frame_equal(pd.DataFrame(positive),pd.DataFrame(negative))
+    assert (positive.dg["A2 ST"] == 0).all()
+    mixed = solar.copy()
+    mixed.iloc[12,0] = -1.0
+    with pytest.raises(CalibrationError):
+        CalibrateForm930(system["load"],system["factors"],system["demand"],dg=mixed)
+    with pytest.raises(CalibrationError):
+        CalibrateForm930(system["load"],system["factors"],system["demand"],dg=solar.iloc[:10])
+    with pytest.raises(CalibrationError):
+        CalibrateForm930(system["load"],system["factors"],system["demand"],dg=solar.assign(**{"Z ST":1.0}))
+
+
+def test_without_dg_rejects_negative_load(system):
+    """Without DG, negative load raises and points to dg="""
+    load = system["load"].copy()
+    load.iloc[0,0] = -1.0
+    with pytest.raises(CalibrationError,match="dg="):
+        CalibrateForm930(load,system["factors"],system["demand"])
+
+
+def test_dg_unassigned_and_missing(system,solar):
+    """Unassigned units return G - P; missing demand hours keep the net estimate with keep"""
+    load = system["load"].assign(**{"Other ST":7.0})
+    dg = solar.assign(**{"Other ST":2.0})
+    demand = system["demand"].copy()
+    demand.iloc[0,0] = np.nan
+    result = CalibrateForm930(load,system["factors"],demand,dg=dg,missing="keep")
+    assert (result["Other ST"] == 5.0).all()
+    assert result.iloc[0]["A1 ST"] == pytest.approx(load.iloc[0]["A1 ST"] - solar.iloc[0]["A1 ST"])
+    result = CalibrateForm930(load,system["factors"],demand,dg=dg)
+    assert result.iloc[0][["A1 ST","A2 ST","AB ST"]].isna().all()

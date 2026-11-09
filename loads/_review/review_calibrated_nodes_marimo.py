@@ -5,6 +5,9 @@ obtained by calibrating the WECC county net load estimate to the EIA-930
 demand of the US WECC balancing authorities (BAs) with
 `loads.calibrate.CalibrateForm930` and allocating the counties to the nodes
 with `CalibrateForm930.allocate`, as in `eudoxys/wecc240` pull request #2.
+Unlike `wecc240`, the net load is not clipped at zero: only the county gross
+load is calibrated and the rooftop PV is fixed, so a node's net load is
+negative where its PV exceeds its load.
 The inputs are those of `loads/_validate/validate_calibrate_form930.py`.
 
 Select a year and, optionally, a month to reduce the time window (the
@@ -34,8 +37,8 @@ def _(importlib, mo, pathlib):
     validation = importlib.util.module_from_spec(_spec)
     _spec.loader.exec_module(validation)
     with mo.status.spinner("Loading county estimate, BA factors and EIA-930 demand"):
-        load,factors,demand,node_factors = validation.inputs()
-    return demand, factors, load, node_factors
+        load,dg,factors,demand,node_factors = validation.inputs()
+    return demand, dg, factors, load, node_factors
 
 
 @app.cell
@@ -80,10 +83,10 @@ def _(load, month_ui, year_ui):
 
 
 @app.cell
-def _(CalibrateForm930, demand, factors, load, mo, node_factors, window):
+def _(CalibrateForm930, demand, dg, factors, load, mo, node_factors, window):
     # calibrate the window and allocate to nodes
     with mo.status.spinner("Calibrating counties and allocating to nodes"):
-        county = CalibrateForm930(load.loc[window],factors,demand.loc[window])
+        county = CalibrateForm930(load.loc[window],factors,demand.loc[window],dg=dg.loc[window])
         data = county.allocate(node_factors)
     return county, data
 
@@ -109,7 +112,8 @@ def _(county, data, mo, period):
                 caption="NaN for the nodes of the missing BAs"),
         ],justify="start"),
         mo.md(f"**Data:** {data.index[0]} to {data.index[-1]}, {len(data)} hours,"
-            f" NaN values {int(data.isna().sum().sum())}, negative values {int((data<0).sum().sum())},"
+            f" NaN values {int(data.isna().sum().sum())}, negative net node-hours {int((data<0).sum().sum())}"
+            f" in {int((data<0).any().sum())} nodes,"
             f" max |node total − (EIA-930 + uncalibrated)| "
             f"{(_total - county.demand.sum(axis=1) - county.estimate[county.uncalibrated].sum(axis=1))[_complete].abs().max():.2g} MW"),
     ])
@@ -127,6 +131,7 @@ def _(data, names, node_factors, pd):
         "peak_MW":data.max().round(1),
         "peak_time":data.idxmax(),
         "min_MW":data.min().round(1),
+        "negative_hours":(data < 0).sum(),
         "nan_hours":data.isna().sum(),
         }).rename_axis("node").sort_values("mean_MW",ascending=False).reset_index()
     return (node_table,)

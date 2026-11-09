@@ -1,4 +1,4 @@
-"""Validate `CalibrateForm930` on the WECC 2018-2022 county estimate
+r"""Validate `CalibrateForm930` on the WECC 2018-2022 county estimate
 
 Calibrates the WECC county net load estimate to the EIA-930 demand of the 28
 US WECC balancing authorities (BAs) that report it, allocates the counties to
@@ -10,9 +10,15 @@ inputs.
 Inputs
 ------
 
-  - county net load $L$: `loads/wecc/wecc_estimate.csv.gz` (gross load)
-    minus `loads/wecc/county_dg_scaled.csv.gz` (rooftop PV), clipped at
-    zero; counties missing from the DG file have no DG
+  - county gross load $G$: `loads/wecc/wecc_estimate.csv.gz`
+
+  - county rooftop PV $P$: `loads/wecc/county_dg_scaled.csv.gz` (fixed, not
+    calibrated); counties missing from the DG file have no DG. The
+    calibrated net load $X=G'-P$ may be negative where the PV exceeds the
+    calibrated gross load $G'$.
+
+  - with `--clip`, instead the net load $\max(G-P,0)$ and no DG, which is
+    the input of the `wecc240` node loads
 
   - BA participation factors $f$: `loads/wecc/county_ba.csv` (EIA-861 2018)
 
@@ -29,11 +35,11 @@ they are read from that branch at commit `INPUTS_COMMIT`, the commit the
 Usage
 -----
 
-    python3 loads/_validate/validate_calibrate_form930.py [--compare NODE_BA_LOAD] [--factors CSV] [--demand CSV] [--debug]
+    python3 loads/_validate/validate_calibrate_form930.py [--clip] [--compare NODE_BA_LOAD] [--factors CSV] [--demand CSV] [--debug]
 
 prints the annual EIA-930, county and node energy and the node peak, runs
 the checks below, and writes `form930_county_net.csv.gz` and
-`form930_node_net.csv.gz` (MW, hour-beginning UTC) to the `loads/0/_validate`
+`form930_node_net.csv.gz` (MW, hour-beginning UTC; `_clip` suffix with `--clip`) to the `loads/0/_validate`
 cache folder. Set `LOADS_CACHEDIR` to use a cache folder other than the
 `cache` package default.
 
@@ -60,10 +66,12 @@ are excluded from the totals.
      total equals the county total, so the nodes carry no Canadian or
      Mexican load (node `c2u6xt` is in Canada but receives only nearby US
      county load).
-  4. **Nonnegative.** No county or node load is negative.
-  5. **wecc240.** With `--compare`, the node loads equal the `wecc240` node
-     loads to within their rounding (`COMPARE_TOL_MW`), with the same `NaN`
-     hours.
+  4. **Nonnegative gross.** No calibrated county gross load is negative
+     (the number of negative net county and node hours is reported).
+  5. **wecc240.** With `--compare` and `--clip`, the node loads equal the
+     `wecc240` node loads to within their rounding (`COMPARE_TOL_MW`), with
+     the same `NaN` hours. Without `--clip` the differences are reported
+     (`INFO`), since `wecc240` clips the net load at zero.
 """
 
 # pylint: disable=invalid-name
@@ -117,16 +125,15 @@ def _source(path:str|None,local:str,remote:str) -> str:
     return local if os.path.exists(local) else INPUTS_URL + remote
 
 
-def county_net_load() -> pd.DataFrame:
-    """County net load estimate (MW): gross minus rooftop PV, clipped at zero"""
+def county_load() -> tuple[pd.DataFrame,pd.DataFrame]:
+    """County gross load estimate and rooftop PV (MW, nonnegative)"""
     gross = pd.read_csv(os.path.join(WECC,"wecc_estimate.csv.gz"),index_col=[0],parse_dates=[0])
     dg = pd.read_csv(os.path.join(WECC,"county_dg_scaled.csv.gz"),index_col=[0],parse_dates=[0])
-    dg = dg.reindex(index=gross.index,columns=gross.columns).fillna(0.0)
-    net = (gross - dg.abs()).clip(lower=0.0)
-    net = net.reindex(HOURS)
-    if net.isna().any().any():
+    dg = dg.reindex(index=gross.index,columns=gross.columns).fillna(0.0).abs()
+    gross,dg = gross.reindex(HOURS),dg.reindex(HOURS)
+    if gross.isna().any().any() or dg.isna().any().any():
         raise ValueError("county estimate does not cover the validation period")
-    return net
+    return gross,dg
 
 
 def ba_demand(path:str|None=None) -> pd.DataFrame:
@@ -146,53 +153,63 @@ def wecc_total() -> pd.Series:
     return data["WECC_load_MW"].reindex(HOURS)
 
 
-def inputs(factors:str|None=None,demand:str|None=None) -> tuple:
-    """Validation inputs: county net load, BA factors, BA demand and node factors
+def inputs(factors:str|None=None,demand:str|None=None,clip:bool=False) -> tuple:
+    """Validation inputs: county load, DG, BA factors, BA demand and node factors
 
-    Also used by the review notebooks `loads/_review/review_calibrated_*_marimo.py`.
+    Returns the county gross load and rooftop PV, or, with `clip`, the net
+    load clipped at zero and `None` (the `wecc240` input). Also used by the
+    review notebooks `loads/_review/review_calibrated_*_marimo.py`.
     """
-    load = county_net_load()
+    load,dg = county_load()
+    if clip:
+        load,dg = (load - dg).clip(lower=0.0),None
     factors = pd.read_csv(_source(factors,os.path.join(WECC,"county_ba.csv"),"wecc/county_ba.csv"))
     demand = ba_demand(demand)
     nodes = pd.read_csv(os.path.join(WECC,"node_estimate_cf.csv")).rename({"cf":"factor"},axis=1)
-    return load,factors,demand,nodes
+    return load,dg,factors,demand,nodes
 
 
-def ba_shares(load:pd.DataFrame,factors:pd.DataFrame,demand:pd.DataFrame) -> tuple:
-    """Recompute each county's share of each BA from the inputs, BA by BA
+def ba_shares(load:pd.DataFrame,factors:pd.DataFrame,demand:pd.DataFrame,
+        dg:pd.DataFrame|None=None) -> tuple:
+    """Recompute each county's net share of each BA from the inputs, BA by BA
 
     Arguments
     ---------
 
-      - `load`: county load (hours x counties)
+      - `load`: county gross load (hours x counties), or net load without `dg`
       - `factors`: wide BA factors (counties x BAs), rows summing to one
       - `demand`: BA demand (hours x BAs), `NaN` when missing
+      - `dg`: county DG (MW, nonnegative; default none)
 
     Returns
     -------
 
-      - `pandas.DataFrame`: county load as the sum of its BA shares (`NaN` in
-        hours when any of its BAs with demand has none)
-      - `pandas.Series`: largest |sum of county shares − demand| (MW) of each
-        BA with demand, over hours with demand
+      - `pandas.DataFrame`: county net load as the sum of its net BA shares
+        (`NaN` in hours when any of its BAs with demand has none)
+      - `pandas.Series`: largest |sum of county net shares − demand| (MW) of
+        each BA with demand, over hours with demand
     """
+    # pylint: disable=too-many-locals
     counties = [x for x in load.columns if x in factors.index]
-    L = load[counties].values
-    total = np.zeros(L.shape)
-    missing = np.zeros(L.shape,dtype=bool)
+    G = load[counties].values
+    P = np.zeros(G.shape) if dg is None else dg.reindex(columns=counties).fillna(0.0).values
+    total = np.zeros(G.shape)
+    missing = np.zeros(G.shape,dtype=bool)
     errors = {}
     for ba in factors.columns:
         f = factors.loc[counties,ba].values
         if not (f > 0).any():
             continue
-        estimate = L * f[None,:]                    # county estimate share of the BA
+        estimate = G * f[None,:]                    # county gross share of the BA
+        solar = P * f[None,:]                       # county DG share of the BA
         if ba not in demand.columns:
-            total += estimate                       # uncalibrated BA keeps the estimate
+            total += estimate - solar               # uncalibrated BA keeps the estimate
             continue
         D = demand[ba].reindex(load.index).values
+        T = D + solar.sum(axis=1)                   # BA gross demand
         S = estimate.sum(axis=1)
         with np.errstate(divide="ignore",invalid="ignore"):
-            share = np.where((S > 0)[:,None],estimate*(D/S)[:,None],D[:,None]*f[None,:]/f.sum())
+            share = np.where((S > 0)[:,None],estimate*(T/S)[:,None],T[:,None]*f[None,:]/f.sum()) - solar
         ok = ~np.isnan(D)
         errors[ba] = float(np.abs(share[ok].sum(axis=1) - D[ok]).max()) if ok.any() else 0.0
         missing |= ~ok[:,None] & (f > 0)[None,:]
@@ -203,13 +220,15 @@ def ba_shares(load:pd.DataFrame,factors:pd.DataFrame,demand:pd.DataFrame) -> tup
 
 def checks(load:pd.DataFrame,factors:pd.DataFrame,demand:pd.DataFrame,
         county:CalibrateForm930,node:pd.DataFrame,wecc:pd.Series,
-        compare:pd.DataFrame|None=None) -> list[tuple[str,bool,str]]:
+        compare:pd.DataFrame|None=None,dg:pd.DataFrame|None=None) -> list[tuple[str,bool|None,str]]:
     """Run the validation checks
 
     Returns
     -------
 
-      - `list`: `(name,passed,detail)` for each check (see the module docstring)
+      - `list`: `(name,passed,detail)` for each check (see the module
+        docstring); `passed` is `None` for an informational result (the
+        `wecc240` comparison with `dg`)
     """
     # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     results = []
@@ -217,7 +236,7 @@ def checks(load:pd.DataFrame,factors:pd.DataFrame,demand:pd.DataFrame,
     calibrated = pd.DataFrame(county)
 
     # 1. BA shares
-    shares,errors = ba_shares(load,county.factors,demand)
+    shares,errors = ba_shares(load,county.factors,demand,dg)
     columns = list(shares.columns)
     same_nan = shares.isna().equals(calibrated[columns].isna())
     diff = float(np.nanmax(np.abs(shares.values - calibrated[columns].values)))
@@ -228,8 +247,9 @@ def checks(load:pd.DataFrame,factors:pd.DataFrame,demand:pd.DataFrame,
         f" max |sum of BA shares - county load| {diff:.3g} MW; same NaN hours {same_nan}"))
 
     # 2. WECC total
+    net = load if dg is None else load - dg.reindex(index=load.index,columns=load.columns).fillna(0.0)
     uncalibrated = (county.estimate[county.uncalibrated].sum(axis=1)
-        + load.loc[county.index,county.unassigned].sum(axis=1))
+        + net.loc[county.index,county.unassigned].sum(axis=1))
     ok = complete & wecc.reindex(county.index).notna()
     gap = (calibrated.sum(axis=1) - uncalibrated - wecc.reindex(county.index))[ok]
     results.append(("2. WECC total",bool(ok.any() and gap.abs().max() <= WECC_TOL_MW),
@@ -247,9 +267,13 @@ def checks(load:pd.DataFrame,factors:pd.DataFrame,demand:pd.DataFrame,
         f"non-US counties {foreign_counties or 'none'}; Canadian/Mexican BAs {foreign_bas or 'none'};"
         f" max |node total - county total| {node_gap:.3g} MW"))
 
-    # 4. nonnegative
-    low = min(float(np.nanmin(calibrated.values)),float(np.nanmin(node.values)))
-    results.append(("4. Nonnegative",low >= 0,f"min county/node load {low:.4g} MW"))
+    # 4. nonnegative gross load
+    low = float(np.nanmin(county.gross.values))
+    results.append(("4. Nonnegative gross",low >= 0,
+        f"min county gross load {low:.4g} MW; negative net load:"
+        f" {int((calibrated < 0).sum().sum())} county-hours in {int((calibrated < 0).any().sum())} counties,"
+        f" {int((node < 0).sum().sum())} node-hours in {int((node < 0).any().sum())} nodes;"
+        f" min net county {float(np.nanmin(calibrated.values)):.4g} MW, node {float(np.nanmin(node.values)):.4g} MW"))
 
     # 5. wecc240
     if compare is not None:
@@ -258,7 +282,8 @@ def checks(load:pd.DataFrame,factors:pd.DataFrame,demand:pd.DataFrame,
         delta = float(np.nanmax(np.abs(node[common].values - other.values)))
         same = node[common].isna().equals(other.isna())
         unmatched = sorted(set(node.columns) ^ set(compare.columns))
-        results.append(("5. wecc240",bool(delta <= COMPARE_TOL_MW and same and not unmatched),
+        passed = bool(delta <= COMPARE_TOL_MW and same and not unmatched) if dg is None else None
+        results.append(("5. wecc240",passed,
             f"{len(common)} common nodes, unmatched {unmatched or 'none'};"
             f" max |node - wecc240 node| {delta:.3g} MW; same NaN hours {same}"))
     return results
@@ -267,6 +292,8 @@ def checks(load:pd.DataFrame,factors:pd.DataFrame,demand:pd.DataFrame,
 def main(argv:list[str]) -> int:
     """Run the validation"""
     parser = argparse.ArgumentParser(description=__doc__.split("\n",1)[0])
+    parser.add_argument("--clip",action="store_true",
+        help="calibrate the net load clipped at zero without DG (the wecc240 method)")
     parser.add_argument("--compare",help="wecc240 node_ba_load.csv.gz to compare with")
     parser.add_argument("--factors",help="county_ba.csv (default package file or pinned URL)")
     parser.add_argument("--demand",help="WECC_BA_hourly_load_2018-2022.csv (default package file or pinned URL)")
@@ -274,8 +301,8 @@ def main(argv:list[str]) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.WARNING)
 
-    load,factors,demand,nodes = inputs(args.factors,args.demand)
-    county = CalibrateForm930(load,factors,demand)
+    load,dg,factors,demand,nodes = inputs(args.factors,args.demand,args.clip)
+    county = CalibrateForm930(load,factors,demand,dg=dg)
     node = county.allocate(nodes)
     print(f"counties: {county.shape[1]}, unassigned: {county.unassigned}, "
         f"BAs: {len(county.factors.columns)}, uncalibrated: {county.uncalibrated}, nodes: {node.shape[1]}")
@@ -291,15 +318,16 @@ def main(argv:list[str]) -> int:
     print(table.round(1).to_string())
 
     compare = pd.read_csv(args.compare,index_col=[0],parse_dates=[0]) if args.compare else None
-    results = checks(load,factors,demand,county,node,wecc_total(),compare)
+    results = checks(load,factors,demand,county,node,wecc_total(),compare,dg)
     for name,passed,detail in results:
-        print(f"{'PASS' if passed else 'FAIL'} {name}: {detail}")
+        print(f"{ {True:'PASS',False:'FAIL',None:'INFO'}[passed]} {name}: {detail}")
 
-    folder = Cache(package="loads",version=0,path=["_validate","form930_county_net.csv.gz"]).pathname
+    suffix = "_clip" if args.clip else ""
+    folder = Cache(package="loads",version=0,path=["_validate",f"form930_county_net{suffix}.csv.gz"]).pathname
     pd.DataFrame(county).round(4).to_csv(folder,index=True,header=True,compression="gzip")
-    folder = Cache(package="loads",version=0,path=["_validate","form930_node_net.csv.gz"]).pathname
+    folder = Cache(package="loads",version=0,path=["_validate",f"form930_node_net{suffix}.csv.gz"]).pathname
     node.round(4).to_csv(folder,index=True,header=True,compression="gzip")
-    return 0 if all(x[1] for x in results) else 1
+    return 0 if all(x[1] is not False for x in results) else 1
 
 
 if __name__ == "__main__":

@@ -114,3 +114,17 @@ def test_ba_shares_function(case):
     assert sorted(errors.index) == ["AAA","BBB"]
     assert errors.max() < 1e-9
     pd.testing.assert_frame_equal(shares,pd.DataFrame(case["county"]),check_freq=False)
+
+
+def test_with_dg(case):
+    """With DG the checks pass, negative net load is allowed, and the comparison is informational"""
+    hour = np.arange(len(case["load"]))
+    dg = pd.DataFrame({"A1 NV":20.0*np.clip(np.sin(2*np.pi*(hour-6)/24),0,None)},index=case["load"].index)
+    county = CalibrateForm930(case["load"],case["factors"],case["demand"],dg=dg)
+    node = county.allocate(case["nodes"])
+    assert (county.values < 0).any()
+    result = run(case,county=county,node=node,dg=dg,compare=case["node"])
+    assert result == {"1":True,"2":True,"3":True,"4":True,"5":None}
+    shares,errors = validation.ba_shares(case["load"],county.factors,case["demand"],dg)
+    assert errors.max() < 1e-9
+    np.testing.assert_allclose(shares.values,county.values,atol=1e-9)

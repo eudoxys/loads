@@ -140,13 +140,23 @@ Calibration to EIA-930 balancing authority demand
 
 `CalibrateForm930` calibrates hourly unit loads (e.g., counties) to the
 hourly demand of the balancing authorities (BAs) that serve them, as
-reported on Form EIA-930. Each BA's demand $D_b(t)$ is split among its units
-in proportion to each unit's estimated contribution $f_{ub}L_u(t)$, where
-$f_{ub}$ is the fraction of unit $u$'s load served by BA $b$:
+reported on Form EIA-930. EIA-930 demand is net of behind-the-meter
+distributed generation (DG), so the result is a net load. Given each unit's
+gross load $G_u(t)\geq0$ and DG $P_u(t)\geq0$ (`dg`), each BA's gross
+demand $D_b(t)+P_b(t)$, with $P_b=\sum_kf_{kb}P_k$, is split among its units
+in proportion to each unit's gross contribution $f_{ub}G_u(t)$, where
+$f_{ub}$ is the fraction of unit $u$'s load served by BA $b$, and the unit's
+DG is subtracted:
 
 $$
-    X_u(t) = \sum_b D_b(t)\,\frac{f_{ub}L_u(t)}{\sum_k f_{kb}L_k(t)}.
+    X_u(t) = \sum_b \left(D_b(t)+P_b(t)\right)\frac{f_{ub}G_u(t)}{\sum_k f_{kb}G_k(t)} - P_u(t).
 $$
+
+Only the gross load is scaled; the DG is fixed, as in `Calibrate`. The net
+load $X_u$ is negative where the DG exceeds the calibrated gross load. Without
+`dg`, the given load is treated as a nonnegative net load and split in the
+same way with $P=0$ (the method of `eudoxys/wecc240` pull request #2, which
+clips the net load at zero).
 
 Unlike `Calibrate`, this is not an optimization: every hour of every BA
 with demand is matched exactly, and the hourly shape within a BA follows
@@ -184,7 +194,24 @@ gives
     ['SWPP']
 
 Washoe NV is 90% NEVP, whose demand it carries alone, plus its uncalibrated
-10% `SWPP` share (40, 38 and 39 MW). See `loads/_validate/README.md` for a
+10% `SWPP` share (40, 38 and 39 MW). With rooftop PV in Alpine CA, its net
+load becomes negative while CISO's net demand is still matched:
+
+    >>> dg = pd.DataFrame({"Alpine CA":[0.0,2.0,3.0]},index=index)
+    >>> result = CalibrateForm930(load,factors,demand,dg=dg)
+    >>> result[["Alpine CA","Amador CA"]]
+                               Alpine CA  Amador CA
+    timestamp
+    2020-08-01 00:00:00+00:00   1.064516  31.935484
+    2020-08-01 01:00:00+00:00  -0.684932  30.684932
+    2020-08-01 02:00:00+00:00  -1.757475  32.757475
+    >>> result.gross["Alpine CA"]
+    timestamp
+    2020-08-01 00:00:00+00:00    1.064516
+    2020-08-01 01:00:00+00:00    1.315068
+    2020-08-01 02:00:00+00:00    1.242525
+    Name: Alpine CA, dtype: float64
+ See `loads/_validate/README.md` for a
 validation on the 2018–2022 WECC county estimate.
 
 References
@@ -956,47 +983,52 @@ def _form930_demand(areas:list[str],index:pd.DatetimeIndex,refresh:bool) -> pd.D
 
 
 class CalibrateForm930(pd.DataFrame):
-    r"""Load data frame calibrated to EIA-930 balancing authority demand
+    r"""Net load data frame calibrated to EIA-930 balancing authority demand
 
-    The data frame contains the hourly load of each unit (e.g., a county) in
-    MW with the same index and columns as the input load. The hourly demand
-    $D_b(t)$ of each balancing authority (BA) $b$ reported on Form EIA-930
-    is split among the units it serves in proportion to each unit's
-    estimated contribution $f_{ub}L_u(t)$ to the BA, where $L_u(t)$ is the
-    unit's estimated load and $f_{ub}$ the fraction of unit $u$'s load
-    served by BA $b$. The calibrated unit load is the sum of its BA shares:
+    The data frame contains the hourly net load of each unit (e.g., a county)
+    in MW with the same index and columns as the input load. Net load may be
+    negative where behind-the-meter distributed generation (DG) exceeds the
+    load. The hourly demand $D_b(t)$ of each balancing authority (BA) $b$
+    reported on Form EIA-930, which is net of DG, is split among the units
+    it serves, where $f_{ub}$ is the fraction of unit $u$'s load served by
+    BA $b$.
+
+    With DG (`dg` given), only the gross load $G_u(t)\geq0$ is scaled and
+    the DG $P_u(t)\geq0$ is fixed, as in `Calibrate`. Each BA's gross demand
+    $D_b+P_b$, with $P_b=\sum_kf_{kb}P_k$, is split in proportion to the
+    units' gross load, and the unit's DG is subtracted:
 
     $$
-        X_u(t) = \sum_b f_{ub}L_u(t)\,R_b(t), \qquad
-        R_b(t) = \frac{D_b(t)}{S_b(t)}, \qquad
-        S_b(t) = \sum_k f_{kb}L_k(t).
+        X_u(t) = \sum_b f_{ub}G_u(t)\,R_b(t) - P_u(t), \qquad
+        R_b(t) = \frac{D_b(t)+P_b(t)}{S_b(t)}, \qquad
+        S_b(t) = \sum_k f_{kb}G_k(t).
     $$
 
-    Given a load $L\geq0$, factors $f$ whose rows sum to one, and BA demand
-    $D$, the result is expected to satisfy:
+    Without DG, $P=0$ and $G$ is the given load $L\geq0$, which is then the
+    net load (the method of `eudoxys/wecc240` pull request #2).
 
-      1. for every BA and hour with demand, the shares $f_{ub}X_u^{(b)}(t)$
-         of the units served by the BA sum to $D_b(t)$, so the total of the
-         units equals the total EIA-930 demand of their BAs plus the
-         uncalibrated shares of BAs without demand;
+    Given factors $f$ whose rows sum to one and BA demand $D\geq0$, the
+    result is expected to satisfy:
 
-      2. when $S_b(t)=0$, the BA demand is split by the factors $f_{ub}$
-         alone;
+      1. for every BA and hour with demand, the net shares
+         $f_{ub}(G_uR_b-P_u)$ of the units served by the BA sum to $D_b(t)$,
+         so the total of the units equals the total EIA-930 demand of their
+         BAs plus the uncalibrated net shares of BAs without demand;
 
-      3. shares of BAs without demand data (not EIA-930 respondents, or not
-         in `demand`) keep the estimate $f_{ub}L_u(t)$;
+      2. the calibrated gross load $X_u+P_u$ is nonnegative, and the net
+         load $X_u$ is negative only where the DG exceeds it;
 
-      4. in hours where a BA's demand is missing, its units are `NaN`
+      3. when $S_b(t)=0$, the BA gross demand is split by the factors
+         $f_{ub}$ alone;
+
+      4. shares of BAs without demand data (not EIA-930 respondents, or not
+         in `demand`) keep the estimate $f_{ub}(G_u-P_u)$;
+
+      5. in hours where a BA's demand is missing, its units are `NaN`
          (`missing="nan"`) or keep their estimated share of that BA
          (`missing="keep"`);
 
-      5. units without factors are returned unchanged.
-
-    The method follows the disaggregation of EIA-930 BA demand to WECC 240
-    nodes in `eudoxys/wecc240` (pull request #2), generalized to any set of
-    units and BAs. EIA-930 demand is net of behind-the-meter generation, so
-    `load` should be a net load (e.g., `elec_net_MW`, or gross load minus
-    rooftop PV clipped at zero), and the result is a net load.
+      6. units without factors are returned unchanged ($G_u-P_u$).
 
     Calibration results are available as attributes:
 
@@ -1004,17 +1036,22 @@ class CalibrateForm930(pd.DataFrame):
 
       - `demand`: BA demand $D$ used (MW, hours x BAs with demand)
 
-      - `estimate`: estimated BA load $S$ (MW, hours x BAs)
+      - `estimate`: estimated BA net load $S_b-P_b$ (MW, hours x BAs)
 
-      - `scale`: BA scale factor $R=D/S$ (hours x BAs); 1 for BAs without
-        demand, `NaN` for hours with missing demand or $S=0$
+      - `scale`: BA gross-load scale factor $R=(D+P_b)/S$ (hours x BAs); 1 for
+        BAs without demand, `NaN` for hours with missing demand or $S=0$
+
+      - `gross`: calibrated gross load $X+P$ (MW, as the data frame)
+
+      - `dg`: DG $P$ used (MW, nonnegative, as the data frame; zero without
+        `dg`)
 
       - `uncalibrated`: BAs without demand data
 
       - `unassigned`: units without factors (returned unchanged)
     """
 
-    _metadata = ["factors","demand","estimate","scale","uncalibrated","unassigned"]
+    _metadata = ["factors","demand","estimate","scale","gross","dg","uncalibrated","unassigned"]
 
     FACTOR_TOL = 1.0e-4
     """Tolerance on the sum of each unit's factors (they are then normalized to one)"""
@@ -1024,16 +1061,19 @@ class CalibrateForm930(pd.DataFrame):
         factors:pd.DataFrame,
         demand:pd.DataFrame|None=None,
         *,
+        dg:pd.DataFrame|None=None,
         missing:str="nan",
         refresh:bool=False,
         ):
-        r"""Construct a load data frame calibrated to BA demand
+        r"""Construct a net load data frame calibrated to BA demand
 
         Arguments
         ---------
 
-          - `load`: hourly estimated load $L$ (MW, nonnegative), one column
-            per unit, indexed by timestamp
+          - `load`: hourly load (MW, nonnegative), one column per unit,
+            indexed by timestamp: the gross load $G$ when `dg` is given,
+            otherwise the net load $L$ (which must then be nonnegative, e.g.,
+            clipped at zero)
 
           - `factors`: BA participation factors $f$: a wide frame (index
             units, one column per BA code), or a long frame with a `factor`
@@ -1047,6 +1087,12 @@ class CalibrateForm930(pd.DataFrame):
             Form EIA-930 demand of every BA in `factors` with
             `eia.Form930` (requires an EIA API key)
 
+          - `dg`: behind-the-meter DG $P$ (MW) with the same index and the
+            columns of `load` (missing columns have no DG); all values of
+            one sign, either nonnegative (as in `wecc/county_dg*.csv.gz`) or
+            nonpositive (as in `elec_dg_MW`); its magnitude is used.
+            The DG is not scaled, and the net result may be negative.
+
           - `missing`: how to treat hours where a BA's demand is missing,
             non-finite or negative: `"nan"` makes its units `NaN`, `"keep"`
             keeps their estimated share of that BA
@@ -1059,26 +1105,49 @@ class CalibrateForm930(pd.DataFrame):
 
           - `CalibrationError`: invalid inputs
         """
-        L = pd.DataFrame(load).copy()
-        if not isinstance(L.index,pd.DatetimeIndex):
+        # pylint: disable=too-many-locals,too-many-statements,too-many-branches
+        G = pd.DataFrame(load).copy()
+        if not isinstance(G.index,pd.DatetimeIndex):
             raise CalibrationError("load must be indexed by timestamp")
-        L.columns = [str(x) for x in L.columns]
-        if L.columns.duplicated().any():
+        G.columns = [str(x) for x in G.columns]
+        if G.columns.duplicated().any():
             raise CalibrationError("load has duplicate columns")
         try:
-            L = L.astype(float)
+            G = G.astype(float)
         except (TypeError,ValueError) as err:
             raise CalibrationError("load must be numeric") from err
-        if not np.isfinite(L.values).all():
+        if not np.isfinite(G.values).all():
             raise CalibrationError("load contains missing or infinite values")
-        if (L.values < 0).any():
-            raise CalibrationError("load must be nonnegative (clip net load at zero)")
+        if (G.values < 0).any():
+            raise CalibrationError("load must be nonnegative"
+                + (" (gross load)" if dg is not None else
+                    " (pass the gross load with dg= to allow negative net load)"))
         if missing not in ("nan","keep"):
             raise CalibrationError(f"{missing=} must be 'nan' or 'keep'")
 
+        if dg is None:
+            P = pd.DataFrame(0.0,index=G.index,columns=G.columns)
+        else:
+            P = pd.DataFrame(dg).copy()
+            P.columns = [str(x) for x in P.columns]
+            try:
+                P = P.astype(float)
+            except (TypeError,ValueError) as err:
+                raise CalibrationError("dg must be numeric") from err
+            present = set(P.columns)
+            if not present <= set(G.columns):
+                raise CalibrationError(f"dg has columns not in load: {sorted(present-set(G.columns))[:5]}")
+            P = P.reindex(index=G.index,columns=G.columns)
+            P[[x for x in G.columns if x not in present]] = 0.0
+            if not np.isfinite(P.values).all():
+                raise CalibrationError("dg contains missing or infinite values (or is misaligned)")
+            if (P.values > 0).any() and (P.values < 0).any():
+                raise CalibrationError("dg values must all have the same sign")
+            P = P.abs()
+
         F = _factor_matrix(factors,"factors")
-        units = [x for x in L.columns if x in F.index]
-        unassigned = [x for x in L.columns if x not in F.index]
+        units = [x for x in G.columns if x in F.index]
+        unassigned = [x for x in G.columns if x not in F.index]
         if unassigned:
             _logger.debug(f"units without factors are unchanged: {unassigned}")
         F = F.loc[units]
@@ -1086,7 +1155,7 @@ class CalibrateForm930(pd.DataFrame):
         bas = list(F.columns)
 
         if demand is None:
-            demand = _form930_demand(bas,L.index,refresh)
+            demand = _form930_demand(bas,G.index,refresh)
         demand = pd.DataFrame(demand).copy()
         if not isinstance(demand.index,pd.DatetimeIndex):
             raise CalibrationError("demand must be indexed by timestamp")
@@ -1099,35 +1168,39 @@ class CalibrateForm930(pd.DataFrame):
         uncalibrated = [x for x in bas if x not in demand.columns]
         if uncalibrated:
             _logger.debug(f"BAs without demand keep the estimate: {uncalibrated}")
-        D = demand.reindex(index=L.index,columns=bas)
+        D = demand.reindex(index=G.index,columns=bas)
         D = D.where(np.isfinite(D) & (D >= 0))
 
-        X = L[units].values                                 # hours x units
+        X = G[units].values                                 # hours x units (gross)
+        Pu = P[units].values                                # hours x units (DG)
         f = F.values                                        # units x BAs
-        S = X @ f                                           # hours x BAs
-        Dv = D.values
+        S = X @ f                                           # BA gross estimate
+        Pb = Pu @ f                                         # BA DG
+        T = D.values + Pb                                   # BA gross demand
         in930 = np.array([x in reported for x in bas],dtype=bool)
-        nodata = np.isnan(Dv) & in930[None,:]
+        nodata = np.isnan(T) & in930[None,:]
         with np.errstate(divide="ignore",invalid="ignore"):
-            R = np.where(S > 0,Dv/S,np.nan)
+            R = np.where(S > 0,T/S,np.nan)
         R[:,~in930] = 1.0
         Rapply = np.where(np.isnan(R),0.0,R)
         if missing == "keep":
             Rapply[nodata] = 1.0
-        result = X * (Rapply @ f.T)
+        gross = X * (Rapply @ f.T)
         zero = (S <= 0) & in930[None,:] & ~nodata          # split demand by factors alone
         if zero.any():
-            result += (np.where(zero,Dv,0.0) / f.sum(axis=0)[None,:]) @ f.T
+            gross += (np.where(zero,T,0.0) / f.sum(axis=0)[None,:]) @ f.T
         if missing == "nan":
-            result[(nodata.astype(float) @ (f.T > 0)) > 0] = np.nan
+            gross[(nodata.astype(float) @ (f.T > 0)) > 0] = np.nan
 
-        data = L.copy()
-        data[units] = result
-        super().__init__(data)
+        total = G.copy()
+        total[units] = gross
+        super().__init__(total - P)
         self.factors = F
         self.demand = D[reported]
-        self.estimate = pd.DataFrame(S,index=L.index,columns=bas)
-        self.scale = pd.DataFrame(np.where(nodata,np.nan,R),index=L.index,columns=bas)
+        self.estimate = pd.DataFrame(S - Pb,index=G.index,columns=bas)
+        self.scale = pd.DataFrame(np.where(nodata,np.nan,R),index=G.index,columns=bas)
+        self.gross = total
+        self.dg = P
         self.uncalibrated = uncalibrated
         self.unassigned = unassigned
 

@@ -3,9 +3,11 @@
 This [marimo](https://marimo.io/) notebook reviews the WECC county net loads
 calibrated to the EIA-930 demand of the US WECC balancing authorities (BAs)
 with `loads.calibrate.CalibrateForm930`, compared with the uncalibrated
-county net load estimate (`loads/wecc/wecc_estimate.csv.gz` minus
-`loads/wecc/county_dg_scaled.csv.gz`, clipped at zero). The inputs are those
-of `loads/_validate/validate_calibrate_form930.py`.
+county net load estimate (`loads/wecc/wecc_estimate.csv.gz` gross load minus
+the rooftop PV in `loads/wecc/county_dg_scaled.csv.gz`). Only the gross load
+is calibrated; the PV is fixed, so the net load is negative where the PV
+exceeds the calibrated gross load. The inputs are those of
+`loads/_validate/validate_calibrate_form930.py`.
 
 Select a state and, optionally, a county, a year and a month (the
 calibration runs on the selected window only; "All" uses 2018–2022, and the
@@ -17,7 +19,8 @@ month is used only with a year). For each county the notebook reports:
     county's BA shares hour by hour, so $a$ and $b$ summarize that map
     rather than define it; `energy_ratio` is $\\sum X/\\sum L$;
 
-  - the energy and peak power of the estimate and of the calibrated load;
+  - the energy, peak power and minimum (negative net load hours) of the
+    estimate and of the calibrated load;
 
   - MAPE, MAE, RMSE and R² of the calibrated load relative to the estimate
     (hours with a `NaN` calibrated load are excluded, and MAPE also
@@ -46,8 +49,8 @@ def _(importlib, mo, pathlib):
     validation = importlib.util.module_from_spec(_spec)
     _spec.loader.exec_module(validation)
     with mo.status.spinner("Loading county estimate, BA factors and EIA-930 demand"):
-        load,factors,demand,_ = validation.inputs()
-    return demand, factors, load
+        load,dg,factors,demand,_ = validation.inputs()
+    return demand, dg, factors, load
 
 
 @app.cell
@@ -93,19 +96,19 @@ def _(load, month_ui, year_ui):
 
 
 @app.cell
-def _(CalibrateForm930, demand, factors, load, mo, window):
+def _(CalibrateForm930, demand, dg, factors, load, mo, window):
     # calibrate all counties over the window (BAs cross state lines)
     with mo.status.spinner("Calibrating counties"):
-        result = CalibrateForm930(load.loc[window],factors,demand.loc[window])
+        result = CalibrateForm930(load.loc[window],factors,demand.loc[window],dg=dg.loc[window])
     return (result,)
 
 
 @app.cell
-def _(county_ui, load, np, pd, result, state_ui, window):
+def _(county_ui, dg, load, np, pd, result, state_ui, window):
     # county statistics for the selected state
     columns = [x for x in result.columns if x.endswith(f" {state_ui.value}")]
     selected = columns if county_ui.value is None else [f"{county_ui.value} {state_ui.value}"]
-    estimate = load.loc[window,columns]
+    estimate = load.loc[window,columns] - dg.loc[window,columns]   # net load estimate
     calibrated = pd.DataFrame(result)[columns]
 
     def _stats(x,y):
@@ -147,6 +150,10 @@ def _(county_ui, load, np, pd, result, state_ui, window):
             "calibrated_peak_MW":_y.max(),
             "calibrated_peak_time":_y.idxmax() if _y.notna().any() else pd.NaT,
             "peak_change_pc":100*(_y.max()/_x.max()-1) if _x.max() > 0 else np.nan,
+            "estimate_min_MW":_x.min(),
+            "calibrated_min_MW":_y.min(),
+            "estimate_negative_hours":int((_x < 0).sum()),
+            "calibrated_negative_hours":int((_y < 0).sum()),
             **_stats(_x,_y),
             })
     county_table = pd.DataFrame(_rows).set_index("county_st")
@@ -204,7 +211,7 @@ def _(calibrated, county_ui, estimate, mo, period, plt, selected, state_ui):
     plt.close()
     _fig2,_ax2 = plt.subplots(figsize=(5,5))
     _ax2.scatter(_x,_y,s=2,alpha=0.3)
-    _lim = [0,max(_x.max(),_y.max())*1.05]
+    _lim = [min(0,_x.min(),_y.min())*1.05,max(_x.max(),_y.max())*1.05]
     _ax2.plot(_lim,_lim,color="k",linewidth=0.5)
     _ax2.set_xlim(_lim)
     _ax2.set_ylim(_lim)
@@ -222,6 +229,7 @@ def _(county_table, hourly_table, mo, plot_tabs, result, selected):
     _table = county_table.loc[selected].round({
         "estimate_MWh":0,"calibrated_MWh":0,"energy_change_pc":2,
         "estimate_peak_MW":1,"calibrated_peak_MW":1,"peak_change_pc":2,
+        "estimate_min_MW":1,"calibrated_min_MW":1,
         "scale":4,"offset_MW":2,"energy_ratio":4,
         "MAPE_pc":2,"MAE_MW":2,"RMSE_MW":2,"R2":4,
         }).reset_index()
