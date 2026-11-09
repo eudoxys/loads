@@ -133,28 +133,37 @@ def _(data, names, node_factors, pd):
 
 
 @app.cell
-def _(data, mo, names, node_table, period, plt):
-    # node plots and data, a few nodes per tab
-    def _options(nodes,step):
-        return {f"{nodes[x]} $-$ {nodes[min(x+step,len(nodes))-1]}":nodes[x:min(x+step,len(nodes))]
-            for x in range(0,len(nodes),step)}
-
-    def _plot(node):
+def _(data, mo, names, period, plt):
+    # node plot and group views (public names, so lazy tabs can call them
+    # after this cell has run; marimo deletes a cell's private `_` names)
+    def node_plot(node):
+        """Plot one node's load over the window"""
         plt.close()
-        _ax = data[node].plot(figsize=(10,5),grid=True,linewidth=0.7 if len(data) > 744 else 1.0,
+        ax = data[node].plot(figsize=(10,5),grid=True,linewidth=0.7 if len(data) > 744 else 1.0,
             xlabel="Date/Time (UTC)",ylabel="Power (MW)",
             title=f"{names.get(node,node)} ({node}), {period}")
-        return _ax.figure
+        return ax.figure
 
-    def _group(nodes):
+    def node_group(nodes):
+        """Plot and data tabs for a group of nodes"""
         return mo.ui.tabs({
-            "Plot":mo.ui.tabs({f"{names.get(z,z)} ({z})":mo.lazy(lambda z=z:_plot(z)) for z in nodes},lazy=True),
+            "Plot":mo.ui.tabs({f"{names.get(z,z)} ({z})":mo.lazy(lambda z=z:node_plot(z))
+                for z in nodes},lazy=True),
             "Data":mo.ui.table(data[nodes].round(1),selection=None,page_size=24),
             },lazy=True)
+    return (node_group,)
 
+
+@app.cell
+def _(data, mo, node_group, node_table):
+    # node table and node groups, a few nodes per tab
+    _nodes = sorted(data.columns)
+    _step = 7
+    _groups = {f"{_nodes[x]} $-$ {_nodes[min(x+_step,len(_nodes))-1]}":_nodes[x:x+_step]
+        for x in range(0,len(_nodes),_step)}
     mo.ui.tabs({
         "Nodes":mo.ui.table(node_table,page_size=25,selection=None),
-        **{x:mo.lazy(lambda y=y:_group(y)) for x,y in _options(sorted(data.columns),7).items()},
+        **{x:mo.lazy(lambda y=y:node_group(y)) for x,y in _groups.items()},
         },lazy=True)
     return
 

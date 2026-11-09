@@ -113,6 +113,7 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/_test/conftest.py` | cache location from `LOADS_CACHEDIR` | |
 | `loads/_test/test_calibrate_synthetic.py` | `Calibrate` on a small synthetic system | fast, offline |
 | `loads/_test/test_calibrate_form930.py` | `CalibrateForm930` on a small synthetic system | fast, offline (EIA-930 download stubbed) |
+| `loads/_test/test_validate_calibrate_form930.py` | the checks of `_validate/validate_calibrate_form930.py` pass on a synthetic system and fail when it is perturbed | fast, offline |
 | `loads/_test/test_calibrate.py` | `Calibrate` on all WECC counties, August 2020 | network; skipped unless the cache holds the inputs |
 | `loads/_test/test_archive.py` | classes download cache files from the cache archive instead of rebuilding | `Residential`/`Commercial` tests fast, offline (`file://` archive); others `network` (real archive, Alameda CA, about 25 MB) |
 | `loads/_test/test_energy.py` | `Energy` with a stubbed `Total` | fast, offline |

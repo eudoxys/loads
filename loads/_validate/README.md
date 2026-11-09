@@ -180,17 +180,24 @@ node loads were built from.
 
 ### Results (2018–2022)
 
-- All 407 counties have factors; 29 BAs serve them, of which `SWPP` (border
-  counties) reports no WECC demand and keeps its estimated share
-  (2.99 TWh/y). 113 nodes receive load.
-- In the 43,816 hours with demand from every BA, the county total equals the
-  EIA-930 total plus the `SWPP` share to within 3×10⁻¹⁰ MW, and the node
-  total equals the county total. The first 8 hours of 2018 are missing from
-  the source and are `NaN` for the counties of the missing BAs.
-- No county or node load is negative.
-- The node loads equal the `wecc240` node loads to within 0.002 MW (the
-  4-decimal rounding of the `wecc240` county file), with the same `NaN`
-  hours.
+All 407 counties have factors; 29 BAs serve them, of which `SWPP` (border
+counties) reports no WECC demand and keeps its estimated share
+(2.99 TWh/y). 113 nodes receive load. The first 8 hours of 2018 are missing
+from the source and are `NaN` for the counties of the missing BAs; the
+other 43,816 hours are checked. The script prints `PASS`/`FAIL` for each
+check and exits with status 1 if any fails:
+
+| Check | Criterion | Result |
+| ----- | --------- | ------ |
+| 1. BA shares | county shares $f_{ub}L_uD_b/S_b$, recomputed BA by BA from the inputs, sum to each BA's EIA-930 demand, and each county's BA shares sum to its `CalibrateForm930` load (same `NaN` hours); tolerance 10⁻⁶ MW | pass: 28 BAs, max error 4×10⁻¹¹ MW (shares vs demand), 7×10⁻¹² MW (shares vs county load) |
+| 2. WECC total | county total − `SWPP` share = EIA-930 US WECC total `WECC_load_MW` (28 US BAs; BC Hydro, AESO and CFE excluded); tolerance 5 MW | pass: max 2 MW, mean −0.0004 MW (rounding of the per-BA series) |
+| 3. US only | every county in a US state; no Canadian or Mexican BA (`AESO`, `BCHA`, `CFE`); node total = county total (10⁻⁶ MW) | pass: none; none; 3×10⁻¹⁰ MW |
+| 4. Nonnegative | no negative county or node load | pass: minimum 0 MW |
+| 5. wecc240 | node loads = `wecc240` node loads, same nodes and `NaN` hours; tolerance 0.01 MW | pass: 113 nodes, max 0.0017 MW (4-decimal rounding of the `wecc240` county file) |
+
+Check 2 is independent of the PR #62 inputs: `WECC_load_MW` is on `main`.
+Node `c2u6xt` is in Canada but receives only the load of nearby US
+counties; no Canadian or Mexican load is in the node totals.
 
 | Year | EIA-930 TWh | County TWh | Node TWh | Node peak MW |
 | ---- | ----------- | ---------- | -------- | ------------ |
