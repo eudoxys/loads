@@ -12,13 +12,15 @@ Inputs
 
   - county gross load $G$: `loads/wecc/wecc_estimate.csv.gz`
 
-  - county rooftop PV $P$: `loads/wecc/county_dg_scaled.csv.gz` (fixed, not
-    calibrated); counties missing from the DG file have no DG. The
+  - county rooftop PV $P$: `loads/wecc/county_dg.csv.gz`, unscaled (not the
+    EIA-scaled `county_dg_scaled.csv.gz`), fixed and not calibrated;
+    counties missing from the file (38) and hours it does not cover (the
+    first 7 hours of 2018) have no PV. The
     calibrated net load $X=G'-P$ may be negative where the PV exceeds the
     calibrated gross load $G'$.
 
-  - with `--clip`, instead the net load $\max(G-P,0)$ and no DG, which is
-    the input of the `wecc240` node loads
+  - with `--clip`, instead the net load $\max(G-P,0)$ and no DG (the
+    `wecc240` method, but with the unscaled PV)
 
   - BA participation factors $f$: `loads/wecc/county_ba.csv` (EIA-861 2018)
 
@@ -68,10 +70,10 @@ are excluded from the totals.
      county load).
   4. **Nonnegative gross.** No calibrated county gross load is negative
      (the number of negative net county and node hours is reported).
-  5. **wecc240.** With `--compare` and `--clip`, the node loads equal the
-     `wecc240` node loads to within their rounding (`COMPARE_TOL_MW`), with
-     the same `NaN` hours. Without `--clip` the differences are reported
-     (`INFO`), since `wecc240` clips the net load at zero.
+  5. **wecc240.** With `--compare`, the differences from the `wecc240` node
+     loads are reported (`INFO`, not pass/fail): `wecc240` subtracts the
+     EIA-scaled PV and clips the net load at zero, whereas this validation
+     uses the unscaled PV (and, without `--clip`, does not clip).
 """
 
 # pylint: disable=invalid-name
@@ -106,9 +108,6 @@ WECC_TOL_MW = 5.0
 """Tolerance of the WECC total check (MW); the per-BA series are integers and
 their sum differs from `WECC_load_MW` by at most 2 MW"""
 
-COMPARE_TOL_MW = 0.01
-"""Tolerance of the comparison with the `wecc240` node loads (MW)"""
-
 FOREIGN_BAS = ("AESO","BCHA","CFE")
 """Canadian and Mexican WECC BAs (no EIA-930 demand)"""
 
@@ -126,13 +125,19 @@ def _source(path:str|None,local:str,remote:str) -> str:
 
 
 def county_load() -> tuple[pd.DataFrame,pd.DataFrame]:
-    """County gross load estimate and rooftop PV (MW, nonnegative)"""
+    """County gross load estimate and unscaled rooftop PV (MW, nonnegative)
+
+    The PV is `wecc/county_dg.csv.gz` as given (not the EIA-scaled
+    `county_dg_scaled.csv.gz`). Counties missing from it, and the hours it
+    does not cover (the first 7 hours of 2018 UTC, evening in the West),
+    have no PV.
+    """
     gross = pd.read_csv(os.path.join(WECC,"wecc_estimate.csv.gz"),index_col=[0],parse_dates=[0])
-    dg = pd.read_csv(os.path.join(WECC,"county_dg_scaled.csv.gz"),index_col=[0],parse_dates=[0])
-    dg = dg.reindex(index=gross.index,columns=gross.columns).fillna(0.0).abs()
-    gross,dg = gross.reindex(HOURS),dg.reindex(HOURS)
-    if gross.isna().any().any() or dg.isna().any().any():
+    gross = gross.reindex(HOURS)
+    if gross.isna().any().any():
         raise ValueError("county estimate does not cover the validation period")
+    dg = pd.read_csv(os.path.join(WECC,"county_dg.csv.gz"),index_col=[0],parse_dates=[0])
+    dg = dg.reindex(index=HOURS,columns=gross.columns).fillna(0.0).abs()
     return gross,dg
 
 
@@ -228,7 +233,7 @@ def checks(load:pd.DataFrame,factors:pd.DataFrame,demand:pd.DataFrame,
 
       - `list`: `(name,passed,detail)` for each check (see the module
         docstring); `passed` is `None` for an informational result (the
-        `wecc240` comparison with `dg`)
+        `wecc240` comparison)
     """
     # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     results = []
@@ -282,8 +287,7 @@ def checks(load:pd.DataFrame,factors:pd.DataFrame,demand:pd.DataFrame,
         delta = float(np.nanmax(np.abs(node[common].values - other.values)))
         same = node[common].isna().equals(other.isna())
         unmatched = sorted(set(node.columns) ^ set(compare.columns))
-        passed = bool(delta <= COMPARE_TOL_MW and same and not unmatched) if dg is None else None
-        results.append(("5. wecc240",passed,
+        results.append(("5. wecc240",None,
             f"{len(common)} common nodes, unmatched {unmatched or 'none'};"
             f" max |node - wecc240 node| {delta:.3g} MW; same NaN hours {same}"))
     return results
@@ -293,7 +297,7 @@ def main(argv:list[str]) -> int:
     """Run the validation"""
     parser = argparse.ArgumentParser(description=__doc__.split("\n",1)[0])
     parser.add_argument("--clip",action="store_true",
-        help="calibrate the net load clipped at zero without DG (the wecc240 method)")
+        help="calibrate the net load clipped at zero without DG (the wecc240 method, unscaled PV)")
     parser.add_argument("--compare",help="wecc240 node_ba_load.csv.gz to compare with")
     parser.add_argument("--factors",help="county_ba.csv (default package file or pinned URL)")
     parser.add_argument("--demand",help="WECC_BA_hourly_load_2018-2022.csv (default package file or pinned URL)")

@@ -133,22 +133,19 @@ and in February, August and November, whose energy is 11–14% low. The peak
 error is the difference between the EIA-930 CAISO peak target and the peak in
 `loads/caiso/2020.csv`.
 
-Counties with the most negative net load hours (default, 2018–2022):
+Counties with negative net load (default, 2018–2022):
 
-| County | Negative hours | Minimum MW | Mean MW |
-| ------ | -------------- | ---------- | ------- |
-| Amador CA | 18,583 | −2,102 | −255 |
-| Garfield UT | 13,784 | −81 | 5 |
-| Tehama CA | 12,017 | −285 | 37 |
-| Sutter CA | 8,097 | −179 | 70 |
-| Mariposa CA | 7,804 | −24 | 9 |
-| Kane UT | 7,483 | −25 | 10 |
-| Madera CA | 4,790 | −168 | 105 |
+| County | Negative hours | Minimum MW | Mean MW | PV peak MW | Gross estimate mean MW |
+| ------ | -------------- | ---------- | ------- | ---------- | ---------------------- |
+| Amador CA | 14,870 | −428 | 19 | 536 | 175 |
+| Garfield UT | 8,372 | −23 | 13 | 41 | 17 |
+| Tehama CA | 866 | −34 | 75 | 88 | 115 |
+| Kane UT | 232 | −3 | 13 | 15 | 14 |
+| Mariposa CA | 1 | −0.3 | 12 | 9 | 18 |
 
-Amador CA's mean net load is negative: its scaled rooftop PV (peak about
-2.3 GW against a gross load averaging under 0.2 GW) looks like a DG data
-error (also noted in PR #62). Calibration lowers California's gross load
-(CISO's scale is below one), which makes PV-heavy CISO counties more
+Amador CA's PV peaks at three times its mean gross load, which looks like a
+DG data error (also noted in PR #62). Calibration lowers California's gross
+load (CISO's scale is below one), which makes PV-heavy CISO counties more
 negative.
 
 ### Known gaps
@@ -173,9 +170,12 @@ demand (demand plus the PV of its counties) is split in proportion to each
 county's gross load contribution and the county's PV, which is fixed, is
 subtracted. The calibrated net load is negative where the PV exceeds the
 calibrated gross load. With `--clip`, the net load is instead clipped at
-zero and calibrated without PV, which is the method and input of the node
-loads published by `eudoxys/wecc240` (pull request #2), so the result can be
-compared with them directly.
+zero and calibrated without PV, which is the method of the node loads
+published by `eudoxys/wecc240` (pull request #2). The PV is the unscaled
+`loads/wecc/county_dg.csv.gz`; the EIA-scaled `county_dg_scaled.csv.gz` is
+not used for this validation, its tests or the review notebooks. Because
+`wecc240` used the scaled PV, the comparison with its node loads is
+reported for information only.
 
 	python validate_calibrate_form930.py [--clip] --compare node_ba_load.csv.gz
 
@@ -192,7 +192,7 @@ estimate), which use the same inputs (`inputs()` in the script).
 | Input | File | Basis |
 | ----- | ---- | ----- |
 | County gross load $G$ | `loads/wecc/wecc_estimate.csv.gz` | gross county estimate (calibrated) |
-| Rooftop PV $P$ | `loads/wecc/county_dg_scaled.csv.gz` | EIA-scaled county rooftop PV (fixed); with `--clip`, $\max(G-P,0)$ is calibrated without PV |
+| Rooftop PV $P$ | `loads/wecc/county_dg.csv.gz` | unscaled county rooftop PV (fixed; 38 counties and the first 7 hours of 2018 have none); with `--clip`, $\max(G-P,0)$ is calibrated without PV |
 | BA factors $f$ | `loads/wecc/county_ba.csv` | share of each county's load served by each BA, fitted to EIA-861 2018 sales (PR #62) |
 | BA demand $D$ | `loads/_test/data/WECC_BA_hourly_load_2018-2022.csv` | cleaned EIA-930 demand, UTC hour-ending → hour-beginning (PR #62) |
 | Node factors $g$ | `loads/wecc/node_estimate_cf.csv` | county → WECC 240 node factors (decision 16) |
@@ -205,7 +205,7 @@ node loads were built from.
 
 All 407 counties have factors; 29 BAs serve them, of which `SWPP` (border
 counties) reports no WECC demand and keeps its estimated share
-(2.99 TWh/y). 113 nodes receive load. The first 8 hours of 2018 are missing
+(2.96 TWh/y). 113 nodes receive load. The first 8 hours of 2018 are missing
 from the source and are `NaN` for the counties of the missing BAs; the
 other 43,816 hours are checked. The script prints `PASS`/`FAIL` for each
 check and exits with status 1 if any fails:
@@ -215,21 +215,22 @@ check and exits with status 1 if any fails:
 | 1. BA shares | county net shares $f_{ub}\left(G_u(D_b+P_b)/S_b-P_u\right)$, recomputed BA by BA from the inputs, sum to each BA's EIA-930 demand, and each county's BA shares sum to its `CalibrateForm930` load (same `NaN` hours); tolerance 10⁻⁶ MW | pass: 28 BAs, max error 4×10⁻¹¹ MW (shares vs demand), 7×10⁻¹² MW (shares vs county load) |
 | 2. WECC total | county total − `SWPP` share = EIA-930 US WECC total `WECC_load_MW` (28 US BAs; BC Hydro, AESO and CFE excluded); tolerance 5 MW | pass: max 2 MW, mean −0.0004 MW (rounding of the per-BA series) |
 | 3. US only | every county in a US state; no Canadian or Mexican BA (`AESO`, `BCHA`, `CFE`); node total = county total (10⁻⁶ MW) | pass: none; none; 3×10⁻¹⁰ MW |
-| 4. Nonnegative gross | no negative calibrated county gross load (negative net load is reported) | pass: minimum gross 0.30 MW; negative net load in 77,442 county-hours (19 counties) and 26,474 node-hours (8 nodes) |
-| 5. wecc240 | with `--clip`: node loads = `wecc240` node loads, same nodes and `NaN` hours; tolerance 0.01 MW. Without `--clip`: reported only (`INFO`) | `--clip`: pass, 113 nodes, max 0.0017 MW (4-decimal rounding of the `wecc240` county file). Default: differs by up to 2.1 GW where `wecc240` clips negative net load |
+| 4. Nonnegative gross | no negative calibrated county gross load (negative net load is reported) | pass: minimum gross 0.30 MW; negative net load in 24,341 county-hours (5 counties), no negative node load |
+| 5. wecc240 | reported only (`INFO`): `wecc240` used the scaled PV and clips net load at zero | same 113 nodes and `NaN` hours; differs by up to 735 MW (627 MW with `--clip`) |
 
 Checks 1–4 pass with and without `--clip`, and the annual energy below is
-the same (the BA totals are matched either way). Check 2 is independent of
+the same (the BA totals are matched either way; only the uncalibrated
+`SWPP` share depends on the PV). Check 2 is independent of
 the PR #62 inputs: `WECC_load_MW` is on `main`.
 Node `c2u6xt` is in Canada but receives only the load of nearby US
 counties; no Canadian or Mexican load is in the node totals.
 
 | Year | EIA-930 TWh | County TWh | Node TWh | Node peak MW |
 | ---- | ----------- | ---------- | -------- | ------------ |
-| 2018 | 728.6 | 731.6 | 731.6 | 139,897 |
-| 2019 | 718.7 | 721.7 | 721.7 | 133,141 |
-| 2020 | 718.1 | 721.1 | 721.1 | 141,288 |
-| 2021 | 724.7 | 727.6 | 727.6 | 136,203 |
+| 2018 | 728.6 | 731.5 | 731.5 | 139,894 |
+| 2019 | 718.7 | 721.7 | 721.7 | 133,136 |
+| 2020 | 718.1 | 721.1 | 721.1 | 141,279 |
+| 2021 | 724.7 | 727.6 | 727.6 | 136,199 |
 | 2022 | 744.2 | 747.1 | 747.1 | 143,500 |
 
 ### Known gaps

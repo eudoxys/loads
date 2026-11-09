@@ -5,9 +5,10 @@ obtained by calibrating the WECC county net load estimate to the EIA-930
 demand of the US WECC balancing authorities (BAs) with
 `loads.calibrate.CalibrateForm930` and allocating the counties to the nodes
 with `CalibrateForm930.allocate`, as in `eudoxys/wecc240` pull request #2.
-Unlike `wecc240`, the net load is not clipped at zero: only the county gross
-load is calibrated and the rooftop PV is fixed, so a node's net load is
-negative where its PV exceeds its load.
+Unlike `wecc240`, the rooftop PV is the unscaled `loads/wecc/county_dg.csv.gz`
+(not the EIA-scaled `county_dg_scaled.csv.gz`) and the net load is not
+clipped at zero: only the county gross load is calibrated and the PV is
+fixed, so a node's net load is negative where its PV exceeds its load.
 The inputs are those of `loads/_validate/validate_calibrate_form930.py`.
 
 Select a year and, optionally, a month to reduce the time window (the

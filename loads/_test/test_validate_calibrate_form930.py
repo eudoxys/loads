@@ -53,7 +53,7 @@ def run(case,**changes) -> dict:
 def test_all_pass(case):
     """Every check passes on correct data, including the comparison"""
     result = run(case,compare=case["node"].round(4))
-    assert result == {"1":True,"2":True,"3":True,"4":True,"5":True}
+    assert result == {"1":True,"2":True,"3":True,"4":True,"5":None}
 
 
 def test_ba_shares_fail(case):
@@ -91,12 +91,14 @@ def test_node_total_fail(case):
     assert not run(case,node=node)["3"]
 
 
-def test_compare_fail(case):
-    """Node loads that differ from the reference fail check 5"""
+def test_compare_informational(case):
+    """The wecc240 comparison is reported, never pass/fail"""
     other = case["node"].copy()
     other.iloc[3,1] += 1.0
-    assert not run(case,compare=other)["5"]
-    assert not run(case,compare=case["node"].drop(columns="n1"))["5"]
+    detail = {name.split(".")[0]:(passed,text) for name,passed,text in validation.checks(
+        **{key:case[key] for key in ["load","factors","demand","county","node","wecc"]},compare=other)}
+    assert detail["5"][0] is None
+    assert "max |node - wecc240 node| 1 MW" in detail["5"][1]
 
 
 def test_missing_demand(case):

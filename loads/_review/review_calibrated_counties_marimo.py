@@ -4,7 +4,8 @@ This [marimo](https://marimo.io/) notebook reviews the WECC county net loads
 calibrated to the EIA-930 demand of the US WECC balancing authorities (BAs)
 with `loads.calibrate.CalibrateForm930`, compared with the uncalibrated
 county net load estimate (`loads/wecc/wecc_estimate.csv.gz` gross load minus
-the rooftop PV in `loads/wecc/county_dg_scaled.csv.gz`). Only the gross load
+the unscaled rooftop PV in `loads/wecc/county_dg.csv.gz`; the EIA-scaled
+`county_dg_scaled.csv.gz` is not used). Only the gross load
 is calibrated; the PV is fixed, so the net load is negative where the PV
 exceeds the calibrated gross load. The inputs are those of
 `loads/_validate/validate_calibrate_form930.py`.
