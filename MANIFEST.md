@@ -17,7 +17,7 @@ Update this file in the same PR that adds, moves, or deletes a file.
 - Add a sector or data source: copy `loads/industry.py` (flat shape) or `loads/residential.py` (stock + scaling); wire it into `loads/total.py`; export in `loads/__init__.py`; add a test in `loads/_test/`; add rows here
 - Change an output column: module docstring example, `loads/__init__.py` "Load data" section, `README.md`, `DESIGN.md` contracts table
 - Add a CLI option or dataset: `loads/cli.py` (`_getdata`, parser), the class's annotated `__init__` argument (see `makeargs` in `CLAUDE.md`), `loads/__init__.py` Syntax section
-- Change calibration: `loads/calibrate.py`; fast tests `loads/_test/test_calibrate_synthetic.py`, `test_calibrate_form930.py`; August 2020 test `loads/_test/test_calibrate.py`; re-run `loads/_validate/validate_calibrate*.py` and update `loads/_validate/README.md`
+- Change calibration: `loads/calibrate.py`; fast tests `loads/_test/test_calibrate_synthetic.py`, `test_calibrate_form930.py`; August 2020 test `loads/_test/test_calibrate.py`; re-run `loads/_validate/validate_calibrate*.py` and update `loads/_validate/README.md`; review EIA-930 calibration with `loads/_review/review_calibrated_{nodes,counties}_marimo.py`
 - Change estimator defaults (harmonics, holdout): `loads/estimator.py`; sweep with `loads/_explore/explore_estimator.py`; results in `loads/_explore/explore_estimator_clusters.csv`; review holdout folds for one county with `loads/_review/review_estimator_folds_marimo.py`
 - Re-cluster counties: `loads/_explore/explore_clusters_marimo.py` writes `loads/clusters.csv`
 - Regenerate WECC outputs: `loads/wecc/wecc_estimate.py` → `node_estimate.py`; DG scaling `loads/wecc/county_dg_scale.py`; monthly county energy `python3 -m loads.energy` (writes `loads/wecc/county_mwh.csv`, `county_cf.csv`). Hours of work: only when asked
@@ -144,6 +144,8 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/_review/review_commercial_marimo.py` | review `Commercial` | marimo |
 | `loads/_review/review_wecc_estimate_marimo.py` | view `wecc/wecc_estimate.csv.gz` | marimo |
 | `loads/_review/review_node_estimate_marimo.py` | view `wecc/node_estimate.csv.gz` | marimo |
+| `loads/_review/review_calibrated_nodes_marimo.py` | WECC240 node loads from `CalibrateForm930` (EIA-930 BA demand), optional year/month window | `marimo run`; inputs from `_validate/validate_calibrate_form930.py` |
+| `loads/_review/review_calibrated_counties_marimo.py` | `CalibrateForm930` county loads by state vs the estimate: scale/offset, energy/peak, MAPE/MAE/RMSE/R², optional year/month | `marimo run`; inputs from `_validate/validate_calibrate_form930.py` |
 | `loads/_review/review_estimator_folds_marimo.py` | `Estimator` holdout fold results (`fold=True`) for any state and county | `marimo run`; fits `N` models, needs NSRDB credentials |
 
 ## Examples

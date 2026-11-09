@@ -159,7 +159,11 @@ directly.
 
 where `node_ba_load.csv.gz` is `wecc240/data/node_ba_load.csv.gz` from that
 pull request (omit `--compare` to skip the comparison). It takes about a
-minute.
+minute. Review the results with the marimo notebooks
+`loads/_review/review_calibrated_nodes_marimo.py` (WECC240 nodes) and
+`loads/_review/review_calibrated_counties_marimo.py` (counties by state,
+with scale, offset, energy, peak and error statistics relative to the
+estimate), which use the same inputs (`inputs()` in the script).
 
 ### Inputs
 

@@ -107,6 +107,18 @@ def ba_demand(path:str|None=None) -> pd.DataFrame:
     return demand.drop(["utc_hour_ending","pst_hour_ending"],axis=1).reindex(HOURS)
 
 
+def inputs(factors:str|None=None,demand:str|None=None) -> tuple:
+    """Validation inputs: county net load, BA factors, BA demand and node factors
+
+    Also used by the review notebooks `loads/_review/review_calibrated_*_marimo.py`.
+    """
+    load = county_net_load()
+    factors = pd.read_csv(_source(factors,os.path.join(WECC,"county_ba.csv"),"wecc/county_ba.csv"))
+    demand = ba_demand(demand)
+    nodes = pd.read_csv(os.path.join(WECC,"node_estimate_cf.csv")).rename({"cf":"factor"},axis=1)
+    return load,factors,demand,nodes
+
+
 def main(argv:list[str]) -> int:
     """Run the validation"""
     parser = argparse.ArgumentParser(description=__doc__.split("\n",1)[0])
@@ -117,10 +129,7 @@ def main(argv:list[str]) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.WARNING)
 
-    load = county_net_load()
-    factors = pd.read_csv(_source(args.factors,os.path.join(WECC,"county_ba.csv"),"wecc/county_ba.csv"))
-    demand = ba_demand(args.demand)
-    nodes = pd.read_csv(os.path.join(WECC,"node_estimate_cf.csv")).rename({"cf":"factor"},axis=1)
+    load,factors,demand,nodes = inputs(args.factors,args.demand)
 
     county = CalibrateForm930(load,factors,demand)
     node = county.allocate(nodes)
