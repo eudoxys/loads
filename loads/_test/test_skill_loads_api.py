@@ -64,7 +64,7 @@ def test_sector_models_keyword_only_after_county():
         assert "year" not in p  # 2018 only
 
 
-# --- Calibrate -------------------------------------------------------------------
+# --- CalibrateEnergyPeak -----------------------------------------------------------
 
 def _panel(months=("2020-07",), units=("Alameda CA", "Kern CA", "Washoe NV")):
     idx = pd.DatetimeIndex([], tz="UTC")
@@ -84,22 +84,22 @@ def _panel(months=("2020-07",), units=("Alameda CA", "Kern CA", "Washoe NV")):
 
 
 def test_calibrate_signature():
-    p = params(loads.Calibrate.__init__)
+    p = params(loads.CalibrateEnergyPeak.__init__)
     for name in ("energy", "peak"):
         assert p[name].kind is inspect.Parameter.KEYWORD_ONLY
         assert p[name].default is inspect.Parameter.empty  # both required
     assert {"dg", "states", "regions", "search", "progress"} <= set(p)
     from loads.calibrate import CalibrationError  # noqa: F401
     import loads.calibrate as cal
-    assert not hasattr(cal, "fit_load") and not hasattr(loads.Calibrate, "load")
+    assert not hasattr(cal, "fit_load") and not hasattr(loads.CalibrateEnergyPeak, "load")
 
 
 def test_calibrate_dg_must_be_positive_output():
     from loads.calibrate import CalibrationError
     X, D, energy, peak = _panel()
     with pytest.raises(CalibrationError, match="nonnegative"):
-        loads.Calibrate(X, energy=energy, peak=peak, dg=-D)  # elec_dg_MW convention is rejected
-    out = loads.Calibrate(X, energy=energy, peak=peak, dg=D)
+        loads.CalibrateEnergyPeak(X, energy=energy, peak=peak, dg=-D)  # elec_dg_MW convention is rejected
+    out = loads.CalibrateEnergyPeak(X, energy=energy, peak=peak, dg=D)
     assert out.shape == X.shape and np.allclose(out.net, out - D)
 
 
@@ -108,19 +108,24 @@ def test_calibrate_rejects_nan_edges():
     X, D, energy, peak = _panel()
     X.iloc[:3] = np.nan  # Total's lag window
     with pytest.raises(CalibrationError, match="missing"):
-        loads.Calibrate(X, energy=energy, peak=peak, dg=D)
+        loads.CalibrateEnergyPeak(X, energy=energy, peak=peak, dg=D)
 
 
 def test_calibrate_without_peak_regions_raises():
-    # footguns.md: energy-only calibration (peak={}) fails building the region table
+    # footguns.md #13: CalibrateEnergyPeak does no energy-only shaping (peak={}) ...
     X, D, energy, _ = _panel()
     with pytest.raises(KeyError):
-        loads.Calibrate(X, energy=energy, peak={}, dg=D)
+        loads.CalibrateEnergyPeak(X, energy=energy, peak={}, dg=D)
+    # ... CalibrateEnergy does, per unit, with DG fixed and either sign
+    targets = {u: 1.1 * float((X[u] - D[u]).sum()) for u in X.columns}
+    out = loads.CalibrateEnergy(X, targets, dg=-D)
+    assert np.allclose(out.net.sum(), pd.Series(targets))
+    assert np.allclose(out / X, out.scale)  # proportional: shape kept
 
 
 def test_calibrate_is_affine_per_utc_month():
     X, D, energy, peak = _panel(months=("2020-07", "2020-08"))
-    out = loads.Calibrate(X, energy=energy, peak=peak, dg=D)  # same targets for both months
+    out = loads.CalibrateEnergyPeak(X, energy=energy, peak=peak, dg=D)  # same targets for both months
     assert len(out.summary) == 2  # one block per UTC calendar month
     par = out.parameters.reset_index()
     for (block, unit), row in out.parameters.iterrows():
@@ -210,6 +215,98 @@ def test_calibrate_peaks_outside_intervals_unchanged():
 def test_cast_module_removed():
     with pytest.raises(ModuleNotFoundError):
         __import__("loads.cast")
+
+
+# --- Calibrate / CalibrateConfig ---------------------------------------------------
+
+def _total_frame(months=("2020-07",)):
+    X, D, _, _ = _panel(months=months, units=("Alameda CA", "Kern CA"))
+    frame = pd.DataFrame({"elec_residential_MW": X["Alameda CA"], "elec_commercial_MW": X["Kern CA"]})
+    frame["elec_total_MW"] = frame.sum(axis=1)
+    frame["elec_dg_MW"] = -D.sum(axis=1)
+    frame["elec_net_MW"] = frame["elec_total_MW"] + frame["elec_dg_MW"]
+    frame["temperature_degF"] = 70.0
+    return frame
+
+
+def test_calibrate_signatures():
+    # api.md: Calibrate(data, config); CalibrateConfig(*, energy, peak, peaks, demand, basis, **options)
+    p = params(loads.Calibrate.__init__)
+    assert list(p)[1:] == ["data", "config"]
+    p = params(loads.CalibrateConfig.__init__)
+    assert [n for n in p if p[n].kind is inspect.Parameter.KEYWORD_ONLY] == \
+        ["energy", "peak", "peaks", "demand", "basis"]
+    assert p["options"].kind is inspect.Parameter.VAR_KEYWORD
+    p = params(loads.CalibrateEnergy.__init__)
+    assert list(p)[1:3] == ["load", "energy"] and p["dg"].kind is inspect.Parameter.KEYWORD_ONLY
+    p = params(loads.CalibrateHourly.__init__)
+    assert list(p)[1:4] == ["load", "factors", "demand"]
+    assert {"dg", "missing", "refresh"} <= set(p)
+    import loads.calibrate as cal
+    assert not hasattr(cal, "CalibrateForm930")
+
+
+def test_calibrate_config_chooses_method():
+    # footguns.md #35, api.md table
+    from loads.calibrate import CalibrationError
+    frame = _total_frame()
+    peaks = frame["elec_net_MW"].resample("D").agg(["max", "min"])
+    assert loads.CalibrateConfig(energy=1.0).method is loads.CalibrateEnergy
+    assert loads.CalibrateConfig(energy=1.0, peak=2.0).method is loads.CalibrateEnergyPeak
+    assert loads.CalibrateConfig(peaks=peaks, peak=0.95).method is loads.CalibratePeaks
+    assert loads.CalibrateConfig(demand=frame["elec_net_MW"]).method is loads.CalibrateHourly
+    for data in ({}, {"peak": 1.0}, {"energy": 1.0, "demand": frame["elec_net_MW"]},
+                 {"energy": 1.0, "peaks": peaks}):
+        with pytest.raises(CalibrationError):
+            loads.CalibrateConfig(**data)
+    with pytest.raises(CalibrationError, match="not an option"):
+        loads.CalibrateConfig(energy=1.0, search=True)
+    config = loads.CalibrateConfig(energy=1.0, peak=2.0, search=True)
+    assert config.shape_weight == 1.0
+    config.shape_weight = 2.0
+    assert config.options == {"search": True, "shape_weight": 2.0}
+    assert "CalibrateEnergyPeak" in repr(config)
+
+
+def test_calibrate_keeps_columns_and_dg():
+    # api.md: same columns; net matched; DG and weather unchanged; total and sectors rebuilt
+    frame = _total_frame()
+    target = 1.1 * frame["elec_net_MW"].sum()
+    out = loads.Calibrate(frame, loads.CalibrateConfig(energy=target))
+    assert list(out.columns) == list(frame.columns) and out.basis == "elec_net_MW"
+    assert np.isclose(out["elec_net_MW"].sum(), target)
+    assert np.allclose(out["elec_dg_MW"], frame["elec_dg_MW"])
+    assert (out["temperature_degF"] == 70.0).all()
+    assert np.allclose(out[["elec_residential_MW", "elec_commercial_MW"]].sum(axis=1), out["elec_total_MW"])
+    assert np.allclose(out["elec_net_MW"], out["elec_total_MW"] - np.abs(out["elec_dg_MW"]))
+
+
+def test_calibrate_peaks_through_calibrate_rebuilds_total():
+    # footguns.md #34: Calibrate matches elec_net_MW with fixed DG and rebuilds the rest
+    frame = _total_frame()
+    daily = frame["elec_net_MW"].resample("D")
+    peaks = pd.DataFrame({"max": daily.max() * 1.2, "min": daily.min() * 0.8})
+    out = loads.Calibrate(frame, loads.CalibrateConfig(peaks=peaks))
+    assert np.allclose(out["elec_net_MW"].resample("D").max(), peaks["max"])
+    assert np.allclose(out["elec_total_MW"], out["elec_net_MW"] + np.abs(frame["elec_dg_MW"]))
+
+
+def test_calibrate_number_targets_and_missing_demand():
+    # footguns.md #35: a number is refused for CalibrateEnergyPeak across months;
+    # missing demand is NaN unless missing="keep"; NaN edges are rejected
+    from loads.calibrate import CalibrationError
+    frame = _total_frame(months=("2020-07", "2020-08"))
+    with pytest.raises(CalibrationError, match="every month"):
+        loads.Calibrate(frame, loads.CalibrateConfig(energy=1.0e6, peak=1.0e3))
+    demand = frame["elec_net_MW"] * 1.1
+    demand.iloc[0] = np.nan
+    assert loads.Calibrate(frame, loads.CalibrateConfig(demand=demand))["elec_net_MW"].isna().sum() == 1
+    keep = loads.Calibrate(frame, loads.CalibrateConfig(demand=demand, missing="keep"))
+    assert not keep["elec_net_MW"].isna().any()
+    edges = frame.copy()
+    edges.iloc[:2, edges.columns.get_loc("elec_net_MW")] = np.nan
+    with pytest.raises(CalibrationError, match="lag-window"):
+        loads.Calibrate(edges, loads.CalibrateConfig(energy=1.0e6))
 
 
 # --- Estimator, Energy, DG ---------------------------------------------------------

@@ -7,7 +7,7 @@ Builds and caches the inputs used by `validate_calibrate_marimo.py`:
     same construction as `loads/_test/test_calibrate.py`, for the whole
     year instead of August);
 
-  - the calibrated load $L$: `Calibrate(...,search=True)` month by month,
+  - the calibrated load $L$: `CalibrateEnergyPeak(...,search=True)` month by month,
     with the default settings of `loads/_explore/explore_calibrate_marimo.py`
     (DG from the unscaled rooftop PV `loads/wecc/county_dg.csv.gz`, the monthly state energy and
     CAISO/WECC peak targets and the CAISO/WECC membership in
@@ -230,7 +230,7 @@ def calibrated_load(year:int=YEAR,
       - `refresh`: recalibrate even when the result is cached (the load
         matrix is not rebuilt)
 
-      - `progress`: `Calibrate` progress callback
+      - `progress`: `CalibrateEnergyPeak` progress callback
 
     Returns
     -------
@@ -251,10 +251,10 @@ def calibrated_load(year:int=YEAR,
             for cache in caches.values():
                 cache.delete()
 
-    from loads.calibrate import Calibrate # pylint: disable=import-outside-toplevel
+    from loads.calibrate import CalibrateEnergyPeak # pylint: disable=import-outside-toplevel
     load = gross_load(year)
     energy,peak = targets(year)
-    shaped = Calibrate(load,
+    shaped = CalibrateEnergyPeak(load,
         dg=distributed_generation(load),
         energy=energy,
         peak=peak,

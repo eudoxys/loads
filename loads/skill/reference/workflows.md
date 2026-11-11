@@ -9,7 +9,7 @@ import loads.skill as ls
 ls.configure()          # cache folder + NSRDB credential check
 ```
 
-and Python 3.12 with `loads` installed (recipe 5's `Calibrate` example
+and Python 3.12 with `loads` installed (recipe 5's `CalibrateEnergyPeak` example
 reads targets from `loads/_test/data/`, which needs a clone). Before any sweep, run the recipe on one county and show the user the
 timing and a summary. Recipe 1 needs no `configure()`, credentials or
 network.
@@ -153,6 +153,34 @@ ls.to_csv(nodal, "out/wecc240_2020_total.csv.gz",
 
 ## 5. Calibrate to known energy and peaks
 
+### One county frame, any data (`Calibrate`)
+
+`loads.calibrate.Calibrate` calibrates one `loads` frame and returns the
+same columns. The data given to `CalibrateConfig` picks the method, and
+options of that method go to the config too. With the default basis
+`elec_net_MW` the net load matches the data, `elec_dg_MW` stays fixed, and
+`elec_total_MW`, the sectors and `elec_net_MW` are rebuilt:
+
+```python
+from loads.calibrate import Calibrate, CalibrateConfig
+df = df.dropna(subset=["elec_net_MW", "elec_dg_MW"])        # lag-window edges are NaN
+monthly = 1.05 * df["elec_net_MW"].resample("MS").sum()    # e.g. EIA monthly MWh
+cal = Calibrate(df, CalibrateConfig(energy=monthly))
+print(cal.method.__name__, cal.basis)                      # CalibrateEnergy elec_net_MW
+print(cal.calibration.parameters)                          # the method's own diagnostics
+ls.validate(cal).raise_if_failed()                         # sector sum and net identity kept
+daily = df["elec_net_MW"].resample("D").agg(["max", "min"])
+cal = Calibrate(df, CalibrateConfig(peaks=daily, peak=0.95, trough=0.05))  # CalibratePeaks
+cal = Calibrate(df, CalibrateConfig(demand=1.1 * df["elec_net_MW"]))      # CalibrateHourly
+```
+
+- `CalibrateConfig(energy=..., peak=...)` runs `CalibrateEnergyPeak` with
+  options such as `search=True`; give monthly Series (indexed by month
+  start) unless the frame is within one month.
+- `basis="elec_total_MW"` matches the gross load instead (DG ignored).
+- An unsupported combination of data, or an option the method doesn't
+  take, raises `CalibrationError` before anything runs.
+
 Proportional, one target (e.g. a utility's reported annual sales for the
 county):
 
@@ -192,11 +220,11 @@ many customers; decide whether to match `elec_total_MW` or `elec_net_MW`
 and say which. Industrial EIA sales are not comparable to the flat NLR
 inventory without checking.
 
-### Panel shaping to state energy and regional peaks (`Calibrate`)
+### Panel shaping to state energy and regional peaks (`CalibrateEnergyPeak`)
 
 When the targets are regional and coupled (every state's monthly energy
 *and* the CAISO and WECC peaks), shape the whole panel at once with
-`loads.calibrate.Calibrate` via `shape_to_targets`. The package's own WECC
+`loads.calibrate.CalibrateEnergyPeak` via `shape_to_targets`. The package's own WECC
 targets and memberships for 2018–2022 are in `loads/_test/data/`
 (see its README for sources and definitions):
 
@@ -278,6 +306,9 @@ cal["elec_total_MW"] = gross
 ls.validate(cal).raise_if_failed()                        # sector sum and net identity
 ```
 
+`Calibrate(df, CalibrateConfig(peaks=peaks, peak=0.95, trough=0.05))` does
+the same in one call.
+
 - Calibrating `elec_net_MW` together with `elec_total_MW` or the sectors
   breaks `elec_net_MW = elec_total_MW + elec_dg_MW`, because the scale
   then also applies to the DG implied in the net load.
@@ -291,6 +322,28 @@ ls.validate(cal).raise_if_failed()                        # sector sum and net i
 - Each interval gets its own scale and offset, so expect steps at interval
   boundaries. Hours outside the intervals are unchanged
   (`cal.calibrated`).
+
+### Hourly BA demand split among counties (`CalibrateHourly`)
+
+When a BA's hourly demand (EIA-930) must be shared among the counties it
+serves, calibrate the county panel at once (calibrating counties one by one
+would give each the whole BA):
+
+```python
+import pandas as pd
+from loads.calibrate import CalibrateHourly
+gross = res.column("elec_total_MW")                      # county gross load panel, "County ST" columns
+dg = -res.column("elec_dg_MW")                           # magnitude; either sign is accepted
+factors = pd.read_csv("loads/wecc/county_ba.csv")        # county_st,ba,factor,method
+cal = CalibrateHourly(gross, factors, demand, dg=dg)     # demand: MW by BA code, hourly UTC
+nodes = cal.allocate(pd.read_csv("loads/wecc/node_estimate_cf.csv").rename(columns={"cf": "factor"}))
+```
+
+- Every BA hour with demand is matched exactly; net load can be negative
+  where rooftop PV exceeds the calibrated gross load; `cal.gross` is the
+  gross load. `demand=None` downloads EIA-930 (needs an EIA API key).
+- Hours of missing demand are NaN (`missing="keep"` keeps the estimate);
+  BAs without demand keep the estimate (`cal.uncalibrated`).
 
 ## 6. Uncertainty and peaks
 

@@ -41,7 +41,7 @@ Filled energy is 2.2% of WECC load in 2018, 3.6% in 2020, <0.3% in other years. 
 | 2022 | 744.1 | 223.7 | 143,047 | 51,104 |
 
 ## Peak targets
-`peak_target.csv` holds the monthly CAISO and WECC peak targets (MW) used by `loads.calibrate.Calibrate`
+`peak_target.csv` holds the monthly CAISO and WECC peak targets (MW) used by `loads.calibrate.CalibrateEnergyPeak`
 (`loads/_test/test_calibrate.py`, `loads/_validate/validate_calibrate.py`), derived from
 `WECC_CAISO_hourly_load_2018-2022.csv`:
 - each value is the maximum of `CAISO_load_MW` or `WECC_load_MW` over the month;

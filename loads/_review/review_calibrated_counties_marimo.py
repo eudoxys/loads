@@ -2,13 +2,13 @@
 
 This [marimo](https://marimo.io/) notebook reviews the WECC county net loads
 calibrated to the EIA-930 demand of the US WECC balancing authorities (BAs)
-with `loads.calibrate.CalibrateForm930`, compared with the uncalibrated
+with `loads.calibrate.CalibrateHourly`, compared with the uncalibrated
 county net load estimate (`loads/wecc/wecc_estimate.csv.gz` gross load minus
 the unscaled rooftop PV in `loads/wecc/county_dg.csv.gz`; the EIA-scaled
 `county_dg_scaled.csv.gz` is not used). Only the gross load
 is calibrated; the PV is fixed, so the net load is negative where the PV
 exceeds the calibrated gross load. The inputs are those of
-`loads/_validate/validate_calibrate_form930.py`.
+`loads/_validate/validate_calibrate_hourly.py`.
 
 Select a state and, optionally, a county, a year and a month (the
 calibration runs on the selected window only; "All" uses 2018–2022, and the
@@ -16,7 +16,7 @@ month is used only with a year). For each county the notebook reports:
 
   - the calibration scale and offset: the least-squares fit
     $X_u(t)\\approx a_uL_u(t)+b_u$ of the calibrated load $X$ to the
-    estimate $L$ over the window. `CalibrateForm930` itself scales each
+    estimate $L$ over the window. `CalibrateHourly` itself scales each
     county's BA shares hour by hour, so $a$ and $b$ summarize that map
     rather than define it; `energy_ratio` is $\\sum X/\\sum L$;
 
@@ -45,8 +45,8 @@ def _(mo):
 @app.cell
 def _(importlib, mo, pathlib):
     # load the calibration inputs (shared with the validation script)
-    _file = pathlib.Path(*pathlib.Path(__file__).parts[:-2],"_validate","validate_calibrate_form930.py")
-    _spec = importlib.util.spec_from_file_location("validate_calibrate_form930",_file)
+    _file = pathlib.Path(*pathlib.Path(__file__).parts[:-2],"_validate","validate_calibrate_hourly.py")
+    _spec = importlib.util.spec_from_file_location("validate_calibrate_hourly",_file)
     validation = importlib.util.module_from_spec(_spec)
     _spec.loader.exec_module(validation)
     with mo.status.spinner("Loading county estimate, BA factors and EIA-930 demand"):
@@ -97,10 +97,10 @@ def _(load, month_ui, year_ui):
 
 
 @app.cell
-def _(CalibrateForm930, demand, dg, factors, load, mo, window):
+def _(CalibrateHourly, demand, dg, factors, load, mo, window):
     # calibrate all counties over the window (BAs cross state lines)
     with mo.status.spinner("Calibrating counties"):
-        result = CalibrateForm930(load.loc[window],factors,demand.loc[window],dg=dg.loc[window])
+        result = CalibrateHourly(load.loc[window],factors,demand.loc[window],dg=dg.loc[window])
     return (result,)
 
 
@@ -267,9 +267,9 @@ def _():
     import numpy as np
     import pandas as pd
     import matplotlib.pyplot as plt
-    from loads.calibrate import CalibrateForm930
+    from loads.calibrate import CalibrateHourly
 
-    return CalibrateForm930, importlib, mo, np, pathlib, pd, plt
+    return CalibrateHourly, importlib, mo, np, pathlib, pd, plt
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ county loads with the hourly load CAISO reported for 2020
 `loads/_explore/explore_calibrate_marimo.py`: DG from
 `loads/wecc/county_dg.csv.gz` (unscaled rooftop PV), the monthly state energy and CAISO/WECC peak
 targets and the CAISO/WECC membership in `loads/_test/data`, and the
-predeclared weight search and selection rule of `loads.calibrate.Calibrate`.
+predeclared weight search and selection rule of `loads.calibrate.CalibrateEnergyPeak`.
 
 The 2020 load matrix and the calibration are read from the local cache.
 Build them first with

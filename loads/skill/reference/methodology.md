@@ -14,7 +14,7 @@ NLR #97 county inventories, annual → average MW, flat ───────►
 transportation ──────────────────────────────────────────────► 0
                       Σ sectors (2018)  +  NSRDB 2018 weather  →  TSGAM fit
                       NSRDB weather for the target period      →  predict / sample
-county panel + state energy + regional peaks + DG  →  Calibrate (optional, per UTC month)
+one frame or county panel + energy / peaks / hourly demand + DG  →  Calibrate (optional)
 ```
 
 1. **Building-stock end uses.** NLR (formerly NREL) ResStock and ComStock
@@ -41,7 +41,7 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
    weather gives the expected load (`samples=0`); AR sampling gives
    realizations with realistic hour-to-hour variability.
 7. **Calibration (a separate step).** `Total` is not adjusted to any
-   reported total. `loads.calibrate.Calibrate` shapes a panel of county (or
+   reported total. `loads.calibrate.CalibrateEnergyPeak` shapes a panel of county (or
    node) gross loads with a convex program (Meyers and Chassin's
    hierarchical net-load shaping): per unit and UTC month, a scale and an
    offset so that state net-load energy matches EIA-based targets (soft)
@@ -55,6 +55,14 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
    affine map that sends chosen percentiles of a basis load (the sum of
    chosen columns) to the observed peak and trough, applied to the chosen
    columns (no solver, no energy target).
+   `loads.calibrate.CalibrateEnergy` scales each unit's gross load
+   proportionally to period or monthly net-energy targets with DG fixed,
+   and `loads.calibrate.CalibrateHourly` splits each balancing authority's
+   hourly EIA-930 demand among its counties in proportion to their gross
+   load, matching every hour (net load may be negative where rooftop PV
+   exceeds the calibrated load). `loads.calibrate.Calibrate` applies the
+   method that the data in a `CalibrateConfig` supports to one `loads`
+   frame and rebuilds its total, sector and net columns.
 8. **Precomputed WECC estimate.** `loads/wecc/wecc_estimate.py` predicts
    every WECC county for 2018–2022 with `loads.estimator.Estimator` (using
    the harmonics chosen for the county's cluster medoid) and rescales each
@@ -80,7 +88,8 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
 ## Not promised
 
 - Agreement with EIA or any reported total, for 2018 or any other year,
-  unless calibration is applied afterwards (`Calibrate`, or the
+  unless calibration is applied afterwards (`Calibrate` or a `Calibrate*`
+  class, or the
   precomputed `wecc_estimate`).
 - Industrial/agricultural shape.
 - Load growth: predicted years inherit the 2018 stock scaling. `Units` and
@@ -113,7 +122,7 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
   each harmonics choice per cluster medoid. For a specific county, measure
   it: `Estimator(county_st)` hold-out mode or `Total.test(...)`, then
   report RMSE/MAPE on the held-out rows.
-- **Calibrated is not validated per county.** `Calibrate` and
-  `wecc_estimate` match state and regional totals; individual counties
+- **Calibrated is not validated per county.** `CalibrateEnergyPeak`,
+  `CalibrateHourly` and `wecc_estimate` match state and regional totals; individual counties
   inherit the allocation's errors (e.g. how EIA state sales are split
   among counties).

@@ -1,9 +1,108 @@
 r"""Load calibration module
 
-The `loads.calibrate` module trues up simulated hourly loads to published
-regional targets by solving the hierarchical net-load shaping program of
-Meyers and Chassin, *Hierarchical Net-Load Shaping over Interlocking Regional
-Constraints: A Convex Formulation for WECC at Arbitrary Spatial Resolution*.
+The `loads.calibrate` module trues up simulated hourly loads to observed or
+published data. `Calibrate` takes a standard `loads` data frame, such as a
+`loads.total.Total` or `loads.estimator.Estimator` result, and returns a
+data frame with the same index and columns in which the load columns are
+calibrated. Everything the calibration needs, data and options, is given
+by a `CalibrateConfig`, and the data given chooses the calibration:
+
+| Data given to `CalibrateConfig` | Calibration | Class | Matches |
+| ------------------------------- | ----------- | ----- | ------- |
+| `energy` | energy only | `CalibrateEnergy` | energy of the period or of each month (proportional scale) |
+| `energy` and `peak` | energy and peak | `CalibrateEnergyPeak` | monthly energy and peak (convex shaping, scale and offset) |
+| `peaks` | peaks and troughs | `CalibratePeaks` | peak and trough of each interval (affine map, no solver) |
+| `demand` | hourly | `CalibrateHourly` | every hour of demand (proportional disaggregation) |
+
+Any other combination (none of them, `peak` without `energy`, or data for
+more than one calibration, e.g., `energy` and `demand`) raises
+`CalibrationError`. Each class can also be used directly on a panel of
+loads (one column per county or node), which is how regional targets that
+couple many units are matched (see the sections below).
+
+Examples
+--------
+
+Calibrate the 2020 net load of a county to its EIA monthly energy, keeping
+the rooftop PV (`elec_dg_MW`) fixed:
+
+    from loads.total import Total
+    from loads.calibrate import Calibrate, CalibrateConfig
+    total = Total("CA","Alameda",dg=True)
+    config = CalibrateConfig(energy=monthly_mwh)  # Series indexed by month start
+    result = Calibrate(total,config)
+    result.method        # CalibrateEnergy
+    result.calibration   # the CalibrateEnergy result, e.g., .parameters
+
+The calibrated basis column (by default `elec_net_MW` when present,
+otherwise `elec_total_MW`) matches the targets; the sector columns are
+scaled hour by hour with the gross load, so the sectors still sum to
+`elec_total_MW`, the DG is unchanged, `elec_net_MW = elec_total_MW -
+|elec_dg_MW|` still holds, and the other columns (e.g., weather) are
+unchanged:
+
+    import pandas as pd
+    from loads.calibrate import Calibrate, CalibrateConfig
+    index = pd.date_range("2020-08-01 18:00",periods=4,freq="1h",tz="UTC",name="timestamp")
+    data = pd.DataFrame({"elec_residential_MW":[60.0,50.0,70.0,80.0],
+        "elec_commercial_MW":[40.0,30.0,50.0,60.0]},index=index)
+    data["elec_total_MW"] = data.elec_residential_MW + data.elec_commercial_MW
+    data["elec_dg_MW"] = [-10.0,-20.0,-20.0,-10.0]
+    data["elec_net_MW"] = data.elec_total_MW + data.elec_dg_MW
+    result = Calibrate(data,CalibrateConfig(energy=500.0))
+
+gives
+
+    >>> result.round(3)
+                               elec_residential_MW  elec_commercial_MW  elec_total_MW  elec_dg_MW  elec_net_MW
+    timestamp
+    2020-08-01 18:00:00+00:00               76.364              50.909        127.273       -10.0      117.273
+    2020-08-01 19:00:00+00:00               63.636              38.182        101.818       -20.0       81.818
+    2020-08-01 20:00:00+00:00               89.091              63.636        152.727       -20.0      132.727
+    2020-08-01 21:00:00+00:00              101.818              76.364        178.182       -10.0      168.182
+    >>> result["elec_net_MW"].sum()
+    500.0
+    >>> result.method.__name__
+    'CalibrateEnergy'
+    >>> result.calibration.parameters
+                                    target_MWh  input_MWh  dg_MWh  calibrated_MWh   scale
+    block                     unit
+    2020-08-01 18:00:00+00:00 load       500.0      380.0    60.0           500.0  1.2727
+
+The gross load is scaled by $(500+60)/440$, so the net energy is 500 MWh
+while the DG is unchanged.
+
+Options of the chosen calibration are given to the configuration when it
+is constructed and can be changed afterwards:
+
+    config = CalibrateConfig(energy=energy_mwh,peak=peak_mw,search=True)
+    config.shape_weight = 2.0
+    Calibrate(total,config)
+
+Methods
+-------
+
+### Energy calibration
+
+`CalibrateEnergy` scales the gross load $X_{tj}$ of each unit $j$
+proportionally so that its net energy over a block $i$ (the whole period,
+or each calendar month) equals the target $E_{ij}$, with fixed DG
+$D_{tj}\geq0$:
+
+$$
+    L_{tj} = k_{ij}X_{tj}, \qquad
+    k_{ij} = \frac{E_{ij}+\sum_{t\in i}D_{tj}}{\sum_{t\in i}X_{tj}}.
+$$
+
+The hourly shape and the load factor are kept exactly. This is the
+energy-only calibration of the `loads` agent skill.
+
+### Energy and peak calibration
+
+`CalibrateEnergyPeak` solves the hierarchical net-load shaping program of
+Meyers and Chassin, *Hierarchical Net-Load Shaping over Interlocking
+Regional Constraints: A Convex Formulation for WECC at Arbitrary Spatial
+Resolution*.
 
 Each shaping unit $j$ (a county, or a network node) has a simulated gross
 load $X_{tj}\geq0$ and a fixed behind-the-meter distributed generation (DG)
@@ -20,8 +119,7 @@ net-load peak ceilings $P_g$ (e.g., CAISO nested within WECC), while
 preserving the shape of each simulated signal. DG is never scaled or shifted;
 it enters every regional quantity as a known offset.
 
-Methodology
------------
+#### Methodology
 
 All quantities are first divided by the global load maximum
 $c=\max_{t,j}X_{tj}$. With state memberships $g^{(k)}$ (a partition of unit
@@ -69,12 +167,11 @@ dimensionless relative form, which is the paper's program with
 $\gamma\to\gamma/\|X\|_F^2$ and $\mu_k\to\mu_k/(E_k^{\rm tar})^2$; the weights
 are therefore comparable across months and systems of different size.
 
-Weight selection
-----------------
+#### Weight selection
 
 The weights $(\mu,\lambda_g)$ trade energy fidelity and peak attainment
 against shape distortion. When `search=True` the program is solved over the
-predeclared grid `Calibrate.GRID` (88 points for two peak regions) and the
+predeclared grid `CalibrateEnergyPeak.GRID` (88 points for two peak regions) and the
 solution is selected by a fixed rule: among candidates whose peak shortfall
 is at most `PEAK_SHORTFALL_TOL`, whose largest state energy error is at most
 `STATE_ENERGY_TOL`, and whose load is nonnegative, pick the one with the
@@ -82,8 +179,7 @@ least load-shape relative RMSE. If no candidate qualifies, the candidate
 with the smallest worst peak shortfall is returned and the selection status
 says so.
 
-Time blocks
------------
+#### Time blocks
 
 Published references are monthly, so the program is solved independently on
 each calendar month (UTC) of the load data. Each block uses its own energy
@@ -91,14 +187,14 @@ and peak targets. The per-block affine maps may produce small steps at month
 boundaries; this is a known property of block-independent fitting (see the
 paper's "Known discontinuities").
 
-Examples
---------
+Calibrate August 2020 county loads `X` (MW) with DG `D` (MW, positive) to
+state energy and CAISO/WECC peak targets, searching the weight grid:
 
 Calibrate August 2020 county loads `X` (MW) with DG `D` (MW, positive) to
 state energy and CAISO/WECC peak targets, searching the weight grid:
 
-    from loads.calibrate import Calibrate
-    result = Calibrate(X,
+    from loads.calibrate import CalibrateEnergyPeak
+    result = CalibrateEnergyPeak(X,
         dg=D,
         energy={"AZ":9843022.5,"CA":24001906.0,...},
         peak={"CAISO":46643.0,"WECC":140778.0},
@@ -116,14 +212,30 @@ the number of solves done, the total, and details of the latest solve:
 
     def report(done,total,info):
         print(f"{done}/{total} {info['step']} {info['status']}")
-    Calibrate(X,dg=D,energy=...,peak=...,regions=membership,search=True,progress=report)
+    CalibrateEnergyPeak(X,dg=D,energy=...,peak=...,regions=membership,search=True,progress=report)
 
 Monthly targets may be given as data frames indexed by month start (e.g.,
 read from `energy_target.csv` and `peak_target.csv`); each month of `X` is
 then calibrated against its own row.
 
-Peak and trough calibration
----------------------------
+Caveats:
+
+  - Units that are identically zero are excluded from the optimization and
+    returned unchanged.
+
+  - The unit safeguards are hard constraints. Very restrictive
+    `peak_multiple` or `relative_rmse` values can make the program
+    infeasible, in which case a `CalibrationError` is raised.
+
+  - Net load may be negative where DG exceeds the shaped load; only the
+    gross load is constrained to be nonnegative.
+
+### Peak and trough calibration
+
+`CalibratePeaks` is a simpler alternative that needs no solver. It maps the
+uncalibrated load of each interval (e.g., each day) affinely so that
+user-specified percentiles of the load match the observed peak and trough
+of that interval:
 
 `CalibratePeaks` is a simpler alternative that needs no solver. It maps the
 uncalibrated load of each interval (e.g., each day) affinely so that
@@ -139,23 +251,12 @@ peak. The percentiles are taken of the sum of the columns whose names end
 in `_MW` unless `basis` names the column(s) to use, and the `_MW` columns
 are calibrated unless `columns` names the ones to change.
 
-Caveats
--------
+In a `CalibrateConfig`, the observed peaks and troughs are `peaks`, and
+`peak` and `trough` are then the percentiles (options of `CalibratePeaks`).
 
-  - Units that are identically zero are excluded from the optimization and
-    returned unchanged.
+### Hourly calibration
 
-  - The unit safeguards are hard constraints. Very restrictive
-    `peak_multiple` or `relative_rmse` values can make the program
-    infeasible, in which case a `CalibrationError` is raised.
-
-  - Net load may be negative where DG exceeds the shaped load; only the
-    gross load is constrained to be nonnegative.
-
-Calibration to EIA-930 balancing authority demand
--------------------------------------------------
-
-`CalibrateForm930` calibrates hourly unit loads (e.g., counties) to the
+`CalibrateHourly` calibrates hourly unit loads (e.g., counties) to the
 hourly demand of the balancing authorities (BAs) that serve them, as
 reported on Form EIA-930. EIA-930 demand is net of behind-the-meter
 distributed generation (DG), so the result is a net load. Given each unit's
@@ -169,29 +270,29 @@ $$
     X_u(t) = \sum_b \left(D_b(t)+P_b(t)\right)\frac{f_{ub}G_u(t)}{\sum_k f_{kb}G_k(t)} - P_u(t).
 $$
 
-Only the gross load is scaled; the DG is fixed, as in `Calibrate`. The net
+Only the gross load is scaled; the DG is fixed, as in `CalibrateEnergyPeak`. The net
 load $X_u$ is negative where the DG exceeds the calibrated gross load. Without
 `dg`, the given load is treated as a nonnegative net load and split in the
 same way with $P=0$ (the method of `eudoxys/wecc240` pull request #2, which
 clips the net load at zero).
 
-Unlike `Calibrate`, this is not an optimization: every hour of every BA
+Unlike `CalibrateEnergyPeak`, this is not an optimization: every hour of every BA
 with demand is matched exactly, and the hourly shape within a BA follows
 the estimate. Shares of BAs without demand keep the estimate. The calibrated
-loads can be allocated to network nodes with `CalibrateForm930.allocate`.
+loads can be allocated to network nodes with `CalibrateHourly.allocate`.
 The BA demand may be given, or downloaded with `eia.Form930` for any US BA
 (requires an EIA API key). Raw EIA-930 data has gaps and outliers; only
 negative and non-finite values are treated as missing.
 
     import pandas as pd
-    from loads.calibrate import CalibrateForm930
+    from loads.calibrate import CalibrateHourly
     index = pd.date_range("2020-08-01",periods=3,freq="1h",tz="UTC",name="timestamp")
     load = pd.DataFrame({"Alpine CA":[1.0,1.2,1.1],"Amador CA":[30.0,28.0,29.0],
         "Washoe NV":[400.0,380.0,390.0]},index=index)
     factors = pd.DataFrame({"county_st":["Alpine CA","Amador CA","Washoe NV","Washoe NV"],
         "ba":["CISO","CISO","NEVP","SWPP"],"factor":[1.0,1.0,0.9,0.1]})
     demand = pd.DataFrame({"CISO":[33.0,30.0,31.0],"NEVP":[300.0,310.0,320.0]},index=index)
-    result = CalibrateForm930(load,factors,demand)
+    result = CalibrateHourly(load,factors,demand)
 
 gives
 
@@ -215,7 +316,7 @@ Washoe NV is 90% NEVP, whose demand it carries alone, plus its uncalibrated
 load becomes negative while CISO's net demand is still matched:
 
     >>> dg = pd.DataFrame({"Alpine CA":[0.0,2.0,3.0]},index=index)
-    >>> result = CalibrateForm930(load,factors,demand,dg=dg)
+    >>> result = CalibrateHourly(load,factors,demand,dg=dg)
     >>> result[["Alpine CA","Amador CA"]]
                                Alpine CA  Amador CA
     timestamp
@@ -228,8 +329,9 @@ load becomes negative while CISO's net demand is still matched:
     2020-08-01 01:00:00+00:00    1.315068
     2020-08-01 02:00:00+00:00    1.242525
     Name: Alpine CA, dtype: float64
- See `loads/_validate/README.md` for a
-validation on the 2018–2022 WECC county estimate.
+
+See `loads/_validate/README.md` for a validation on the 2018–2022 WECC
+county estimate.
 
 References
 ----------
@@ -241,1317 +343,439 @@ References
     WECC 240 nodes*, https://github.com/eudoxys/wecc240/pull/2
 """
 
+import inspect
 import logging
-import math
-import time
-from typing import Callable
+import re
 
-import cvxpy as cp
 import numpy as np
 import pandas as pd
 
+from loads._calibrate_error import CalibrationError
+from loads._calibrate_energy import CalibrateEnergy
+from loads._calibrate_energypeak import CalibrateEnergyPeak
+from loads._calibrate_peaks import CalibratePeaks
+from loads._calibrate_hourly import CalibrateHourly
+
+__all__ = [
+    "Calibrate",
+    "CalibrateConfig",
+    "CalibrationError",
+    "CalibrateEnergy",
+    "CalibrateEnergyPeak",
+    "CalibratePeaks",
+    "CalibrateHourly",
+    ]
+
 _logger = logging.getLogger(__file__)
 
+_UNIT = "load"
+"""@private Name of the single unit when a standard frame is calibrated"""
 
-class CalibrationError(Exception):
-    """Calibration failed (infeasible or invalid input)"""
-
-
-def _upper_tail_weights(profile:np.ndarray) -> np.ndarray:
-    """@private Min-max upper-tail weights normalized to sum to one"""
-    span = float(np.ptp(profile))
-    if span <= np.finfo(float).eps:
-        return np.full(profile.size,1.0/profile.size)
-    weights = (profile - profile.min()) / span
-    return weights / weights.sum()
+_FIXED = {
+    CalibrateEnergy: {"dg"},
+    CalibrateEnergyPeak: {"energy","peak","dg","states","regions"},
+    CalibratePeaks: {"peak","basis","columns"},
+    CalibrateHourly: {"dg","refresh"},
+    }
+"""@private Keyword arguments `Calibrate` sets itself (not options)"""
 
 
-def _membership(spec,units:list[str],name:str) -> pd.DataFrame:
-    """@private Normalize a membership specification to a units x groups frame"""
-    if isinstance(spec,pd.Series):
-        spec = spec.to_frame()
-    if isinstance(spec,dict):
-        frame = pd.DataFrame(0.0,index=units,columns=list(spec))
-        for group,members in spec.items():
-            if isinstance(members,(pd.Series,dict)):
-                frame[group] = pd.Series(members,dtype=float).reindex(units).fillna(0.0)
-            else:
-                missing = set(members) - set(units)
-                if missing:
-                    raise CalibrationError(f"{name} {group!r} lists unknown units {sorted(missing)}")
-                frame.loc[list(members),group] = 1.0
-        spec = frame
-    if not isinstance(spec,pd.DataFrame):
-        raise CalibrationError(f"{name} membership must be a DataFrame, Series, or dict")
-    missing = set(units) - set(spec.index)
-    if missing:
-        raise CalibrationError(f"{name} membership is missing units {sorted(missing)[:5]}...")
-    spec = spec.reindex(units).astype(float).fillna(0.0)
-    if (spec.values < 0).any() or (spec.values > 1).any():
-        raise CalibrationError(f"{name} membership values must be in [0,1]")
-    return spec
+class CalibrateConfig:
+    """Calibration data and options
 
+    A configuration holds the data a calibration matches and the options of
+    the calibration. The data given chooses the calibration (`method`):
 
-def _state_membership(units:list[str]) -> pd.DataFrame:
-    """@private Infer boolean state membership from `"County ST"` unit names"""
-    states = [unit.rsplit(" ",1)[-1] for unit in units]
-    return pd.DataFrame(
-        {state:[float(x==state) for x in states] for state in sorted(set(states))},
-        index=units,
-        )
+      - `demand` → `CalibrateHourly`
+      - `peaks` → `CalibratePeaks`
+      - `energy` and `peak` → `CalibrateEnergyPeak`
+      - `energy` → `CalibrateEnergy`
 
+    Any other combination raises `CalibrationError`, both when the
+    configuration is constructed and when it is used.
 
-def _block_targets(targets,block:pd.Timestamp,name:str) -> dict[str,float]:
-    """@private Extract the targets that apply to a monthly block"""
-    if isinstance(targets,pd.DataFrame):
-        index = pd.DatetimeIndex(targets.index)
-        if index.tz is None:
-            index = index.tz_localize("UTC")
-        else:
-            index = index.tz_convert("UTC")
-        found = [n for n,x in enumerate(index) if x.year == block.year and x.month == block.month]
-        if not found:
-            raise CalibrationError(f"no {name} target row for {block:%Y-%m}")
-        row = targets.iloc[found[0]]
-        return {str(k):float(v) for k,v in row.items() if pd.notna(v)}
-    if isinstance(targets,pd.Series):
-        return {str(k):float(v) for k,v in targets.items() if pd.notna(v)}
-    if isinstance(targets,dict):
-        return {str(k):float(v) for k,v in targets.items() if v is not None}
-    raise CalibrationError(f"{name} targets must be a dict, Series, or DataFrame")
+    Options are the keyword arguments of the chosen class that are not data
+    (see `option_names`); `Calibrate` sets the others (e.g., `dg`). They
+    are given as keyword arguments when the configuration is constructed
+    and are attributes afterwards, so they can be read and changed:
 
+        config = CalibrateConfig(energy=energy,peak=peak,search=True)
+        config.search          # True
+        config.shape_weight    # 1.0 (the CalibrateEnergyPeak default)
+        config.shape_weight = 2.0
 
-def _default_grid(regions:list[str]) -> list[tuple[float,dict[str,float]]]:
-    """@private Predeclared weight grid
-
-    Energy weights `(10, 100, 1000, 10000)` crossed with a zero drive and
-    drive scales `(0.03, 0.1, 0.3, 1, 3, 10, 30)` applied with an even ratio
-    and with each region in turn emphasized threefold. For two regions this
-    is 4 x (1 + 7 x 3) = 88 candidates.
+    An option that is not set has the default of the chosen class. Setting
+    an option the chosen class doesn't have raises `CalibrationError`.
     """
-    ratios = [{r:1.0 for r in regions}]
-    if len(regions) > 1:
-        ratios += [{r:(3.0 if r == q else 1.0) for r in regions} for q in regions]
-    grid = []
-    for mu in Calibrate.ENERGY_WEIGHTS:
-        grid.append((mu,{r:0.0 for r in regions}))
-        for scale in Calibrate.DRIVE_SCALES:
-            for ratio in ratios:
-                grid.append((mu,{r:scale*ratio[r] for r in regions}))
-    return grid
 
-
-class _Block:
-    """@private One time block of the calibration program
-
-    Builds the CVXPY program once with the energy and drive weights as
-    parameters, so a weight search re-solves without recompiling.
-    """
+    DATA = ("energy","peak","peaks","demand")
+    """Names of the data attributes (their combination chooses the method)"""
 
     def __init__(self,
-        X_raw:np.ndarray,
-        D_raw:np.ndarray,
-        G_state:np.ndarray,
-        states:list[str],
-        energy_raw:np.ndarray,
-        G_region:np.ndarray,
-        regions:list[str],
-        peak_raw:np.ndarray,
-        shape_weight:float,
-        ridge:float,
-        peak_multiple:np.ndarray,
-        relative_rmse:np.ndarray,
-        ):
-
-        T,n = X_raw.shape
-        self.T,self.n = T,n
-        self.states = states
-        self.regions = regions
-        self.X_raw = X_raw
-        self.D_raw = D_raw
-        self.energy_raw = energy_raw
-        self.peak_raw = peak_raw
-        self.peak_multiple = peak_multiple
-        self.relative_rmse = relative_rmse
-
-        # common normalization (load and DG share the same scale)
-        c = float(X_raw.max())
-        self.c = c
-        X = X_raw / c
-        D = D_raw / c
-        energy = energy_raw / c
-        peak = peak_raw / c
-        self.X,self.D = X,D
-        self.energy,self.peak = energy,peak
-
-        # per-unit input summaries
-        a = X.sum(axis=0)
-        d = D.sum(axis=0)
-        q = X.mean(axis=0)
-        xmin = X.min(axis=0)
-        xmax = X.max(axis=0)
-        norm = np.sqrt(np.square(X).sum(axis=0))
-        centered_ss = np.square(X - q[None,:]).sum(axis=0)
-        self.xmax,self.norm = xmax,norm
-
-        # state energy coefficients
-        self.G_state = G_state
-        self.state_s = G_state.T * a[None,:]          # K x n
-        self.state_b = T * G_state.T                  # K x n
-        self.state_d = G_state.T @ d                  # K
-
-        # regional profiles and upper-tail weights
-        self.G_region = G_region
-        self.Xg = [X * G_region[None,:,r] for r in range(len(regions))]
-        self.Dg = [D @ G_region[:,r] for r in range(len(regions))]
-        self.input_profile = [self.Xg[r].sum(axis=1) - self.Dg[r] for r in range(len(regions))]
-        self.omega = [_upper_tail_weights(p) for p in self.input_profile]
-
-        # decision variables and weight parameters
-        s = cp.Variable(n,nonneg=True,name="scale")
-        b = cp.Variable(n,name="offset")
-        self.s,self.b = s,b
-        self.mu = cp.Parameter(len(states),nonneg=True,name="energy_weight")
-        self.lam = cp.Parameter(len(regions),nonneg=True,name="drive_weight")
-
-        # load shape: ||L_j-X_j||^2 = v_j (s_j-1)^2 + T (q_j (s_j-1) + b_j)^2
-        ds = s - 1.0
-        centered = cp.multiply(np.sqrt(centered_ss),ds)
-        mean = math.sqrt(T) * (cp.multiply(q,ds) + b)
-        self.shape_denominator = float(np.square(X).sum())
-        shape = (cp.sum_squares(centered) + cp.sum_squares(mean)) / self.shape_denominator
-        column_change = cp.norm(cp.vstack([centered,mean]),axis=0)
-
-        # relative state energy residuals
-        achieved = self.state_s @ s + self.state_b @ b - self.state_d
-        residual = cp.multiply(1.0/energy,achieved - energy)
-        energy_penalty = cp.sum(cp.multiply(self.mu,cp.square(residual)))
-
-        # regional profiles and power scores
-        profiles = [self.Xg[r] @ s + G_region[:,r] @ b - self.Dg[r] for r in range(len(regions))]
-        scores = cp.hstack([
-            (self.omega[r] @ profiles[r]) / peak[r] for r in range(len(regions))
-            ]) if regions else None
-        drive = self.lam @ scores if regions else 0.0
-
-        # scale-normalized ridge
-        regularization = ridge * (cp.sum_squares(ds) + cp.sum_squares(cp.multiply(1.0/q,b)))
-
-        objective = cp.Minimize(shape_weight*shape + energy_penalty - drive + regularization)
-        self.peak_constraints = [profiles[r] <= peak[r] for r in range(len(regions))]
-        self.nonnegative = cp.multiply(s,xmin) + b >= 0
-        self.peak_cap = cp.multiply(s,xmax) + b <= peak_multiple * xmax
-        self.rmse_cap = column_change <= relative_rmse * norm
-        self.problem = cp.Problem(objective,
-            self.peak_constraints + [self.nonnegative,self.peak_cap,self.rmse_cap])
-        if not self.problem.is_dcp():
-            raise CalibrationError("calibration program is not DCP")
-
-    def solve(self,mu:np.ndarray,lam:np.ndarray,**options) -> str:
-        """Solve for the given weights and return the problem status"""
-        self.mu.value = np.asarray(mu,dtype=float)
-        if self.regions:
-            self.lam.value = np.asarray(lam,dtype=float)
-        try:
-            self.problem.solve(**options)
-        except cp.error.SolverError as err:
-            _logger.debug(f"solver error: {err}")
-            return "solver_error"
-        return self.problem.status
-
-    def solved(self) -> bool:
-        """Check whether the last solve produced a usable solution"""
-        return self.problem.status in (cp.OPTIMAL,cp.OPTIMAL_INACCURATE)
-
-    def metrics(self) -> dict[str,float]:
-        """Fit diagnostics of the current solution (engineering units)"""
-        s = np.asarray(self.s.value)
-        b = np.asarray(self.b.value)
-        X = self.X
-        L = X * s[None,:] + b[None,:]
-        energy = self.state_s @ s + self.state_b @ b - self.state_d
-        error = (energy - self.energy) / self.energy
-        column_rmse = np.sqrt(np.square(L - X).sum(axis=0)) / self.norm
-        peak_multiple = L.max(axis=0) / self.xmax
-        result = {
-            "shape_relative_rmse": math.sqrt(float(np.square(L - X).sum()) / self.shape_denominator),
-            "state_energy_rms_relative_error": float(np.sqrt(np.mean(np.square(error)))) if error.size else 0.0,
-            "state_energy_max_abs_relative_error": float(np.abs(error).max()) if error.size else 0.0,
-            "minimum_load_mw": self.c * float(L.min()),
-            "maximum_output_peak_multiple": float(peak_multiple.max()),
-            "maximum_column_relative_rmse": float(column_rmse.max()),
-            "output_peak_caps_active": int(np.count_nonzero(peak_multiple >= self.peak_multiple - 1e-5)),
-            "column_rmse_caps_active": int(np.count_nonzero(column_rmse >= self.relative_rmse - 1e-5)),
-        }
-        for r,region in enumerate(self.regions):
-            profile = self.Xg[r] @ s + self.G_region[:,r] @ b - self.Dg[r]
-            key = region.lower()
-            result[f"{key}_peak_mw"] = self.c * float(profile.max())
-            result[f"{key}_peak_shortfall_fraction"] = max(0.0,
-                (self.peak[r] - float(profile.max())) / self.peak[r])
-            result[f"{key}_power_score"] = float(self.omega[r] @ profile / self.peak[r])
-        return result
-
-    def worst_shortfall(self,metrics:dict) -> float:
-        """Largest regional peak shortfall fraction"""
-        return max([metrics[f"{r.lower()}_peak_shortfall_fraction"] for r in self.regions] or [0.0])
-
-
-class Calibrate(pd.DataFrame):
-    r"""Calibrated (shaped) load data frame
-
-    The data frame contains the shaped gross load $L=sX+b$ in MW with the
-    same index and columns as the input load. Calibration results are
-    available as attributes:
-
-      - `parameters`: per-unit scale, offset (MW), relative RMS change, and
-        output/input peak ratio, indexed by block and unit
-
-      - `states`: per-block, per-state target, input, and shaped net-load
-        energy (MWh)
-
-      - `regions`: per-block, per-region target, input, and shaped net-load
-        peak (MW), power score, and peak-ceiling dual
-
-      - `summary`: per-block selected weights, status, and fit metrics
-
-      - `constraints`: per-block, per-constraint-family dual summary (number
-        of active constraints, total, largest and summed dual) in the
-        normalized units of the program; a summed peak-ceiling dual $y$
-        predicts a first-order objective change of $-y\,P_g\,\delta$ for a
-        relative ceiling change $\delta$, with $P_g$ normalized by
-        `summary.normalization_MW`
-
-      - `sweep`: per-block, per-candidate results when `search=True`
-
-      - `net`: the shaped net load $L-D$ (MW)
-    """
-
-    _metadata = ["parameters","states","regions","constraints","summary","sweep","net"]
-
-    ENERGY_WEIGHTS = (10.0,100.0,1_000.0,10_000.0)
-    """Energy weights $\\mu$ searched by the default grid"""
-
-    DRIVE_SCALES = (0.03,0.1,0.3,1.0,3.0,10.0,30.0)
-    """Nonzero drive scales $\\lambda$ searched by the default grid"""
-
-    PEAK_SHORTFALL_TOL = 1.0e-4
-    """Selection tolerance on regional peak shortfall (fraction of target)"""
-
-    STATE_ENERGY_TOL = 5.0e-3
-    """Selection tolerance on the largest state energy error (fraction of target)"""
-
-    NONNEGATIVE_TOL = -1.0e-4
-    """Selection tolerance on the minimum shaped load (MW)"""
-
-    SOLVER_OPTIONS = {
-        "solver": "CLARABEL",
-        "max_iter": 400,
-        "tol_gap_abs": 1.0e-8,
-        "tol_gap_rel": 1.0e-8,
-        "tol_feas": 1.0e-8,
-        }
-    """Solver options used for each candidate"""
-
-    FINAL_SOLVER_OPTIONS = {
-        "solver": "CLARABEL",
-        "max_iter": 600,
-        "tol_gap_abs": 1.0e-9,
-        "tol_gap_rel": 1.0e-9,
-        "tol_feas": 1.0e-9,
-        }
-    """Solver options used to polish the selected solution"""
-
-    def __init__(self,
-        load:pd.DataFrame,
         *,
-        energy:dict[str,float]|pd.Series|pd.DataFrame,
-        peak:dict[str,float]|pd.Series|pd.DataFrame,
-        dg:pd.DataFrame|None=None,
-        states:pd.DataFrame|dict|None=None,
-        regions:pd.DataFrame|dict|None=None,
-        energy_weight:float|dict[str,float]=100.0,
-        drive:dict[str,float]|None=None,
-        shape_weight:float=1.0,
-        ridge:float=1.0e-8,
-        peak_multiple:float|pd.Series=5.0,
-        relative_rmse:float|pd.Series=2.0,
-        search:bool|list[tuple[float,dict[str,float]]]=False,
-        verbose:bool=False,
-        progress:Callable[[int,int,dict],None]|None=None,
+        energy:float|pd.Series|pd.DataFrame|None=None,
+        peak:float|pd.Series|pd.DataFrame|None=None,
+        peaks:pd.DataFrame|None=None,
+        demand:pd.Series|pd.DataFrame|None=None,
+        basis:str|None=None,
+        **options,
         ):
-        r"""Construct a calibrated load data frame
+        r"""Construct a calibration configuration
 
         Arguments
         ---------
 
-          - `load`: hourly gross load $X$ (MW), one column per shaping unit,
-            indexed by timestamp
+          - `energy`: energy target (MWh): a number for the whole period of
+            the data, or a series (or one-column frame) indexed by month
+            start with the energy of each calendar month (UTC); net of DG
+            when the basis is a net load
 
-          - `energy`: net-load energy targets $E_k$ (MWh) by state; a data
-            frame indexed by month start supplies one row per monthly block
+          - `peak`: peak target (MW) for `CalibrateEnergyPeak`, a number or
+            a series indexed by month start; when `peaks` is given, the
+            percentile of the load mapped to each observed peak (an option
+            of `CalibratePeaks`)
 
-          - `peak`: net-load peak targets $P_g$ (MW) by region; a data frame
-            indexed by month start supplies one row per monthly block
+          - `peaks`: observed peak and trough (MW) of each interval, columns
+            `max` and `min` indexed by interval start
 
-          - `dg`: fixed distributed generation $D$ (MW, nonnegative) with the
-            same shape as `load` (default none)
+          - `demand`: hourly demand (MW), a series (or one-column frame)
+            indexed by timestamp, e.g., a balancing authority's EIA-930
+            demand
 
-          - `states`: state membership (units x states, fractions summing to
-            one per unit); default infers each unit's state from a `"County
-            ST"` column name
+          - `basis`: the column whose values are matched to the data
+            (default `elec_net_MW` when present, otherwise `elec_total_MW`,
+            otherwise the only column whose name ends in `_MW`)
 
-          - `regions`: peak-region membership (units x regions, values in
-            $[0,1]$), or a dict of region to unit list; default makes every
-            unit a full member of every peak region
-
-          - `energy_weight`: state energy weight $\mu$ (scalar or per state)
-
-          - `drive`: upper-tail drive weight $\lambda_g$ per region (default
-            0)
-
-          - `shape_weight`: load-shape weight $\gamma$
-
-          - `ridge`: scale-normalized ridge weight $\epsilon$
-
-          - `peak_multiple`: unit peak-multiple cap $\kappa_j\geq1$ (scalar or
-            per unit)
-
-          - `relative_rmse`: unit relative-RMS change cap $\eta_j\geq0$
-            (scalar or per unit)
-
-          - `search`: `True` searches the default weight grid and selects a
-            solution by the predeclared rule (`energy_weight` and `drive` are
-            then ignored); a list of `(energy_weight,drive)` tuples searches
-            that grid instead
-
-          - `verbose`: log each candidate at INFO level
-
-          - `progress`: function called as `progress(done,total,info)` after
-            every solve, where `done` counts the solves completed so far,
-            `total` is the number of solves for all blocks (each weight
-            candidate plus one final solve per block), and `info` is a dict
-            with the `block`, `step` (`"candidate"` or `"final"`),
-            `candidate` number, `candidates` per block, solver `status`, and,
-            for a solved candidate, its weights and fit metrics. An exception
-            raised by `progress` aborts the calibration.
+          - `options`: options of the chosen calibration (see
+            `option_names`)
 
         Raises
         ------
 
-          - `CalibrationError`: invalid inputs or no feasible solution
+          - `CalibrationError`: the data supports no calibration, or an
+            option is not an option of the chosen calibration
         """
+        object.__setattr__(self,"_options",{})
+        self.energy = energy
+        self.peak = peak
+        self.peaks = peaks
+        self.demand = demand
+        self.basis = basis
+        method = self.method
+        for name,value in options.items():
+            if name in _FIXED[method] and name not in self.option_names():
+                raise CalibrationError(f"{name!r} is set by Calibrate and is not an option of {method.__name__}")
+            setattr(self,name,value)
 
-        # unit-level inputs
-        X = pd.DataFrame(load).copy()
-        if not isinstance(X.index,pd.DatetimeIndex):
-            raise CalibrationError("load must be indexed by timestamp")
-        units = [str(x) for x in X.columns]
-        X.columns = units
-        if not np.isfinite(X.values).all():
-            raise CalibrationError("load contains missing or infinite values")
-        if (X.values < 0).any():
-            raise CalibrationError("load must be nonnegative")
-        if dg is None:
-            D = pd.DataFrame(0.0,index=X.index,columns=units)
+    def __setattr__(self,name,value):
+        if name in self.DATA or name == "basis" or name.startswith("_"):
+            object.__setattr__(self,name,value)
+            return
+        names = self.option_names()
+        if name not in names:
+            raise CalibrationError(f"{name!r} is not an option of {self.method.__name__} "
+                f"(options: {', '.join(names) or 'none'})")
+        self._options[name] = value
+
+    def __getattr__(self,name):
+        # only called when normal lookup fails, i.e., for options
+        if name.startswith("_"):
+            raise AttributeError(name)
+        options = object.__getattribute__(self,"_options")
+        if name in options:
+            return options[name]
+        try:
+            method = self.method
+        except CalibrationError as err:
+            raise AttributeError(name) from err
+        parameter = inspect.signature(method.__init__).parameters.get(name)
+        if parameter is not None and name in self.option_names():
+            return parameter.default
+        raise AttributeError(f"{type(self).__name__!r} has no data or option {name!r}")
+
+    def __delattr__(self,name):
+        if name in self._options:
+            del self._options[name]
         else:
-            D = pd.DataFrame(dg).copy()
-            D.columns = [str(x) for x in D.columns]
-            missing = set(units) - set(D.columns)
-            if missing:
-                raise CalibrationError(f"dg is missing units {sorted(missing)[:5]}")
-            D = D.reindex(index=X.index,columns=units)
-            if not np.isfinite(D.values).all():
-                raise CalibrationError("dg contains missing or infinite values (or is misaligned)")
-            if (D.values < 0).any():
-                raise CalibrationError("dg must be nonnegative (it is subtracted from load)")
+            object.__delattr__(self,name)
 
-        G_state = _state_membership(units) if states is None else _membership(states,units,"state")
-        if not np.allclose(G_state.sum(axis=1),1.0):
-            raise CalibrationError("state memberships must sum to one for every unit")
-
-        def per_unit(value,name):
-            if isinstance(value,pd.Series):
-                value = value.reindex(units)
-                if value.isna().any():
-                    raise CalibrationError(f"{name} is missing units")
-                return value.values.astype(float)
-            return np.full(len(units),float(value))
-        kappa = per_unit(peak_multiple,"peak_multiple")
-        eta = per_unit(relative_rmse,"relative_rmse")
-        if (kappa < 1).any() or (eta < 0).any():
-            raise CalibrationError("peak_multiple must be >= 1 and relative_rmse >= 0")
-
-        # solve each calendar month (UTC) independently
-        index = X.index.tz_convert("UTC") if X.index.tz else X.index.tz_localize("UTC")
-        months = index.tz_localize(None).to_period("M")
-        shaped = X.values.astype(float).copy()
-        parameters,state_rows,region_rows,constraint_rows,summaries,sweeps = [],[],[],[],[],[]
-
-        # count the solves so a progress callback knows the total up front
-        def candidates(block):
-            if search is False:
-                return 0
-            if search is True:
-                return len(_default_grid(list(_block_targets(peak,block,"peak"))))
-            return len(search)
-        blocks = [pd.Timestamp(month.start_time).tz_localize("UTC") for month in months.unique()]
-        counter = {"done":0,"total":sum(candidates(block) + 1 for block in blocks)}
-        def tick(info):
-            counter["done"] += 1
-            if progress is not None:
-                progress(counter["done"],counter["total"],info)
-
-        for month in months.unique():
-            rows = np.asarray(months == month)
-            block = pd.Timestamp(month.start_time).tz_localize("UTC")
-            result = self._calibrate_block(
-                X.values[rows],D.values[rows],index[rows],units,G_state,block,
-                _block_targets(energy,block,"energy"),
-                _block_targets(peak,block,"peak"),
-                regions,energy_weight,drive,shape_weight,ridge,kappa,eta,search,verbose,tick,
-                )
-            shaped[rows] = result["load"]
-            parameters.append(result["parameters"])
-            state_rows.append(result["states"])
-            region_rows.append(result["regions"])
-            constraint_rows.append(result["constraints"])
-            summaries.append(result["summary"])
-            if result["sweep"] is not None:
-                sweeps.append(result["sweep"])
-
-        shaped = pd.DataFrame(shaped,index=X.index,columns=units)
-        super().__init__(shaped)
-        self.parameters = pd.concat(parameters)
-        self.states = pd.concat(state_rows)
-        self.regions = pd.concat(region_rows)
-        self.constraints = pd.concat(constraint_rows)
-        self.summary = pd.DataFrame(summaries).set_index("block")
-        self.sweep = pd.concat(sweeps) if sweeps else None
-        self.net = shaped - D
+    def __repr__(self):
+        given = [x for x in self.DATA if getattr(self,x) is not None]
+        options = ",".join(f"{k}={v!r}" for k,v in self._options.items())
+        try:
+            method = self.method.__name__
+        except CalibrationError:
+            method = "none"
+        return (f"<{type(self).__name__} method={method} data={','.join(given) or 'none'}"
+            + (f" basis={self.basis!r}" if self.basis else "")
+            + (f" options={options}" if options else "") + ">")
 
     @property
-    def _constructor(self):
-        # derived frames are plain data frames (re-running the solver is never implied)
-        return pd.DataFrame
+    def method(self) -> type:
+        """Calibration class chosen by the data given
 
-    @classmethod
-    def _calibrate_block(cls,
-        X_raw,D_raw,times,units,G_state,block,energy,peak,
-        regions,energy_weight,drive,shape_weight,ridge,kappa,eta,search,verbose,tick=None,
-        ) -> dict:
-        """@private Calibrate one time block"""
+        Raises
+        ------
 
-        # exclude identically zero units (they carry no load and no target)
-        active = (X_raw.max(axis=0) > 0)
-        if not active.any():
-            raise CalibrationError(f"{block:%Y-%m}: all units are identically zero")
-        active_units = [u for u,x in zip(units,active) if x]
+          - `CalibrationError`: the data supports no calibration
+        """
+        given = {x for x in self.DATA if getattr(self,x) is not None}
+        if "demand" in given:
+            if given != {"demand"}:
+                raise CalibrationError(f"demand selects CalibrateHourly, which doesn't use {sorted(given-{'demand'})}")
+            return CalibrateHourly
+        if "peaks" in given:
+            if given - {"peaks","peak"}:
+                raise CalibrationError(f"peaks selects CalibratePeaks, which doesn't use {sorted(given-{'peaks','peak'})}")
+            return CalibratePeaks
+        if given == {"energy","peak"}:
+            return CalibrateEnergyPeak
+        if given == {"energy"}:
+            return CalibrateEnergy
+        if given == {"peak"}:
+            raise CalibrationError("a peak target needs energy targets (CalibrateEnergyPeak); "
+                "for observed interval peaks and troughs give peaks")
+        raise CalibrationError("no calibration data given: give energy, energy and peak, peaks, or demand")
 
-        # state targets
-        G = G_state.loc[active_units]
-        state_list = [s for s in G.columns if G[s].sum() > 0]
-        missing = set(state_list) - set(energy)
-        if missing:
-            raise CalibrationError(f"{block:%Y-%m}: no energy target for states {sorted(missing)}")
-        unused = set(energy) - set(state_list)
-        if unused:
-            _logger.debug(f"{block:%Y-%m}: ignoring energy targets for {sorted(unused)}")
-        energy_raw = np.asarray([energy[s] for s in state_list])
-        if (energy_raw == 0).any():
-            raise CalibrationError(f"{block:%Y-%m}: energy targets must be nonzero")
+    def option_names(self) -> list[str]:
+        """Names of the options of the chosen calibration
 
-        # region membership and targets
-        region_list = list(peak)
-        if regions is None:
-            G_region = pd.DataFrame(1.0,index=units,columns=region_list)
-        else:
-            G_region = _membership(regions,units,"region")
-            missing = set(region_list) - set(G_region.columns)
-            if missing:
-                raise CalibrationError(f"no membership for peak regions {sorted(missing)}")
-        G_region = G_region.loc[active_units,region_list]
-        peak_raw = np.asarray([peak[r] for r in region_list])
-        if (peak_raw <= 0).any():
-            raise CalibrationError(f"{block:%Y-%m}: peak targets must be positive")
+        Raises
+        ------
 
-        model = _Block(
-            X_raw[:,active],D_raw[:,active],
-            G.loc[:,state_list].values,state_list,energy_raw,
-            G_region.values,region_list,peak_raw,
-            shape_weight,ridge,kappa[active],eta[active],
-            )
+          - `CalibrationError`: the data supports no calibration
+        """
+        method = self.method
+        names = [name for name,parameter in inspect.signature(method.__init__).parameters.items()
+            if parameter.kind is inspect.Parameter.KEYWORD_ONLY and name not in _FIXED[method]]
+        return names
 
-        # weight candidates
-        def weights(mu,lam):
-            mu = np.asarray([mu.get(s,0.0) if isinstance(mu,dict) else mu for s in state_list],dtype=float)
-            lam = np.asarray([(lam or {}).get(r,0.0) for r in region_list],dtype=float)
-            return mu,lam
+    @property
+    def options(self) -> dict:
+        """Keyword arguments passed to the chosen calibration
 
-        sweep = None
-        start = time.perf_counter()
-        if search is not False:
-            grid = _default_grid(region_list) if search is True else list(search)
-            rows = []
-            for number,(mu,lam) in enumerate(grid,start=1):
-                status = model.solve(*weights(mu,lam),warm_start=True,**cls.SOLVER_OPTIONS)
-                row = {"block":block,"candidate":number,"status":status,"energy_weight":mu}
-                row.update({f"lambda_{r.lower()}":(lam or {}).get(r,0.0) for r in region_list})
-                if model.solved():
-                    row["objective"] = float(model.problem.value)
-                    row.update(model.metrics())
-                rows.append(row)
-                if tick is not None:
-                    tick({**row,"step":"candidate","candidates":len(grid)})
-                if verbose:
-                    _logger.info(f"{block:%Y-%m} [{number}/{len(grid)}] {status} "
-                        + " ".join(f"{k}={v:.4g}" for k,v in row.items()
-                            if isinstance(v,float) and ("peak_mw" in k or "max_abs" in k)))
-            sweep = pd.DataFrame(rows)
-            solved = [r for r in rows if "shape_relative_rmse" in r]
-            if not solved:
-                raise CalibrationError(f"{block:%Y-%m}: no candidate weights produced a solution")
-            qualifying = [r for r in solved
-                if model.worst_shortfall(r) <= cls.PEAK_SHORTFALL_TOL
-                and r["state_energy_max_abs_relative_error"] <= cls.STATE_ENERGY_TOL
-                and r["minimum_load_mw"] >= cls.NONNEGATIVE_TOL]
-            if qualifying:
-                selected = min(qualifying,key=lambda r:(
-                    r["shape_relative_rmse"],
-                    r["state_energy_rms_relative_error"],
-                    r["energy_weight"] if not isinstance(r["energy_weight"],dict) else 0.0,
-                    sum(r[f"lambda_{x.lower()}"] for x in region_list),
-                    ))
-                selection = "passed selection tolerances"
-            else:
-                selected = min(solved,key=lambda r:(
-                    model.worst_shortfall(r),
-                    r["state_energy_max_abs_relative_error"],
-                    r["shape_relative_rmse"],
-                    ))
-                selection = "fallback: no candidate passed selection tolerances"
-                _logger.warning(f"{block:%Y-%m}: {selection}")
-            mu_sel = selected["energy_weight"]
-            lam_sel = {r:selected[f"lambda_{r.lower()}"] for r in region_list}
-            candidates,qualified = len(rows),len(qualifying)
-        else:
-            mu_sel,lam_sel = energy_weight,dict(drive or {})
-            selection = "fixed weights"
-            candidates,qualified = 1,None
+        Raises
+        ------
 
-        status = model.solve(*weights(mu_sel,lam_sel),warm_start=True,**cls.FINAL_SOLVER_OPTIONS)
-        if tick is not None:
-            tick({"block":block,"step":"final","candidate":None,"candidates":candidates,"status":status})
-        if not model.solved():
-            raise CalibrationError(f"{block:%Y-%m}: calibration failed with status {status!r}")
-        metrics = model.metrics()
-
-        # assemble results in engineering units
-        s_act = np.asarray(model.s.value)
-        b_act = np.asarray(model.b.value) * model.c
-        s = np.ones(len(units))
-        b = np.zeros(len(units))
-        s[active] = s_act
-        b[active] = b_act
-        L = X_raw * s[None,:] + b[None,:]
-        with np.errstate(divide="ignore",invalid="ignore"):
-            norm = np.sqrt(np.square(X_raw).sum(axis=0))
-            column_rmse = np.where(norm > 0,np.sqrt(np.square(L - X_raw).sum(axis=0))/norm,0.0)
-            xmax = X_raw.max(axis=0)
-            peak_ratio = np.where(xmax > 0,L.max(axis=0)/xmax,1.0)
-        parameters = pd.DataFrame({
-            "block": block,
-            "unit": units,
-            "scale": s,
-            "offset_MW": b,
-            "relative_rmse": column_rmse,
-            "peak_multiple": peak_ratio,
-            "active": active,
-            }).set_index(["block","unit"])
-
-        input_energy = (X_raw.sum(axis=0) - D_raw.sum(axis=0))
-        shaped_energy = (L.sum(axis=0) - D_raw.sum(axis=0))
-        Gs = G_state.loc[:,state_list].values
-        states = pd.DataFrame({
-            "block": block,
-            "state": state_list,
-            "target_MWh": energy_raw,
-            "input_MWh": Gs.T @ input_energy,
-            "shaped_MWh": Gs.T @ shaped_energy,
-            }).set_index(["block","state"])
-        states["input_error"] = states.input_MWh / states.target_MWh - 1
-        states["shaped_error"] = states.shaped_MWh / states.target_MWh - 1
-
-        region_records = []
-        Gr = (G_region.reindex(units).fillna(0.0)).values
-        for r,region in enumerate(region_list):
-            input_profile = (X_raw - D_raw) @ Gr[:,r]
-            shaped_profile = (L - D_raw) @ Gr[:,r]
-            dual = np.asarray(model.peak_constraints[r].dual_value)
-            region_records.append({
-                "block": block,
-                "region": region,
-                "target_MW": peak_raw[r],
-                "input_MW": float(input_profile.max()),
-                "shaped_MW": float(shaped_profile.max()),
-                "input_peak_time": times[int(np.argmax(input_profile))],
-                "shaped_peak_time": times[int(np.argmax(shaped_profile))],
-                "input_power_score": float(model.omega[r] @ model.input_profile[r] / model.peak[r]),
-                "shaped_power_score": metrics[f"{region.lower()}_power_score"],
-                "dual_max": float(dual.max()),
-                "dual_active_hours": int(np.count_nonzero(dual > 1.0e-7)),
-                "drive_weight": lam_sel.get(region,0.0),
-                })
-        regions_frame = pd.DataFrame(region_records).set_index(["block","region"])
-
-        families = [(f"{r} ceiling",c) for r,c in zip(region_list,model.peak_constraints)]
-        families += [
-            ("Load nonnegativity",model.nonnegative),
-            ("Unit peak-multiple cap",model.peak_cap),
-            ("Unit relative-RMS cap",model.rmse_cap),
-            ]
-        constraint_records = []
-        for name,constraint in families:
-            dual = np.atleast_1d(np.asarray(constraint.dual_value,dtype=float))
-            constraint_records.append({
-                "block": block,
-                "constraint": name,
-                "active": int(np.count_nonzero(dual > 1.0e-7)),
-                "total": int(dual.size),
-                "dual_max": float(dual.max()),
-                "dual_sum": float(dual.sum()),
-                })
-        constraints_frame = pd.DataFrame(constraint_records).set_index(["block","constraint"])
-
-        summary = {
-            "block": block,
-            "status": status,
-            "selection": selection,
-            "candidates": candidates,
-            "qualifying": qualified,
-            "energy_weight": mu_sel,
-            **{f"lambda_{r.lower()}":lam_sel.get(r,0.0) for r in region_list},
-            "shape_weight": shape_weight,
-            "ridge": ridge,
-            "normalization_MW": model.c,
-            "solve_seconds": time.perf_counter() - start,
-            **metrics,
-            }
-        _logger.debug(f"{block:%Y-%m}: {selection}, {status}")
-        return {
-            "load": L,
-            "parameters": parameters,
-            "states": states,
-            "regions": regions_frame,
-            "constraints": constraints_frame,
-            "summary": summary,
-            "sweep": sweep,
-            }
+          - `CalibrationError`: the data supports no calibration, or an
+            option set earlier is not an option of the chosen calibration
+            (the data changed)
+        """
+        names = self.option_names()
+        invalid = sorted(set(self._options) - set(names))
+        if invalid:
+            raise CalibrationError(f"{invalid} are not options of {self.method.__name__}")
+        options = dict(self._options)
+        if self.method is CalibratePeaks and self.peak is not None:
+            options["peak"] = self.peak
+        return options
 
 
-class CalibratePeaks(pd.DataFrame):
-    r"""Load calibrated to observed interval peaks and troughs
+def _single(value,name:str,monthly:bool=True):
+    """@private Normalize a single-unit target to a number or a monthly series"""
+    if isinstance(value,pd.DataFrame):
+        if value.shape[1] != 1:
+            raise CalibrationError(f"{name} must be a series or a frame with one column")
+        value = value.iloc[:,0]
+    if isinstance(value,pd.Series):
+        if not isinstance(value.index,pd.DatetimeIndex):
+            raise CalibrationError(f"{name} must be indexed by {'month start' if monthly else 'timestamp'}")
+        return value.astype(float)
+    try:
+        return float(value)
+    except (TypeError,ValueError) as err:
+        raise CalibrationError(f"{name} must be a number or a series") from err
 
-    The data frame contains the calibrated load (MW) with the same index and
-    columns as the uncalibrated load. Only the observed peak (`max`) and
-    trough (`min`) of each interval are used; no energy targets and no
-    optimization solver are involved.
 
-    Within each interval $i$ the uncalibrated basis load
-    $x_t=\sum_{j\in B}X_{tj}$, the sum of the `basis` columns $B$ (by
-    default the columns whose names end in `_MW`), is mapped by the affine
-    function
+def _months(index:pd.DatetimeIndex) -> int:
+    """@private Number of calendar months (UTC) of an index"""
+    index = index.tz_convert("UTC") if index.tz else index.tz_localize("UTC")
+    return len(index.tz_localize(None).to_period("M").unique())
 
-    $$
-        y_t = a_i x_t + b_i, \qquad
-        a_i = \frac{P_i-V_i}{Q_i(p)-Q_i(v)}, \qquad
-        b_i = P_i - a_i Q_i(p),
-    $$
 
-    where $P_i$ and $V_i$ are the observed peak and trough, and $Q_i(p)$
-    and $Q_i(v)$ are the `peak` and `trough` percentiles of $x$ in the
-    interval. Thus with `peak=0.95` no more than 5% of the calibrated hours
-    in an interval exceed the observed peak, and with `trough=0.05` no more
-    than 5% fall below the observed trough. The upper percentile is taken
-    with the `"higher"` method and the lower with the `"lower"` method so
-    these fractions are never exceeded. With the defaults `peak=1.0` and
-    `trough=0.0` the calibrated load reproduces the observed peak and trough
-    exactly.
+class Calibrate(pd.DataFrame):
+    r"""Calibrated `loads` data frame
 
-    The map is applied to each column $k$ in `columns` (by default the
-    columns whose names end in `_MW`) as
+    The data frame has the index and columns of the uncalibrated data. The
+    basis column matches the configuration's data (see `CalibrateConfig`):
 
-    $$
-        L_{tk} = a_i X_{tk} + b_i \frac{\bar X_{ik}}{\bar x_i},
-    $$
+      - basis `{prefix}_net_MW` (default when present): the net load is
+        matched with the DG `{prefix}_dg_MW` fixed (its magnitude is used,
+        whatever its sign); the gross load is the net load plus the DG
 
-    where $\bar X_{ik}$ and $\bar x_i$ are the interval means of column $k$
-    and of the basis. The offset is thus shared in proportion to mean load,
-    so any set of calibrated columns that sums to the basis sums to $y$, and
-    a calibrated column that is itself the basis is mapped to $y$ exactly.
-    The `_MW` default suits a single-quantity frame such as a panel of
-    `elec_total_MW` loads; on a full `loads` frame it also sums the total,
-    DG and net columns with the sectors, so name `basis` and `columns`.
-    With the defaults the `_MW` columns sum to $y$. Columns not in
-    `columns` (by default those not ending in `_MW`, e.g., weather) are
-    returned unchanged.
+      - basis `{prefix}_total_MW`: the total (gross) load is matched
+
+      - any other basis column: that column is matched
+
+    The calibrated gross load replaces `{prefix}_total_MW`, the other
+    `{prefix}_..._MW` columns (e.g., the sectors) are scaled by the ratio of
+    calibrated to uncalibrated gross load in each hour (in hours without
+    gross load, they share it by their mean share), and `{prefix}_net_MW`
+    is the gross load minus the magnitude of the DG. `{prefix}_dg_MW` and
+    all other columns are unchanged.
 
     Calibration results are available as attributes:
 
-      - `parameters`: per-interval start, end, hours, observed `max` and
-        `min` (MW), uncalibrated `peak_quantile` and `trough_quantile` (MW),
-        `scale`, `offset_MW`, and the achieved `fraction_above` the observed
-        peak and `fraction_below` the observed trough
+      - `config`: the `CalibrateConfig` used
 
-      - `uncalibrated`: the uncalibrated load (MW)
+      - `method`: the calibration class used
 
-      - `calibrated`: boolean series, `True` for the hours that fall in an
-        interval with valid peak and trough data
+      - `calibration`: the result of the calibration class, with its own
+        attributes (e.g., `parameters`); its single column is named `load`
 
-      - `basis`: list of the basis columns
+      - `uncalibrated`: the uncalibrated data
 
-      - `calibrated_columns`: list of the calibrated columns
-
-    Examples
-    --------
-
-    Calibrate hourly load so that 5% of the hours of each day are above the
-    observed daily peak and 5% are below the observed daily trough:
-
-        from loads.calibrate import CalibratePeaks
-        peaks = pd.DataFrame({"max":[...],"min":[...]},
-            index=pd.date_range("2020-08-01",periods=31,freq="1D",tz="UTC",name="timestamp"))
-        result = CalibratePeaks(load,peaks,peak=0.95,trough=0.05)
-        result               # calibrated load (MW), same shape as load
-        result.parameters    # per-day scale, offset and achieved fractions
-
-    Calibrate the sector columns of a `Total` frame using the percentiles of
-    its total load, leaving the weather columns unchanged:
-
-        sectors = ["elec_residential_MW","elec_commercial_MW",
-            "elec_industrial_MW","elec_agricultural_MW"]
-        result = CalibratePeaks(total,peaks,peak=0.95,trough=0.05,
-            basis="elec_total_MW",columns=sectors+["elec_total_MW"])
-
-    Calibrate to a balancing authority (BA) load report, such as the hourly
-    demand in EIA Form 930. A BA reports the load it serves, which is net of
-    behind-the-meter DG, so the basis is `elec_net_MW`. When the DG is known
-    from another source (e.g., NSRDB irradiance via `Total(...,dg=True)` or
-    `loads.dgen.DG`), it is not calibrated, so `elec_dg_MW` is not in
-    `columns`; the gross load and sectors are then rebuilt from the
-    calibrated net load and the fixed DG:
-
-        result = CalibratePeaks(total,peaks,peak=0.95,trough=0.05,
-            basis="elec_net_MW",columns="elec_net_MW")
-        gross = result["elec_net_MW"] + np.abs(result["elec_dg_MW"])  # abs: robust to DG sign
-        result[sectors] = total[sectors].mul(gross/total["elec_total_MW"],axis=0)
-        result["elec_total_MW"] = gross
+      - `basis`: the basis column
 
     Caveats
     -------
 
-      - Interval $i$ spans from its timestamp up to the next one. The last
-        interval has the frequency of the peak/trough index when it can be
-        inferred, otherwise the length of the preceding interval. Hours
-        outside every interval, and hours in intervals whose `max` or `min`
-        is missing, are returned unchanged (see `calibrated`).
+      - The basis and DG columns must have no missing values (e.g., fill or
+        drop the lag-window edges of a `Total` prediction first).
 
-      - An interval whose uncalibrated load has no spread between the two
-        percentiles cannot be scaled; it is shifted (scale one) so that its
-        percentile value lies midway between the observed peak and trough.
+      - With `CalibrateHourly`, hours with missing demand are `NaN` unless
+        the option `missing="keep"` is set.
 
-      - The offset may be negative, so a calibrated load can be negative
-        when the observed trough is much lower relative to the peak than in
-        the uncalibrated load.
-
-      - The achieved fractions in `parameters` refer to the mapped basis
-        $y$. Calibrated columns whose sum is not the basis are not checked
-        against the observed peak and trough.
-
-      - Identities between columns are not maintained across columns that
-        are not calibrated. In particular, with fixed DG, calibrating
-        `elec_net_MW` together with `elec_total_MW` or the sectors does not
-        keep `elec_net_MW = elec_total_MW + elec_dg_MW` (the scale also
-        applies to the DG implicit in the net load); calibrate the net load
-        alone and rebuild the gross load as shown above.
+      - A number given as an `energy` or `peak` target of
+        `CalibrateEnergyPeak` applies to every month, so it is accepted only
+        for data within one calendar month; give monthly series otherwise.
     """
 
-    _metadata = ["parameters","uncalibrated","calibrated","basis","calibrated_columns"]
+    _metadata = ["config","method","calibration","uncalibrated","basis"]
 
     def __init__(self,
-        load:pd.DataFrame|pd.Series,
-        peaks:pd.DataFrame,
-        *,
-        peak:float=1.0,
-        trough:float=0.0,
-        basis:str|list[str]|None=None,
-        columns:str|list[str]|None=None,
+        data:pd.DataFrame,
+        config:CalibrateConfig,
         ):
-        r"""Construct a calibrated load data frame
+        r"""Construct a calibrated `loads` data frame
 
         Arguments
         ---------
 
-          - `load`: uncalibrated hourly load (MW), indexed by timestamp, one
-            or more columns
+          - `data`: hourly `loads` data frame indexed by timestamp, e.g., a
+            `Total` or `Estimator` result
 
-          - `peaks`: observed peak and trough load (MW) of each interval, with
-            columns `max` and `min`, indexed by the interval start timestamp
-
-          - `peak`: percentile (fraction in $[0,1]$) of the uncalibrated load
-            in each interval that is mapped to the observed peak
-
-          - `trough`: percentile (fraction in $[0,1]$) of the uncalibrated
-            load in each interval that is mapped to the observed trough; must
-            be less than `peak`
-
-          - `basis`: column or list of columns whose sum is the basis load
-            whose percentiles are matched to the observed peak and trough
-            (default the columns whose names end in `_MW`)
-
-          - `columns`: column or list of columns to calibrate (default the
-            columns whose names end in `_MW`); the others are returned
-            unchanged
+          - `config`: calibration data and options
 
         Raises
         ------
 
-          - `CalibrationError`: invalid inputs, including a default `basis`
-            or `columns` when no column name ends in `_MW`
+          - `CalibrationError`: invalid data, or a configuration that
+            supports no calibration
         """
+        # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+        if not isinstance(config,CalibrateConfig):
+            raise CalibrationError("config must be a CalibrateConfig")
+        if not isinstance(data,pd.DataFrame) or not isinstance(data.index,pd.DatetimeIndex):
+            raise CalibrationError("data must be a DataFrame indexed by timestamp")
+        method = config.method
+        options = config.options
 
-        # uncalibrated load
-        X = load.to_frame() if isinstance(load,pd.Series) else pd.DataFrame(load).copy()
-        if not isinstance(X.index,pd.DatetimeIndex):
-            raise CalibrationError("load must be indexed by timestamp")
+        # basis, gross load and DG
+        basis = config.basis
+        if basis is None:
+            for name in ("elec_net_MW","elec_total_MW"):
+                if name in data.columns:
+                    basis = name
+                    break
+            else:
+                found = [x for x in data.columns if isinstance(x,str) and x.endswith("_MW")]
+                if len(found) != 1:
+                    raise CalibrationError("data has no elec_net_MW or elec_total_MW column "
+                        "and not exactly one _MW column; set the basis")
+                basis = found[0]
+        if basis not in data.columns:
+            raise CalibrationError(f"data has no basis column {basis!r}")
+        match = re.fullmatch(r"(.+)_(total|net)_MW",str(basis))
+        prefix,kind = match.groups() if match else (None,"other")
+        total_col,net_col,dg_col = (f"{prefix}_total_MW",f"{prefix}_net_MW",f"{prefix}_dg_MW") if prefix else (None,None,None)
 
-        def selection(value,name):
-            if value is None:
-                value = [x for x in X.columns if isinstance(x,str) and x.endswith("_MW")]
-                if not value:
-                    raise CalibrationError(f"no column name ends in '_MW'; specify {name}")
-                return value
-            value = [value] if isinstance(value,str) or not isinstance(value,(list,tuple,pd.Index)) else list(value)
-            if not value:
-                raise CalibrationError(f"{name} must name at least one column")
-            unknown = [x for x in value if x not in X.columns]
-            if unknown:
-                raise CalibrationError(f"{name} names unknown columns {unknown}")
-            if len(set(value)) < len(value):
-                raise CalibrationError(f"{name} names a column more than once")
-            return value
-        basis = selection(basis,"basis")
-        columns = selection(columns,"columns")
-        used = list(dict.fromkeys(basis + columns))
         try:
-            finite = np.isfinite(X[used].values.astype(float)).all()
+            values = data[basis].astype(float)
+            dg = np.abs(data[dg_col].astype(float)) if kind == "net" and dg_col in data.columns else None
         except (TypeError,ValueError) as err:
-            raise CalibrationError("basis and calibrated columns must be numeric") from err
-        if not finite:
-            raise CalibrationError("load contains missing or infinite values")
-        if not 0.0 <= trough < peak <= 1.0:
-            raise CalibrationError("peak and trough must satisfy 0 <= trough < peak <= 1")
+            raise CalibrationError("basis and DG columns must be numeric") from err
+        if not np.isfinite(values).all() or (dg is not None and not np.isfinite(dg).all()):
+            raise CalibrationError(f"{basis} or its DG has missing or infinite values "
+                "(fill or drop the lag-window edges first)")
+        gross = values + dg if dg is not None else values
+        G = gross.to_frame(_UNIT)
+        D = dg.to_frame(_UNIT) if dg is not None else None
 
-        # observed peaks and troughs
-        if not isinstance(peaks,pd.DataFrame):
-            raise CalibrationError("peaks must be a DataFrame with columns 'max' and 'min'")
-        missing = {"max","min"} - set(peaks.columns)
-        if missing:
-            raise CalibrationError(f"peaks is missing columns {sorted(missing)}")
-        if not isinstance(peaks.index,pd.DatetimeIndex):
-            raise CalibrationError("peaks must be indexed by timestamp")
-        peaks = peaks[["max","min"]].astype(float).sort_index()
-        if peaks.index.has_duplicates:
-            raise CalibrationError("peaks has duplicate timestamps")
-        if (peaks["max"] < peaks["min"]).any():
-            raise CalibrationError("peaks has 'max' values less than 'min' values")
-
-        def utc(index):
-            return index.tz_convert("UTC") if index.tz else index.tz_localize("UTC")
-        times = utc(X.index)
-        starts = utc(peaks.index)
-
-        # interval ends: next start, and the inferred frequency for the last
-        ends = list(starts[1:])
-        if len(starts) > 0:
-            freq = pd.infer_freq(starts) if len(starts) > 2 else None
-            if freq is not None:
-                ends.append(starts[-1] + pd.tseries.frequencies.to_offset(freq))
-            elif len(starts) > 1:
-                ends.append(starts[-1] + (starts[-1] - starts[-2]))
-            else:
-                ends.append(times.max() + pd.Timedelta(1,"ns"))
-
-        base = X[basis].values.astype(float).sum(axis=1)
-        values = X[columns].values.astype(float)
-        result = values.copy()
-        calibrated = np.zeros(len(X),dtype=bool)
-        records = []
-        for start,end,(observed_max,observed_min) in zip(starts,ends,peaks.values):
-            rows = np.asarray((times >= start) & (times < end))
-            record = {"start":start,"end":end,"hours":int(rows.sum()),
-                "max":observed_max,"min":observed_min}
-            if not rows.any() or np.isnan(observed_max) or np.isnan(observed_min):
-                if not rows.any():
-                    _logger.debug(f"{start}: no load data in interval")
+        # calibrate the gross load (the DG is fixed)
+        if method is CalibrateEnergy:
+            energy = _single(config.energy,"energy")
+            energy = energy.to_frame(_UNIT) if isinstance(energy,pd.Series) else {_UNIT:energy}
+            calibration = CalibrateEnergy(G,energy,dg=D,**options)
+            calibrated = calibration[_UNIT]
+        elif method is CalibrateEnergyPeak:
+            targets = {}
+            for name in ("energy","peak"):
+                value = _single(getattr(config,name),name)
+                if isinstance(value,pd.Series):
+                    targets[name] = value.to_frame(name)
+                elif _months(data.index) > 1:
+                    raise CalibrationError(f"a number as the {name} target applies to every month; "
+                        "give a series indexed by month start for data that spans months")
                 else:
-                    _logger.warning(f"{start}: missing peak or trough, load not calibrated")
-                records.append(record)
-                continue
+                    targets[name] = {name:value}
+            calibration = CalibrateEnergyPeak(G,
+                energy=targets["energy"],
+                peak=targets["peak"],
+                dg=D,
+                states=pd.DataFrame({"energy":[1.0]},index=[_UNIT]),
+                **options,
+                )
+            calibrated = calibration[_UNIT]
+        elif method is CalibratePeaks:
+            net = (gross - dg if dg is not None else gross).to_frame(_UNIT)
+            calibration = CalibratePeaks(net,config.peaks,basis=_UNIT,columns=_UNIT,**options)
+            calibrated = calibration[_UNIT] + (dg if dg is not None else 0.0)
+        else:
+            demand = _single(config.demand,"demand",monthly=False)
+            if not isinstance(demand,pd.Series):
+                raise CalibrationError("demand must be an hourly series indexed by timestamp")
+            calibration = CalibrateHourly(G,
+                pd.DataFrame({"demand":[1.0]},index=[_UNIT]),
+                demand.to_frame("demand"),
+                dg=D,
+                **options,
+                )
+            calibrated = calibration.gross[_UNIT]
 
-            block = values[rows]
-            total = base[rows]
-            upper = float(np.quantile(total,peak,method="higher"))
-            lower = float(np.quantile(total,trough,method="lower"))
-            if upper - lower > np.finfo(float).eps * max(1.0,abs(upper)):
-                scale = (observed_max - observed_min) / (upper - lower)
-                offset = observed_max - scale * upper
-            else:
-                _logger.warning(f"{start}: no load spread between percentiles, load shifted only")
-                scale = 1.0
-                offset = 0.5 * (observed_max + observed_min) - upper
+        # rebuild the columns from the calibrated gross load
+        result = data.copy()
+        if kind == "other":
+            result[basis] = calibrated
+        else:
+            components = [x for x in data.columns if isinstance(x,str)
+                and x.startswith(f"{prefix}_") and x.endswith("_MW")
+                and x not in (total_col,net_col,dg_col)]
+            if components:
+                parts = data[components].astype(float)
+                with np.errstate(divide="ignore",invalid="ignore"):
+                    ratio = calibrated / gross
+                    share = parts.mean() / gross.mean() if gross.mean() != 0 else parts.mean() * 0.0
+                none = (gross == 0).values
+                scaled = parts.mul(ratio,axis=0)
+                if none.any():
+                    scaled.loc[none] = np.outer(calibrated[none].values,share.values)
+                result[components] = scaled
+            if total_col in data.columns:
+                result[total_col] = calibrated
+            if net_col in data.columns:
+                result[net_col] = calibrated - (np.abs(data[dg_col].astype(float)) if dg_col in data.columns else 0.0)
+            if total_col not in data.columns and net_col not in data.columns:
+                result[basis] = calibrated
 
-            # share the offset among columns by their mean load relative to the basis
-            mean = total.mean()
-            share = block.mean(axis=0) / mean if mean != 0 else np.full(block.shape[1],1.0/block.shape[1])
-            result[rows] = scale * block + offset * share[None,:]
-            calibrated[rows] = True
-
-            shaped = scale * total + offset
-            tol = 1.0e-9 * max(1.0,abs(observed_max),abs(observed_min))
-            record.update({
-                "peak_quantile": upper,
-                "trough_quantile": lower,
-                "scale": scale,
-                "offset_MW": offset,
-                "fraction_above": float(np.mean(shaped > observed_max + tol)),
-                "fraction_below": float(np.mean(shaped < observed_min - tol)),
-                })
-            records.append(record)
-
-        if not calibrated.all():
-            _logger.warning(f"{int((~calibrated).sum())} hours of load are outside the calibrated intervals")
-
-        output = X.copy()
-        for n,column in enumerate(columns):
-            output[column] = result[:,n]
-        super().__init__(output)
-        fields = ["start","end","hours","max","min","peak_quantile","trough_quantile",
-            "scale","offset_MW","fraction_above","fraction_below"]
-        self.parameters = pd.DataFrame(records,columns=fields).set_index("start")
-        self.uncalibrated = X
-        self.calibrated = pd.Series(calibrated,index=X.index,name="calibrated")
+        super().__init__(result)
+        self.config = config
+        self.method = method
+        self.calibration = calibration
+        self.uncalibrated = data
         self.basis = basis
-        self.calibrated_columns = columns
 
     @property
     def _constructor(self):
         # derived frames are plain data frames
         return pd.DataFrame
-
-
-def _factor_matrix(factors,name:str) -> pd.DataFrame:
-    """@private Normalize a factor specification to a wide units x targets frame
-
-    Accepts a wide frame (index units, one column per target) or a long frame
-    with a `factor` column whose first two other columns name the unit and the
-    target (e.g., `county_st,ba,factor,method`).
-    """
-    if not isinstance(factors,pd.DataFrame):
-        raise CalibrationError(f"{name} must be a DataFrame")
-    if "factor" in factors.columns:
-        keys = [x for x in factors.columns if x != "factor"][:2]
-        if len(keys) < 2:
-            raise CalibrationError(f"long {name} needs a unit column, a target column and 'factor'")
-        factors = factors.pivot_table(index=keys[0],columns=keys[1],values="factor",
-            aggfunc="sum",fill_value=0.0)
-    factors = factors.copy()
-    factors.index = [str(x) for x in factors.index]
-    factors.columns = [str(x) for x in factors.columns]
-    try:
-        factors = factors.astype(float).fillna(0.0)
-    except (TypeError,ValueError) as err:
-        raise CalibrationError(f"{name} must be numeric") from err
-    if factors.index.duplicated().any():
-        raise CalibrationError(f"{name} has duplicate units")
-    if (factors.values < 0).any() or not np.isfinite(factors.values).all():
-        raise CalibrationError(f"{name} must be finite and nonnegative")
-    total = factors.sum(axis=1)
-    bad = total.index[(total - 1.0).abs() > CalibrateForm930.FACTOR_TOL].tolist()
-    if bad:
-        raise CalibrationError(f"{name} of each unit must sum to one: {bad[:5]}")
-    factors = factors.div(total,axis=0)
-    return factors.loc[:,(factors > 0).any(axis=0)]
-
-
-def _form930_demand(areas:list[str],index:pd.DatetimeIndex,refresh:bool) -> pd.DataFrame:
-    """@private Download EIA-930 demand (`load_MW`) for areas over an hourly index"""
-    from eia import Form930 # pylint: disable=import-outside-toplevel
-    respondents = set(Form930.respondents())
-    months = sorted(set(zip(index.year,index.month)))
-    result = {}
-    for area in areas:
-        if area not in respondents:
-            _logger.debug(f"{area} is not an EIA-930 respondent")
-            continue
-        data = [Form930(area,year,month,refresh=refresh) for year,month in months]
-        data = pd.concat(data,ignore_index=True).set_index("timestamp")["load_MW"]
-        result[area] = data[~data.index.duplicated()]
-    return pd.DataFrame(result,index=index)
-
-
-class CalibrateForm930(pd.DataFrame):
-    r"""Net load data frame calibrated to EIA-930 balancing authority demand
-
-    The data frame contains the hourly net load of each unit (e.g., a county)
-    in MW with the same index and columns as the input load. Net load may be
-    negative where behind-the-meter distributed generation (DG) exceeds the
-    load. The hourly demand $D_b(t)$ of each balancing authority (BA) $b$
-    reported on Form EIA-930, which is net of DG, is split among the units
-    it serves, where $f_{ub}$ is the fraction of unit $u$'s load served by
-    BA $b$.
-
-    With DG (`dg` given), only the gross load $G_u(t)\geq0$ is scaled and
-    the DG $P_u(t)\geq0$ is fixed, as in `Calibrate`. Each BA's gross demand
-    $D_b+P_b$, with $P_b=\sum_kf_{kb}P_k$, is split in proportion to the
-    units' gross load, and the unit's DG is subtracted:
-
-    $$
-        X_u(t) = \sum_b f_{ub}G_u(t)\,R_b(t) - P_u(t), \qquad
-        R_b(t) = \frac{D_b(t)+P_b(t)}{S_b(t)}, \qquad
-        S_b(t) = \sum_k f_{kb}G_k(t).
-    $$
-
-    Without DG, $P=0$ and $G$ is the given load $L\geq0$, which is then the
-    net load (the method of `eudoxys/wecc240` pull request #2).
-
-    Given factors $f$ whose rows sum to one and BA demand $D\geq0$, the
-    result is expected to satisfy:
-
-      1. for every BA and hour with demand, the net shares
-         $f_{ub}(G_uR_b-P_u)$ of the units served by the BA sum to $D_b(t)$,
-         so the total of the units equals the total EIA-930 demand of their
-         BAs plus the uncalibrated net shares of BAs without demand;
-
-      2. the calibrated gross load $X_u+P_u$ is nonnegative, and the net
-         load $X_u$ is negative only where the DG exceeds it;
-
-      3. when $S_b(t)=0$, the BA gross demand is split by the factors
-         $f_{ub}$ alone;
-
-      4. shares of BAs without demand data (not EIA-930 respondents, or not
-         in `demand`) keep the estimate $f_{ub}(G_u-P_u)$;
-
-      5. in hours where a BA's demand is missing, its units are `NaN`
-         (`missing="nan"`) or keep their estimated share of that BA
-         (`missing="keep"`);
-
-      6. units without factors are returned unchanged ($G_u-P_u$).
-
-    Calibration results are available as attributes:
-
-      - `factors`: BA participation factors used (units x BAs)
-
-      - `demand`: BA demand $D$ used (MW, hours x BAs with demand)
-
-      - `estimate`: estimated BA net load $S_b-P_b$ (MW, hours x BAs)
-
-      - `scale`: BA gross-load scale factor $R=(D+P_b)/S$ (hours x BAs); 1 for
-        BAs without demand, `NaN` for hours with missing demand or $S=0$
-
-      - `gross`: calibrated gross load $X+P$ (MW, as the data frame)
-
-      - `dg`: DG $P$ used (MW, nonnegative, as the data frame; zero without
-        `dg`)
-
-      - `uncalibrated`: BAs without demand data
-
-      - `unassigned`: units without factors (returned unchanged)
-    """
-
-    _metadata = ["factors","demand","estimate","scale","gross","dg","uncalibrated","unassigned"]
-
-    FACTOR_TOL = 1.0e-4
-    """Tolerance on the sum of each unit's factors (they are then normalized to one)"""
-
-    def __init__(self,
-        load:pd.DataFrame,
-        factors:pd.DataFrame,
-        demand:pd.DataFrame|None=None,
-        *,
-        dg:pd.DataFrame|None=None,
-        missing:str="nan",
-        refresh:bool=False,
-        ):
-        r"""Construct a net load data frame calibrated to BA demand
-
-        Arguments
-        ---------
-
-          - `load`: hourly load (MW, nonnegative), one column per unit,
-            indexed by timestamp: the gross load $G$ when `dg` is given,
-            otherwise the net load $L$ (which must then be nonnegative, e.g.,
-            clipped at zero)
-
-          - `factors`: BA participation factors $f$: a wide frame (index
-            units, one column per BA code), or a long frame with a `factor`
-            column whose first two other columns name the unit and the BA
-            (e.g., `county_st,ba,factor,method`); each unit's factors must
-            sum to one
-
-          - `demand`: hourly BA demand $D$ (MW), one column per BA code,
-            indexed by timestamp (hours not in `load` are ignored, hours of
-            `load` not in `demand` are missing); default downloads the
-            Form EIA-930 demand of every BA in `factors` with
-            `eia.Form930` (requires an EIA API key)
-
-          - `dg`: behind-the-meter DG $P$ (MW) with the same index and the
-            columns of `load` (missing columns have no DG); all values of
-            one sign, either nonnegative (as in `wecc/county_dg*.csv.gz`) or
-            nonpositive (as in `elec_dg_MW`); its magnitude is used.
-            The DG is not scaled, and the net result may be negative.
-
-          - `missing`: how to treat hours where a BA's demand is missing,
-            non-finite or negative: `"nan"` makes its units `NaN`, `"keep"`
-            keeps their estimated share of that BA
-
-          - `refresh`: refresh the EIA-930 download cache (only used when
-            `demand` is `None`)
-
-        Raises
-        ------
-
-          - `CalibrationError`: invalid inputs
-        """
-        # pylint: disable=too-many-locals,too-many-statements,too-many-branches
-        G = pd.DataFrame(load).copy()
-        if not isinstance(G.index,pd.DatetimeIndex):
-            raise CalibrationError("load must be indexed by timestamp")
-        G.columns = [str(x) for x in G.columns]
-        if G.columns.duplicated().any():
-            raise CalibrationError("load has duplicate columns")
-        try:
-            G = G.astype(float)
-        except (TypeError,ValueError) as err:
-            raise CalibrationError("load must be numeric") from err
-        if not np.isfinite(G.values).all():
-            raise CalibrationError("load contains missing or infinite values")
-        if (G.values < 0).any():
-            raise CalibrationError("load must be nonnegative"
-                + (" (gross load)" if dg is not None else
-                    " (pass the gross load with dg= to allow negative net load)"))
-        if missing not in ("nan","keep"):
-            raise CalibrationError(f"{missing=} must be 'nan' or 'keep'")
-
-        if dg is None:
-            P = pd.DataFrame(0.0,index=G.index,columns=G.columns)
-        else:
-            P = pd.DataFrame(dg).copy()
-            P.columns = [str(x) for x in P.columns]
-            try:
-                P = P.astype(float)
-            except (TypeError,ValueError) as err:
-                raise CalibrationError("dg must be numeric") from err
-            present = set(P.columns)
-            if not present <= set(G.columns):
-                raise CalibrationError(f"dg has columns not in load: {sorted(present-set(G.columns))[:5]}")
-            P = P.reindex(index=G.index,columns=G.columns)
-            P[[x for x in G.columns if x not in present]] = 0.0
-            if not np.isfinite(P.values).all():
-                raise CalibrationError("dg contains missing or infinite values (or is misaligned)")
-            if (P.values > 0).any() and (P.values < 0).any():
-                raise CalibrationError("dg values must all have the same sign")
-            P = P.abs()
-
-        F = _factor_matrix(factors,"factors")
-        units = [x for x in G.columns if x in F.index]
-        unassigned = [x for x in G.columns if x not in F.index]
-        if unassigned:
-            _logger.debug(f"units without factors are unchanged: {unassigned}")
-        F = F.loc[units]
-        F = F.loc[:,(F > 0).any(axis=0)]
-        bas = list(F.columns)
-
-        if demand is None:
-            demand = _form930_demand(bas,G.index,refresh)
-        demand = pd.DataFrame(demand).copy()
-        if not isinstance(demand.index,pd.DatetimeIndex):
-            raise CalibrationError("demand must be indexed by timestamp")
-        demand.columns = [str(x) for x in demand.columns]
-        try:
-            demand = demand.astype(float)
-        except (TypeError,ValueError) as err:
-            raise CalibrationError("demand must be numeric") from err
-        reported = [x for x in bas if x in demand.columns]
-        uncalibrated = [x for x in bas if x not in demand.columns]
-        if uncalibrated:
-            _logger.debug(f"BAs without demand keep the estimate: {uncalibrated}")
-        D = demand.reindex(index=G.index,columns=bas)
-        D = D.where(np.isfinite(D) & (D >= 0))
-
-        X = G[units].values                                 # hours x units (gross)
-        Pu = P[units].values                                # hours x units (DG)
-        f = F.values                                        # units x BAs
-        S = X @ f                                           # BA gross estimate
-        Pb = Pu @ f                                         # BA DG
-        T = D.values + Pb                                   # BA gross demand
-        in930 = np.array([x in reported for x in bas],dtype=bool)
-        nodata = np.isnan(T) & in930[None,:]
-        with np.errstate(divide="ignore",invalid="ignore"):
-            R = np.where(S > 0,T/S,np.nan)
-        R[:,~in930] = 1.0
-        Rapply = np.where(np.isnan(R),0.0,R)
-        if missing == "keep":
-            Rapply[nodata] = 1.0
-        gross = X * (Rapply @ f.T)
-        zero = (S <= 0) & in930[None,:] & ~nodata          # split demand by factors alone
-        if zero.any():
-            gross += (np.where(zero,T,0.0) / f.sum(axis=0)[None,:]) @ f.T
-        if missing == "nan":
-            gross[(nodata.astype(float) @ (f.T > 0)) > 0] = np.nan
-
-        total = G.copy()
-        total[units] = gross
-        super().__init__(total - P)
-        self.factors = F
-        self.demand = D[reported]
-        self.estimate = pd.DataFrame(S - Pb,index=G.index,columns=bas)
-        self.scale = pd.DataFrame(np.where(nodata,np.nan,R),index=G.index,columns=bas)
-        self.gross = total
-        self.dg = P
-        self.uncalibrated = uncalibrated
-        self.unassigned = unassigned
-
-    @property
-    def _constructor(self):
-        return pd.DataFrame
-
-    def allocate(self,factors:pd.DataFrame) -> pd.DataFrame:
-        r"""Allocate the calibrated unit loads to other units (e.g., network nodes)
-
-        Arguments
-        ---------
-
-          - `factors`: allocation factors $g$ in the same forms as the
-            constructor's `factors` (e.g., `county_st,node,factor,method`);
-            each unit's factors must sum to one
-
-        Returns
-        -------
-
-          - `pandas.DataFrame`: hourly load (MW) of each target $n$,
-            $N_n(t)=\sum_u g_{un}X_u(t)$, with the same index; a target is
-            `NaN` in an hour when any of its units is `NaN`. Units without
-            allocation factors are omitted (logged at DEBUG).
-        """
-        G = _factor_matrix(factors,"allocation factors")
-        units = [x for x in self.columns if x in G.index]
-        omitted = [x for x in self.columns if x not in G.index]
-        if omitted:
-            _logger.debug(f"units without allocation factors are omitted: {omitted}")
-        G = G.loc[units]
-        G = G.loc[:,(G > 0).any(axis=0)].sort_index(axis=1)
-        values = pd.DataFrame(self)[units]
-        result = values.fillna(0.0).values @ G.values
-        result[(values.isna().values.astype(float) @ (G.values > 0)) > 0] = np.nan
-        return pd.DataFrame(result,index=self.index,columns=G.columns)

@@ -108,16 +108,18 @@ How the estimate is produced
     `loads.estimator.Estimator` is a newer front end to the same kind of
     model that uses a single `"County ST"` location argument.
 
-  - Calibration to published totals is a separate step.
-    `loads.calibrate.Calibrate` shapes a panel of county (or node) loads so
-    that it honors monthly state energy targets and regional peak ceilings;
-    `loads.calibrate.CalibratePeaks` instead maps percentiles of a load to
-    observed interval peaks and troughs without a solver;
-    and `loads/wecc/wecc_estimate.py` rescales each county's monthly energy
-    that it honors monthly state energy targets and regional peak ceilings,
-    `loads.calibrate.CalibrateForm930` splits the hourly EIA-930 demand of
-    each balancing authority among the counties it serves in proportion to
-    their estimated load, and `loads/wecc/wecc_estimate.py` rescales each county's monthly energy
+  - Calibration to observed or published data is a separate step.
+    `loads.calibrate.Calibrate` calibrates a standard `loads` frame (e.g.,
+    a `Total` or `Estimator` result) with the calibration chosen by the data
+    in its `loads.calibrate.CalibrateConfig`: `CalibrateEnergy` scales loads
+    proportionally to energy targets; `CalibrateEnergyPeak` shapes a panel
+    of county (or node) loads so that it honors monthly state energy targets
+    and regional peak ceilings; `CalibratePeaks` maps percentiles of a load
+    to observed interval peaks and troughs without a solver;
+    `CalibrateHourly` splits the hourly demand (e.g., EIA-930) of each
+    balancing authority among the counties it serves in proportion to their
+    estimated load; and `loads/wecc/wecc_estimate.py` rescales each
+    county's monthly energy
     to its gross load, i.e., the EIA 861M retail sales allocated to it plus
     its distributed generation.
 
@@ -266,10 +268,8 @@ flowchart TB
         FIT --> SAMPLE --> NET
     end
 
-    CAL(["calibrate.py · Calibrate<br/>state energy & regional peaks<br/>CalibratePeaks<br/>interval peaks & troughs"])
+    CAL(["calibrate.py · Calibrate + CalibrateConfig<br/>CalibrateEnergy · energy<br/>CalibrateEnergyPeak · state energy & regional peaks<br/>CalibratePeaks · interval peaks & troughs<br/>CalibrateHourly · hourly BA demand (EIA-930)"])
     NET --> CAL
-    CAL930(["calibrate.py · CalibrateForm930<br/>EIA-930 BA demand"])
-    NET --> CAL930
 
     RESID --> FIT
     COMM --> FIT
@@ -332,10 +332,8 @@ flowchart TB
 
   - `loads.agriculture`: 2019 agricultural load data
 
-  - `loads.calibrate`: net-load shaping to state energy and regional peak targets,
-    and percentile calibration to observed interval peaks and troughs
-  - `loads.calibrate`: net-load shaping to state energy and regional peak
-    targets, and calibration to EIA-930 balancing authority demand
+  - `loads.calibrate`: calibration of a `loads` frame to energy, energy and
+    peak, interval peak and trough, or hourly (e.g., EIA-930) demand data
 
   - `loads.cast`: weather-based back/forecast of a 2018 load to another year
 
@@ -464,8 +462,8 @@ Package information
 
 from loads.aggregate import Aggregator
 from loads.agriculture import Agriculture
-from loads.calibrate import Calibrate, CalibratePeaks
-from loads.calibrate import Calibrate, CalibrateForm930
+from loads.calibrate import Calibrate, CalibrateConfig, CalibrationError
+from loads.calibrate import CalibrateEnergy, CalibrateEnergyPeak, CalibratePeaks, CalibrateHourly
 from loads.cli import main
 from loads.cluster import Cluster
 from loads.commercial import Commercial

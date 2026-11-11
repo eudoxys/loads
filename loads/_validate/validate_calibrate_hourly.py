@@ -1,4 +1,4 @@
-r"""Validate `CalibrateForm930` on the WECC 2018-2022 county estimate
+r"""Validate `CalibrateHourly` on the WECC 2018-2022 county estimate
 
 Calibrates the WECC county net load estimate to the EIA-930 demand of the 28
 US WECC balancing authorities (BAs) that report it, allocates the counties to
@@ -29,15 +29,14 @@ Inputs
 
   - county-to-node factors $g$: `loads/wecc/node_estimate_cf.csv`
 
-`county_ba.csv` and the hourly BA demand are added by pull request #62
-(branch `review-calibrate-eia930`). When they are not in the package folder,
-they are read from that branch at commit `INPUTS_COMMIT`, the commit the
-`wecc240` node loads were built from.
+`county_ba.csv` and the hourly BA demand were added by pull request #62;
+the `wecc240` node loads were built from its commit `9341b13`, which has the
+same files.
 
 Usage
 -----
 
-    python3 loads/_validate/validate_calibrate_form930.py [--clip] [--compare NODE_BA_LOAD] [--factors CSV] [--demand CSV] [--debug]
+    python3 loads/_validate/validate_calibrate_hourly.py [--clip] [--compare NODE_BA_LOAD] [--factors CSV] [--demand CSV] [--debug]
 
 prints the annual EIA-930, county and node energy and the node peak, runs
 the checks below, and writes `form930_county_net.csv.gz` and
@@ -54,9 +53,9 @@ are excluded from the totals.
 
   1. **BA shares.** The fractional share $f_{ub}L_u(t)D_b(t)/S_b(t)$ of
      each county in each BA is recomputed from the inputs, BA by BA,
-     independently of `CalibrateForm930`: in every hour with demand the
+     independently of `CalibrateHourly`: in every hour with demand the
      county shares of each BA sum to its EIA-930 demand, and the sum of each
-     county's BA shares equals the `CalibrateForm930` county load (same
+     county's BA shares equals the `CalibrateHourly` county load (same
      `NaN` hours). Tolerance `TOL_MW`.
   2. **WECC total.** The county total minus the uncalibrated `SWPP` share
      equals the EIA-930 US WECC total `WECC_load_MW` in
@@ -86,17 +85,11 @@ import numpy as np
 import pandas as pd
 
 from cache import Cache
-from loads.calibrate import CalibrateForm930
+from loads.calibrate import CalibrateHourly
 
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WECC = os.path.join(PACKAGE,"wecc")
 DATA = os.path.join(PACKAGE,"_test","data")
-
-INPUTS_COMMIT = "9341b1342fb64d23db0e169017fee6fa11821e46"
-"""`eudoxys/loads` commit (PR #62) holding `county_ba.csv` and the hourly BA demand"""
-
-INPUTS_URL = f"https://raw.githubusercontent.com/eudoxys/loads/{INPUTS_COMMIT}/loads/"
-"""URL of the package folder at `INPUTS_COMMIT`"""
 
 HOURS = pd.date_range("2018-01-01 00:00:00+00:00","2022-12-31 23:00:00+00:00",freq="1h",name="timestamp")
 """Validation period (hour-beginning UTC)"""
@@ -117,11 +110,9 @@ if os.environ.get("LOADS_CACHEDIR"):
     Cache.CACHEDIR = os.environ["LOADS_CACHEDIR"]
 
 
-def _source(path:str|None,local:str,remote:str) -> str:
-    """Pick an explicit path, else the package file, else the pinned URL"""
-    if path:
-        return path
-    return local if os.path.exists(local) else INPUTS_URL + remote
+def _source(path:str|None,local:str) -> str:
+    """Pick an explicit path, else the package file"""
+    return path or local
 
 
 def county_load() -> tuple[pd.DataFrame,pd.DataFrame]:
@@ -143,8 +134,7 @@ def county_load() -> tuple[pd.DataFrame,pd.DataFrame]:
 
 def ba_demand(path:str|None=None) -> pd.DataFrame:
     """Cleaned EIA-930 BA demand (MW), hour-beginning UTC"""
-    demand = pd.read_csv(_source(path,os.path.join(DATA,"WECC_BA_hourly_load_2018-2022.csv"),
-        "_test/data/WECC_BA_hourly_load_2018-2022.csv"))
+    demand = pd.read_csv(_source(path,os.path.join(DATA,"WECC_BA_hourly_load_2018-2022.csv")))
     demand.index = pd.DatetimeIndex(pd.to_datetime(demand["utc_hour_ending"],utc=True)
         - pd.Timedelta(hours=1),name="timestamp")
     return demand.drop(["utc_hour_ending","pst_hour_ending"],axis=1).reindex(HOURS)
@@ -168,7 +158,7 @@ def inputs(factors:str|None=None,demand:str|None=None,clip:bool=False) -> tuple:
     load,dg = county_load()
     if clip:
         load,dg = (load - dg).clip(lower=0.0),None
-    factors = pd.read_csv(_source(factors,os.path.join(WECC,"county_ba.csv"),"wecc/county_ba.csv"))
+    factors = pd.read_csv(_source(factors,os.path.join(WECC,"county_ba.csv")))
     demand = ba_demand(demand)
     nodes = pd.read_csv(os.path.join(WECC,"node_estimate_cf.csv")).rename({"cf":"factor"},axis=1)
     return load,dg,factors,demand,nodes
@@ -224,7 +214,7 @@ def ba_shares(load:pd.DataFrame,factors:pd.DataFrame,demand:pd.DataFrame,
 
 
 def checks(load:pd.DataFrame,factors:pd.DataFrame,demand:pd.DataFrame,
-        county:CalibrateForm930,node:pd.DataFrame,wecc:pd.Series,
+        county:CalibrateHourly,node:pd.DataFrame,wecc:pd.Series,
         compare:pd.DataFrame|None=None,dg:pd.DataFrame|None=None) -> list[tuple[str,bool|None,str]]:
     """Run the validation checks
 
@@ -299,14 +289,14 @@ def main(argv:list[str]) -> int:
     parser.add_argument("--clip",action="store_true",
         help="calibrate the net load clipped at zero without DG (the wecc240 method, unscaled PV)")
     parser.add_argument("--compare",help="wecc240 node_ba_load.csv.gz to compare with")
-    parser.add_argument("--factors",help="county_ba.csv (default package file or pinned URL)")
-    parser.add_argument("--demand",help="WECC_BA_hourly_load_2018-2022.csv (default package file or pinned URL)")
+    parser.add_argument("--factors",help="county_ba.csv (default package file)")
+    parser.add_argument("--demand",help="WECC_BA_hourly_load_2018-2022.csv (default package file)")
     parser.add_argument("--debug",action="store_true",help="debug logging")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.WARNING)
 
     load,dg,factors,demand,nodes = inputs(args.factors,args.demand,args.clip)
-    county = CalibrateForm930(load,factors,demand,dg=dg)
+    county = CalibrateHourly(load,factors,demand,dg=dg)
     node = county.allocate(nodes)
     print(f"counties: {county.shape[1]}, unassigned: {county.unassigned}, "
         f"BAs: {len(county.factors.columns)}, uncalibrated: {county.uncalibrated}, nodes: {node.shape[1]}")

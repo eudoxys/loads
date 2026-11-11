@@ -37,6 +37,19 @@ model comes from `tsgam_estimator` (github.com/nimish/estimator).
 work in `__init__` and ends with `super().__init__(data)`. `Units` subclasses
 `float` with `__new__`. Keep this pattern when adding a source.
 
+**Calibration layout.** `loads.calibrate` holds `Calibrate` (calibrates one
+standard `loads` frame and returns the same columns) and `CalibrateConfig`
+(the data and options; the data given chooses the method, DESIGN decision
+12f). Each method is a class in its own private module, re-exported by
+`loads.calibrate` and `loads`: `CalibrateEnergy` (`_calibrate_energy.py`),
+`CalibrateEnergyPeak` (`_calibrate_energypeak.py`), `CalibratePeaks`
+(`_calibrate_peaks.py`), `CalibrateHourly` (`_calibrate_hourly.py`);
+`CalibrationError` is in `_calibrate_error.py`. A new method needs its own
+module, a row in `CalibrateConfig.method`, an entry in `_FIXED` (the
+arguments `Calibrate` sets), and a branch in `Calibrate.__init__`. pdoc
+documents the classes through `loads.calibrate`, so the methodology lives
+in its module docstring.
+
 **Cache-first loading.** Every expensive constructor follows this shape:
 
 ```python
@@ -161,7 +174,7 @@ make docs                           # pdoc → ./docs (creates its own .venv)
 - `dgen.DG` allocates EIA-861M state small-scale PV to counties by
   `wecc/county_mwh.csv` load share and shapes it hourly (NSRDB GHI or dGen),
   returning `elec_dg_MW <= 0`; `DG.merge` adds it to a `Total` frame.
-  `dgen.compile` writes nonnegative MW (as `Calibrate` expects), and the
+  `dgen.compile` writes nonnegative MW (as `CalibrateEnergyPeak` expects), and the
   checked-in `wecc/county_dg*.csv.gz` files are also nonnegative, opposite to
   the `elec_dg_MW` sign convention. `Total(...,dg=True)` (CLI `-G`) merges
   this DG into its result (replacing the RESstock/COMstock PV in training
@@ -193,7 +206,7 @@ work offline.
   of the code in this repository. Read the module before documenting it;
   copy signatures from source.
 - `loads/_test/test_skill_loads_api.py` reproduces, offline, the behaviors
-  the skill documents (signatures, `Total` modes, `Calibrate` input rules,
+  the skill documents (signatures, `Total` modes, calibration input rules,
   DG sign conventions, ...). When a change to `loads` makes one fail,
   update `SKILL.md`, `reference/` (usually `api.md` and `footguns.md`) and
   `loads/skill/schema.py` in the same PR, then the test; don't just relax

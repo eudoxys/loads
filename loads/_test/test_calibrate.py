@@ -40,7 +40,7 @@ from cache import Cache
 from fips import Counties
 
 import loads
-from loads.calibrate import Calibrate
+from loads.calibrate import CalibrateEnergyPeak
 
 _logger = logging.getLogger(__file__)
 
@@ -169,9 +169,9 @@ def problem() -> dict:
 
 
 @pytest.fixture(scope="module")
-def result(problem) -> Calibrate:
+def result(problem) -> CalibrateEnergyPeak:
     """Calibrate with the predeclared weight search"""
-    return Calibrate(problem["load"],
+    return CalibrateEnergyPeak(problem["load"],
         dg=problem["dg"],
         energy=problem["energy"],
         peak=problem["peak"],
@@ -204,13 +204,13 @@ def test_peaks(result):
     """CAISO and WECC net-load peaks reach their ceilings without exceeding them"""
     for region,row in result.regions.droplevel(0).iterrows():
         assert row.shaped_MW <= row.target_MW * (1 + 1e-6), region
-        assert row.shaped_MW >= row.target_MW * (1 - Calibrate.PEAK_SHORTFALL_TOL), region
+        assert row.shaped_MW >= row.target_MW * (1 - CalibrateEnergyPeak.PEAK_SHORTFALL_TOL), region
 
 
 def test_state_energy(result):
     """Every state's net-load energy is within the selection tolerance"""
     errors = result.states.shaped_error.abs()
-    assert errors.max() <= Calibrate.STATE_ENERGY_TOL
+    assert errors.max() <= CalibrateEnergyPeak.STATE_ENERGY_TOL
     assert errors.max() < result.states.input_error.abs().max()
 
 
@@ -220,7 +220,7 @@ def test_safeguards(result,problem):
     parameters = result.parameters.droplevel(0).reindex(X.columns)
     expected = X * parameters.scale.values[None,:] + parameters.offset_MW.values[None,:]
     assert np.allclose(result.values,expected.values)
-    assert result.values.min() >= Calibrate.NONNEGATIVE_TOL
+    assert result.values.min() >= CalibrateEnergyPeak.NONNEGATIVE_TOL
     assert (parameters.scale >= -1e-9).all()
     assert (parameters.peak_multiple <= 5.0 + 1e-6).all()
     assert (parameters.relative_rmse <= 2.0 + 1e-6).all()

@@ -3,13 +3,13 @@
 This [marimo](https://marimo.io/) notebook reviews the WECC240 node loads
 obtained by calibrating the WECC county net load estimate to the EIA-930
 demand of the US WECC balancing authorities (BAs) with
-`loads.calibrate.CalibrateForm930` and allocating the counties to the nodes
-with `CalibrateForm930.allocate`, as in `eudoxys/wecc240` pull request #2.
+`loads.calibrate.CalibrateHourly` and allocating the counties to the nodes
+with `CalibrateHourly.allocate`, as in `eudoxys/wecc240` pull request #2.
 Unlike `wecc240`, the rooftop PV is the unscaled `loads/wecc/county_dg.csv.gz`
 (not the EIA-scaled `county_dg_scaled.csv.gz`) and the net load is not
 clipped at zero: only the county gross load is calibrated and the PV is
 fixed, so a node's net load is negative where its PV exceeds its load.
-The inputs are those of `loads/_validate/validate_calibrate_form930.py`.
+The inputs are those of `loads/_validate/validate_calibrate_hourly.py`.
 
 Select a year and, optionally, a month to reduce the time window (the
 calibration runs on the selected window only); "All" uses 2018–2022. Node
@@ -33,8 +33,8 @@ def _(mo):
 @app.cell
 def _(importlib, mo, pathlib):
     # load the calibration inputs (shared with the validation script)
-    _file = pathlib.Path(*pathlib.Path(__file__).parts[:-2],"_validate","validate_calibrate_form930.py")
-    _spec = importlib.util.spec_from_file_location("validate_calibrate_form930",_file)
+    _file = pathlib.Path(*pathlib.Path(__file__).parts[:-2],"_validate","validate_calibrate_hourly.py")
+    _spec = importlib.util.spec_from_file_location("validate_calibrate_hourly",_file)
     validation = importlib.util.module_from_spec(_spec)
     _spec.loader.exec_module(validation)
     with mo.status.spinner("Loading county estimate, BA factors and EIA-930 demand"):
@@ -84,10 +84,10 @@ def _(load, month_ui, year_ui):
 
 
 @app.cell
-def _(CalibrateForm930, demand, dg, factors, load, mo, node_factors, window):
+def _(CalibrateHourly, demand, dg, factors, load, mo, node_factors, window):
     # calibrate the window and allocate to nodes
     with mo.status.spinner("Calibrating counties and allocating to nodes"):
-        county = CalibrateForm930(load.loc[window],factors,demand.loc[window],dg=dg.loc[window])
+        county = CalibrateHourly(load.loc[window],factors,demand.loc[window],dg=dg.loc[window])
         data = county.allocate(node_factors)
     return county, data
 
@@ -181,9 +181,9 @@ def _():
     import pathlib
     import pandas as pd
     import matplotlib.pyplot as plt
-    from loads.calibrate import CalibrateForm930
+    from loads.calibrate import CalibrateHourly
 
-    return CalibrateForm930, importlib, mo, pathlib, pd, plt
+    return CalibrateHourly, importlib, mo, pathlib, pd, plt
 
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
-"""Checks of `loads/_validate/validate_calibrate_form930.py` on a synthetic system
+"""Checks of `loads/_validate/validate_calibrate_hourly.py` on a synthetic system
 
 These tests need no data downloads and run in seconds. They run the
 validation checks (BA shares, WECC total, US only, nonnegative, wecc240
-comparison) on the synthetic system of `test_calibrate_form930.py` and
+comparison) on the synthetic system of `test_calibrate_hourly.py` and
 check that each one passes on correct data and fails when the data is
 perturbed.
 """
@@ -15,11 +15,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from loads.calibrate import CalibrateForm930
-from test_calibrate_form930 import system  # pylint: disable=unused-import
+from loads.calibrate import CalibrateHourly
+from test_calibrate_hourly import system  # pylint: disable=unused-import
 
-_FILE = pathlib.Path(__file__).parents[1] / "_validate" / "validate_calibrate_form930.py"
-_SPEC = importlib.util.spec_from_file_location("validate_calibrate_form930",_FILE)
+_FILE = pathlib.Path(__file__).parents[1] / "_validate" / "validate_calibrate_hourly.py"
+_SPEC = importlib.util.spec_from_file_location("validate_calibrate_hourly",_FILE)
 validation = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(validation)
 
@@ -37,7 +37,7 @@ def case(system) -> dict:
         "factors":system["factors"].replace(names),
         "nodes":system["nodes"].replace(names),
         }
-    county = CalibrateForm930(system["load"],system["factors"],system["demand"])
+    county = CalibrateHourly(system["load"],system["factors"],system["demand"])
     node = county.allocate(system["nodes"])
     wecc = system["demand"][["AAA","BBB"]].sum(axis=1).round(0)
     return {**system,"county":county,"node":node,"wecc":wecc}
@@ -60,7 +60,7 @@ def test_ba_shares_fail(case):
     """A county load that is not the sum of its BA shares fails check 1"""
     county = case["county"].copy()
     county.iloc[5,0] += 1.0
-    bad = CalibrateForm930(case["load"],case["factors"],case["demand"])
+    bad = CalibrateHourly(case["load"],case["factors"],case["demand"])
     bad.loc[:,:] = county.values
     assert not run(case,county=bad)["1"]
 
@@ -75,12 +75,12 @@ def test_us_only_fail(case):
     """A non-US county or a Canadian BA fails check 3"""
     load = case["load"].rename(columns={"A1 NV":"A1 BC"})
     factors = case["factors"].replace({"A1 NV":"A1 BC"})
-    county = CalibrateForm930(load,factors,case["demand"])
+    county = CalibrateHourly(load,factors,case["demand"])
     nodes = case["nodes"].replace({"A1 NV":"A1 BC"})
     assert not run(case,load=load,factors=factors,county=county,node=county.allocate(nodes))["3"]
 
     factors = case["factors"].replace({"XX":"BCHA"})
-    county = CalibrateForm930(case["load"],factors,case["demand"])
+    county = CalibrateHourly(case["load"],factors,case["demand"])
     assert not run(case,factors=factors,county=county,node=county.allocate(case["nodes"]))["3"]
 
 
@@ -105,7 +105,7 @@ def test_missing_demand(case):
     """Missing demand hours are excluded from the totals and match NaN"""
     demand = case["demand"].copy()
     demand.iloc[0,0] = np.nan
-    county = CalibrateForm930(case["load"],case["factors"],demand)
+    county = CalibrateHourly(case["load"],case["factors"],demand)
     result = run(case,demand=demand,county=county,node=county.allocate(case["nodes"]))
     assert result == {"1":True,"2":True,"3":True,"4":True}
 
@@ -122,7 +122,7 @@ def test_with_dg(case):
     """With DG the checks pass, negative net load is allowed, and the comparison is informational"""
     hour = np.arange(len(case["load"]))
     dg = pd.DataFrame({"A1 NV":20.0*np.clip(np.sin(2*np.pi*(hour-6)/24),0,None)},index=case["load"].index)
-    county = CalibrateForm930(case["load"],case["factors"],case["demand"],dg=dg)
+    county = CalibrateHourly(case["load"],case["factors"],case["demand"],dg=dg)
     node = county.allocate(case["nodes"])
     assert (county.values < 0).any()
     result = run(case,county=county,node=node,dg=dg,compare=case["node"])

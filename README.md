@@ -158,21 +158,25 @@ which adds the `elec_dg_MW` (never positive) and `elec_net_MW` columns. The
 same DG is available on its own with `loads.dgen.DG("CA","Alameda",date_range)`,
 and `loads.dgen.DG.merge` adds it to any hourly load data frame.
 
-See https://www.eudoxys.com/loads for the `Estimator`, `Calibrate`,
-`CalibratePeaks`, `Cluster`, and `Aggregator` tools. `CalibratePeaks` is a
-solver-free calibration of a load to observed interval peaks and troughs,
-e.g., so that only 5% of the hours of each day exceed the observed daily
-peak:
+To calibrate a load to observed or published data, give the data to a
+`CalibrateConfig`; the data chooses the calibration (`energy` →
+`CalibrateEnergy`, `energy` and `peak` → `CalibrateEnergyPeak`, `peaks` →
+`CalibratePeaks`, hourly `demand` → `CalibrateHourly`). `Calibrate` returns
+the frame with the same columns, the net load matching the data and the DG
+unchanged:
 
-    from loads.calibrate import CalibratePeaks
-    result = CalibratePeaks(load,peaks,peak=0.95,trough=0.05)  # peaks: columns max, min
+    from loads.calibrate import Calibrate, CalibrateConfig
+    total = Total("CA","Alameda",date_range=date_range,samples=0,dg=True).dropna()  # lag-window edges are NaN
+    result = Calibrate(total,CalibrateConfig(energy=monthly_mwh))  # Series by month start
+    result = Calibrate(total,CalibrateConfig(peaks=daily,peak=0.95,trough=0.05))  # columns max, min
+    result = Calibrate(total,CalibrateConfig(demand=ba_demand))  # hourly MW, e.g., EIA-930
 
-By default the percentiles are taken of the sum of the columns whose names
-end in `_MW` and those columns are calibrated (others, e.g., weather, are
-unchanged); `basis=` names the column(s) to take the percentiles
-of and `columns=` the column(s) to calibrate, e.g.,
-`basis="elec_total_MW",columns=["elec_residential_MW",...,"elec_total_MW"]`.
-See https://www.eudoxys.com/loads for the `Estimator`, `Calibrate`, `CalibrateForm930`, `Cluster`,
+A configuration's options are those of the chosen class (e.g., `search=True`
+for `CalibrateEnergyPeak`) and can be changed after it is constructed. The
+classes can also be used directly on a panel of county or node loads (one
+column per unit), e.g., to split the EIA-930 demand of each balancing
+authority among the counties it serves with `CalibrateHourly`. See
+https://www.eudoxys.com/loads for the `Estimator`, `Calibrate`, `Cluster`,
 and `Aggregator` tools.
 
 # Agent skill

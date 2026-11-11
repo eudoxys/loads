@@ -22,13 +22,23 @@ contiguous and non-contiguous target years.
 
 	pytest test_estimator.py
 
-Calibration test
-----------------
+Calibration tests
+-----------------
+
+`test_calibrate_config.py` checks that `loads.calibrate.CalibrateConfig`
+chooses the calibration from the data it is given (and rejects data that
+supports none), that it holds and validates the options of that
+calibration, and that `loads.calibrate.Calibrate` returns a synthetic
+`Total`-like frame with the same columns calibrated by each method: the
+basis matches the data, the DG and weather are unchanged, the sectors sum to
+the total and the net load is the total less the DG. `test_calibrate_energy.py`
+checks `CalibrateEnergy` on synthetic counties with whole-period and monthly
+energy targets, with and without DG. Both are offline and run in seconds.
 
 `test_calibrate.py` calibrates August 2020 county loads for all 407 WECC
 counties to the state energy and CAISO/WECC peak targets in `data/`
 (`energy_target.csv`, `peak_target.csv`, `state_groups.csv`) using the
-predeclared 88-point weight search of `loads.calibrate.Calibrate`.
+predeclared 88-point weight search of `loads.calibrate.CalibrateEnergyPeak`.
 
 County loads are TSGAM predictions from the local `cache` package files
 (2018 training data and 2020 weather), so nothing is downloaded when the
@@ -52,13 +62,13 @@ offline and in seconds.
 
 	pytest -s test_calibrate.py
 
-`test_calibrate_form930.py` checks `loads.calibrate.CalibrateForm930` on
+`test_calibrate_hourly.py` checks `loads.calibrate.CalibrateHourly` on
 six synthetic counties and three balancing authorities in seconds (offline;
 the EIA-930 download is stubbed): agreement with a direct loop, BA shares
 summing to demand, zero-estimate and missing-demand hours, unassigned
 counties, invalid inputs, and node allocation. It always runs.
-`test_validate_calibrate_form930.py` runs the checks of
-`loads/_validate/validate_calibrate_form930.py` (BA shares, WECC total, US
+`test_validate_calibrate_hourly.py` runs the checks of
+`loads/_validate/validate_calibrate_hourly.py` (BA shares, WECC total, US
 only, nonnegative, `wecc240` comparison) on the same synthetic system and
 checks that each passes on correct data and fails when the data is
 perturbed. It is offline and always runs.
@@ -90,7 +100,7 @@ The `test_skill_*.py` files test `loads.skill` (see `loads/skill/SKILL.md`).
 They run offline in seconds, except `test_skill_network.py`.
 
   - `test_skill_loads_api.py` checks, without network, the `loads` behaviors
-    that the skill documents (signatures, `Total` modes, `Calibrate` input
+    that the skill documents (signatures, `Total` modes, `CalibrateEnergyPeak` input
     rules, DG sign conventions). A failure means `loads` changed: update
     `loads/skill/SKILL.md` and `loads/skill/reference/` to match.
 

@@ -9,13 +9,13 @@ marimo notebook
 
 	marimo run validate_estimator_marimo.py
 
-## Calibration
+## Energy and peak calibration (`CalibrateEnergyPeak`)
 
 The `validate_calibrate_marimo.py` notebook compares the CAISO-region net
 load of the calibrated 2020 WECC county loads with the hourly load CAISO
 reported for 2020 (`loads/caiso/2020.csv`). The calibration uses the default
 settings of `loads/_explore/explore_calibrate_marimo.py`, i.e., the
-predeclared weight search and selection rule of `loads.calibrate.Calibrate`
+predeclared weight search and selection rule of `loads.calibrate.CalibrateEnergyPeak`
 with the targets and memberships in `loads/_test/data`, applied month by
 month. Build the 2020 load matrix and the calibration in the local cache
 first (407 county predictions and 12 monthly weight searches)
@@ -91,7 +91,7 @@ is 3.18 (5.48 to 17.41 TWh, peak about 8.5 GW).
 2. **DG.** `validate_calibrate.distributed_generation()` aligns
    `county_dg.csv.gz` with $X$.
 3. **Calibration.** `validate_calibrate.calibrated_load()` runs
-   `Calibrate(X,dg=D,energy=...,peak=...,regions=...,search=True)`. For each
+   `CalibrateEnergyPeak(X,dg=D,energy=...,peak=...,regions=...,search=True)`. For each
    UTC month it finds a per-county scale and offset of the gross load so
    that the shaped net load $L-D$ meets each state's energy target and
    reaches, without exceeding, the CAISO and WECC peak targets, where the
@@ -169,7 +169,7 @@ negative.
 - **Membership.** Shares are annual and based on 2020; partly non-CAISO
   counties listed above remain full members.
 
-## Peak calibration
+## Peak and trough calibration (`CalibratePeaks`)
 
 The `validate_calibrate_peaks_marimo.py` notebook validates the WECC240 node
 load in `loads/wecc/node_total.csv.gz`, made by
@@ -257,9 +257,9 @@ monthly scale preserves the extremes but not the daily shape. Most BAs come
 out below their reported energy (−7% to +1%), because a min/max fit doesn't
 constrain energy.
 
-## Calibration to EIA-930 balancing authority demand
+## Hourly calibration to EIA-930 balancing authority demand (`CalibrateHourly`)
 
-`validate_calibrate_form930.py` checks `loads.calibrate.CalibrateForm930`
+`validate_calibrate_hourly.py` checks `loads.calibrate.CalibrateHourly`
 on the 2018–2022 WECC county estimate. It splits the hourly EIA-930 demand
 of each of the 28 US WECC balancing authorities (BAs) that report demand
 among the counties the BA serves, then allocates the counties to the WECC
@@ -275,7 +275,7 @@ not used for this validation, its tests or the review notebooks. Because
 `wecc240` used the scaled PV, the comparison with its node loads is
 reported for information only.
 
-	python validate_calibrate_form930.py [--clip] --compare node_ba_load.csv.gz
+	python validate_calibrate_hourly.py [--clip] --compare node_ba_load.csv.gz
 
 where `node_ba_load.csv.gz` is `wecc240/data/node_ba_load.csv.gz` from that
 pull request (omit `--compare` to skip the comparison). It takes about a
@@ -291,13 +291,12 @@ estimate), which use the same inputs (`inputs()` in the script).
 | ----- | ---- | ----- |
 | County gross load $G$ | `loads/wecc/wecc_estimate.csv.gz` | gross county estimate (calibrated) |
 | Rooftop PV $P$ | `loads/wecc/county_dg.csv.gz` | unscaled county rooftop PV (fixed; 38 counties and the first 7 hours of 2018 have none); with `--clip`, $\max(G-P,0)$ is calibrated without PV |
-| BA factors $f$ | `loads/wecc/county_ba.csv` | share of each county's load served by each BA, fitted to EIA-861 2018 sales (PR #62) |
-| BA demand $D$ | `loads/_test/data/WECC_BA_hourly_load_2018-2022.csv` | cleaned EIA-930 demand, UTC hour-ending → hour-beginning (PR #62) |
+| BA factors $f$ | `loads/wecc/county_ba.csv` | share of each county's load served by each BA, fitted to EIA-861 2018 sales (PR #62, in the package) |
+| BA demand $D$ | `loads/_test/data/WECC_BA_hourly_load_2018-2022.csv` | cleaned EIA-930 demand, UTC hour-ending → hour-beginning (PR #62, in the package) |
 | Node factors $g$ | `loads/wecc/node_estimate_cf.csv` | county → WECC 240 node factors (decision 16) |
 
-Until PR #62 is merged, the two PR #62 files are read from its branch at the
-commit pinned in the script (`INPUTS_COMMIT`), the commit the `wecc240`
-node loads were built from.
+The two PR #62 inputs are the files at commit `9341b13` the `wecc240` node
+loads were built from.
 
 ### Results (2018–2022)
 
@@ -310,7 +309,7 @@ check and exits with status 1 if any fails:
 
 | Check | Criterion | Result |
 | ----- | --------- | ------ |
-| 1. BA shares | county net shares $f_{ub}\left(G_u(D_b+P_b)/S_b-P_u\right)$, recomputed BA by BA from the inputs, sum to each BA's EIA-930 demand, and each county's BA shares sum to its `CalibrateForm930` load (same `NaN` hours); tolerance 10⁻⁶ MW | pass: 28 BAs, max error 4×10⁻¹¹ MW (shares vs demand), 7×10⁻¹² MW (shares vs county load) |
+| 1. BA shares | county net shares $f_{ub}\left(G_u(D_b+P_b)/S_b-P_u\right)$, recomputed BA by BA from the inputs, sum to each BA's EIA-930 demand, and each county's BA shares sum to its `CalibrateHourly` load (same `NaN` hours); tolerance 10⁻⁶ MW | pass: 28 BAs, max error 4×10⁻¹¹ MW (shares vs demand), 7×10⁻¹² MW (shares vs county load) |
 | 2. WECC total | county total − `SWPP` share = EIA-930 US WECC total `WECC_load_MW` (28 US BAs; BC Hydro, AESO and CFE excluded); tolerance 5 MW | pass: max 2 MW, mean −0.0004 MW (rounding of the per-BA series) |
 | 3. US only | every county in a US state; no Canadian or Mexican BA (`AESO`, `BCHA`, `CFE`); node total = county total (10⁻⁶ MW) | pass: none; none; 3×10⁻¹⁰ MW |
 | 4. Nonnegative gross | no negative calibrated county gross load (negative net load is reported) | pass: minimum gross 0.30 MW; negative net load in 24,341 county-hours (5 counties), no negative node load |
@@ -342,6 +341,17 @@ counties; no Canadian or Mexican load is in the node totals.
 - **Coverage.** BC Hydro, AESO and CFE report no demand to EIA-930, so
   Canadian and Mexican loads are not calibrated (and not in the county
   estimate).
+
+## Energy-only calibration and `Calibrate`
+
+`CalibrateEnergy` (proportional scaling to energy) and the `Calibrate`
+front end (`CalibrateConfig` chooses one of the methods above for a single
+`loads` frame) have no field validation of their own. `CalibrateEnergy`
+matches its targets by construction; `loads/_test/test_calibrate_energy.py`
+and `loads/_test/test_calibrate_config.py` check the energy match, the
+fixed DG and the rebuilt total, sector and net columns on synthetic data.
+The `wecc_estimate.csv.gz` monthly rescale (DESIGN decision 15) is the same
+proportional calibration applied to every WECC county.
 
 ## Comparison to existing models
 

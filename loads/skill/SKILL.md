@@ -7,12 +7,13 @@ description: >-
   ResStock/ComStock, Census, OpenEI, NLR and NSRDB weather data; predict or
   sample other years with the TSGAM weather model; read the precomputed
   2018-2022 WECC county and WECC240 node estimates; validate, summarize,
-  calibrate to state energy and regional peaks, aggregate counties onto
+  calibrate to energy, state energy and regional peaks, interval peaks or
+  hourly BA demand, aggregate counties onto
   network nodes, and export to downstream tools. Use when a task needs a
   realistic load shape, load forecast/backcast by weather, sector breakdown,
   net load, or nodal load profiles for US counties (best exercised for WECC,
   2018-2022), or when code calls `loads.Total`, `Residential`, `Commercial`,
-  `Estimator`, `Calibrate` or `aggregate`.
+  `Estimator`, `Calibrate` (or a `Calibrate*` class) or `aggregate`.
 allowed-tools: Read, Write, Edit, Bash(python3 -m loads.skill **), Bash(python -m loads.skill **)
 ---
 
@@ -170,12 +171,15 @@ Read [workflows.md](reference/workflows.md) for complete recipes:
   bounded) and county panels;
 - county -> bus/zone aggregation with `nearest_nodes` + `allocate`
   (fractional splits supported, energy conservation reported);
-- calibration: proportional to a county's energy (`scale_to_energy`,
-  `scale_monthly`), affine energy + peak (`fit_energy_peak`), and panel
-  shaping to state energy and regional peak targets with
-  `loads.calibrate.Calibrate` (`shape_to_targets`), and percentile matching
-  to observed interval peaks and troughs with
-  `loads.calibrate.CalibratePeaks` (no solver);
+- calibration of one county frame with `loads.calibrate.Calibrate` and a
+  `CalibrateConfig`, whose data picks the method: `energy` →
+  `CalibrateEnergy` (proportional; also `scale_to_energy`,
+  `scale_monthly`), `energy` + `peak` → `CalibrateEnergyPeak` (panel
+  shaping to state energy and regional peaks; `shape_to_targets`), `peaks`
+  → `CalibratePeaks` (percentiles to interval peaks and troughs, no
+  solver), hourly `demand` → `CalibrateHourly` (EIA-930 BA demand split
+  among counties); plus an affine energy + peak fit of one series
+  (`fit_energy_peak`);
 - uncertainty bands and peak distributions from sample ensembles;
 - hold-out skill testing (`Estimator(county_st)`, cross-validated with
   `EstimatorConfig(fold=True)`, `Total.test`) and comparison with measured
@@ -194,16 +198,24 @@ These fail silently or late. The full list with source references is in
   default, or EIA-861M small-scale solar with `Total(dg=True)` /
   `county_loads(dg_source="eia")` (zero, with a warning, outside the 13
   WECC states). Say which. `loads` frames and `loads.dgen.DG` use
-  `elec_dg_MW <= 0`; `Calibrate(dg=...)`, the bundled
+  `elec_dg_MW <= 0`; `CalibrateEnergyPeak(dg=...)` (`CalibrateEnergy` and
+  `CalibrateHourly` accept either sign), the bundled
   `loads/wecc/county_dg*.csv.gz` files and `dgen.compile` output use
   positive generation. `wecc_dg` and `shape_to_targets` convert. When
   adding or subtracting DG, always use its magnitude,
   `elec_total_MW - np.abs(elec_dg_MW)` and `elec_net_MW + np.abs(elec_dg_MW)`,
   so a DG column in the wrong convention cannot flip the result.
-- **`Calibrate` shapes, it does not rescale.** It fits a scale and an
+- **`Calibrate` picks the method from the data.** `CalibrateConfig` raises
+  `CalibrationError` for data that supports no method (e.g. `peak` without
+  `energy`, or `energy` with `demand`). With the default basis
+  `elec_net_MW` the net load matches and `elec_dg_MW` stays fixed; drop
+  `Total`'s NaN lag-window edges first. With `peaks`, `peak` means the
+  percentile, not a MW target. See
+  [api.md](reference/api.md#calibrate-and-calibrateconfig).
+- **`CalibrateEnergyPeak` shapes, it does not rescale.** It fits a scale and an
   offset per unit per UTC month to *net-load* state energy and regional
   peak targets, needs at least one peak region, and rejects NaN. See
-  [api.md](reference/api.md#calibrate).
+  [api.md](reference/api.md#calibrateenergypeak).
 - **`CalibratePeaks` matches percentiles, not extremes.** With
   `peak=0.95` up to 5% of each interval's hours lie *above* the observed
   peak by design. Percentiles come from the sum of the `basis` columns and
@@ -212,14 +224,15 @@ These fail silently or late. The full list with source references is in
   with the sectors, so set them. For a BA load report (EIA-930), which is
   net of rooftop PV, use `basis="elec_net_MW"`; DG known from another
   source (NSRDB, dGen) stays fixed, so leave `elec_dg_MW` out of `columns`
-  and rebuild `elec_total_MW = elec_net_MW + np.abs(elec_dg_MW)`. See
+  and rebuild `elec_total_MW = elec_net_MW + np.abs(elec_dg_MW)`
+  (`Calibrate` does this). See
   [api.md](reference/api.md#calibratepeaks).
 - **Ambiguous county names.** `fips` has Baltimore city and Baltimore
   County, St. Louis city and County, several Virginia pairs. `loads` keys on
   `(state, county)` only and cannot tell them apart; `resolve()` sets
   `County.ambiguous`. Tell the user.
 - **UTC everywhere.** Months, days and peaks from raw output (and
-  `Calibrate`'s monthly blocks) are UTC. Convert (`to_local`,
+  `CalibrateEnergyPeak`'s monthly blocks) are UTC. Convert (`to_local`,
   `to_local_standard`) before reporting local calendar quantities.
 - **`direct` vs `sum` totals.** `Total`'s own `elec_total_MW` model and the
   sum of separately predicted sector models differ by a few percent. Pick
@@ -227,7 +240,7 @@ These fail silently or late. The full list with source references is in
 - **`Total` vs `Estimator`.** Different TSGAM configurations, different
   numbers; `wecc_estimate` is built from `Estimator`. Use one per study.
 - **Two location formats.** `Total`, `Residential`, ... take
-  `state="CA", county="Alameda"`; `Estimator`, `Cluster`, `Calibrate`
+  `state="CA", county="Alameda"`; `Estimator`, `Cluster`, `CalibrateEnergyPeak`
   columns, `clusters.csv` and the WECC files use `"Alameda CA"`.
   `County.kwargs` and `County.county_st` give both.
 - **`Normalize` sums.** All rows in an hour are added up (all meters

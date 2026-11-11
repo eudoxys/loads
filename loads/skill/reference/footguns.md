@@ -9,7 +9,7 @@ test.
 Tracking: #26 (items 1, 3), #29 (16), #32 (7, 9), #33 (17), #15
 (22), #12 (DG sign, lag trimming), all at
 https://github.com/eudoxys/loads/issues. #27 and #28 described the
-calibration API that the `Calibrate` rewrite (#20) replaced, and #30
+calibration API that the `Calibrate` rewrite (#20; now `CalibrateEnergyPeak`) replaced, and #30
 described the `DG` file reader that #43 replaced; #31 and #44 are fixed. Check whether an issue is closed before relying on a workaround
 below.
 
@@ -69,7 +69,7 @@ the tracking issues above or open a new one.
 
 ## Calibration and energy
 
-11. **`Calibrate` takes DG as positive output.** `dg` must be ≥ 0 (it is
+11. **`CalibrateEnergyPeak` takes DG as positive output.** `dg` must be ≥ 0 (it is
     subtracted from load); passing an `elec_dg_MW` panel raises
     `CalibrationError` **[tested]**. Its `load` is gross load
     (`elec_total_MW`), and its `energy` targets are *net-load* (load − DG)
@@ -77,29 +77,30 @@ the tracking issues above or open a new one.
     negates for you; the bundled WECC DG files are already positive
     (`dg_convention="output"`).
 
-12. **`Calibrate` is an affine shaping per UTC month, not a rescale.**
+12. **`CalibrateEnergyPeak` is an affine shaping per UTC month, not a rescale.**
     Each unit gets a scale and an offset per calendar month (UTC), chosen
     to meet coupled state energy and regional peak targets while limiting
     shape change **[tested]**. Months are solved independently (small steps
     at month boundaries), every month in the frame needs a target row, and
     with `search=True` each month costs 88 solves (two regions). → for one
-    county's own energy use `scale_to_energy`/`scale_monthly`
-    (proportional); check `.summary.selection` and `.states.shaped_error`
+    county's own energy use `CalibrateEnergy` (or `Calibrate` with
+    `CalibrateConfig(energy=...)`, or `scale_to_energy`/`scale_monthly`),
+    which is proportional; check `.summary.selection` and `.states.shaped_error`
     after shaping.
 
-13. **`Calibrate` needs a peak region and clean input.** `peak={}` raises
-    `KeyError` while building the region table **[tested]**, so
-    energy-only shaping is not available; NaN (e.g. `Total`'s lag-window
+13. **`CalibrateEnergyPeak` needs a peak region and clean input.** `peak={}` raises
+    `KeyError` while building the region table **[tested]**, so it does
+    no energy-only shaping; NaN (e.g. `Total`'s lag-window
     edges) raises `CalibrationError` **[tested]**; columns without a
     `"County ST"` name need `states=`. → `shape_to_targets` checks all three
-    up front; for energy only, use `scale_monthly`.
+    up front; for energy only, use `CalibrateEnergy` **[tested]**.
 
 14. **The old calibration API is gone.** `fit_load`, `integrate`,
-    `Calibrate.load`, `Calibrate.solar` and the `start`/`end`/`scale`/
+    `CalibrateEnergyPeak.load`, `CalibrateEnergyPeak.solar` and the `start`/`end`/`scale`/
     `offset` arguments were removed with the rewrite (#20) **[tested]**;
     code written against them fails at import or call. → port to
-    `Calibrate(load, energy=..., peak=..., dg=...)` or the `ls.scale_*`
-    helpers; `ls.fit_energy_peak` reproduces `fit_load`'s energy + peak fit.
+    `CalibrateEnergyPeak(load, energy=..., peak=..., dg=...)`,
+    `CalibrateEnergy` or the `ls.scale_*` helpers; `ls.fit_energy_peak` reproduces `fit_load`'s energy + peak fit.
 
 15. **Nothing in `Total` is calibrated.** Neither the 2018 training frame
     nor predictions are adjusted to EIA sales; scaling only enters through
@@ -191,7 +192,7 @@ the tracking issues above or open a new one.
     inputs and by-products in `loads/wecc/` (`dgen.csv.gz`,
     `county_dg.csv`, `county_cf.csv`, `node_estimate_cf.csv`,
     `county_dg_scaling.csv`, `eia_smallscale_pv.csv`), the calibration
-    targets in `loads/_test/data/` used by the `Calibrate` recipe, and
+    targets in `loads/_test/data/` used by the `CalibrateEnergyPeak` recipe, and
     `loads/caiso/`, `loads/isone/`. → for those, use a clone (or download
     the file from GitHub).
 
@@ -250,4 +251,28 @@ the tracking issues above or open a new one.
     calibrated net load (calibrating net and total together breaks the net
     identity) **[tested]**. → pass `basis="elec_total_MW"` and the columns
     to change, check `.parameters.fraction_above` and `.calibrated.all()`,
-    recompute net load, and say which percentiles were used.
+    recompute net load, and say which percentiles were used; or use
+    `Calibrate(total, CalibrateConfig(peaks=..., peak=..., trough=...))`,
+    which matches `elec_net_MW` with the DG fixed and rebuilds the total,
+    net and sector columns **[tested]**.
+
+35. **`CalibrateConfig` data choose the method, and `peak` changes
+    meaning.** `energy` → `CalibrateEnergy`; `energy` + `peak` →
+    `CalibrateEnergyPeak` (`peak` is a MW ceiling); `peaks` →
+    `CalibratePeaks` (`peak` is then the *percentile*, 0–1); `demand` →
+    `CalibrateHourly`. Other combinations raise `CalibrationError`, and so
+    does an option the chosen method doesn't take (e.g. `search` with
+    `energy` alone) **[tested]**. A number as an `energy` or `peak` target
+    of `CalibrateEnergyPeak` applies to every month, so it is refused for
+    data that spans months; `CalibrateEnergy` treats a number as the energy
+    of the whole period **[tested]**. Lag-window NaN must be dropped first;
+    with `demand`, hours of missing demand become NaN unless
+    `missing="keep"` **[tested]**. → print `config` (its `repr` names the
+    method) before running, and say which basis (`result.basis`) matched.
+
+36. **`Calibrate` returns one frame, not a panel.** It calibrates a single
+    `loads` frame (unit `load` in `.calibration`). For coupled targets over
+    many counties (state energy, regional peaks, BAs serving several
+    counties) call `CalibrateEnergyPeak` or `CalibrateHourly` on the panel
+    directly; calibrating counties one by one with their BA's demand would
+    give each county the whole BA.

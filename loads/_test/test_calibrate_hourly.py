@@ -1,7 +1,7 @@
 """EIA-930 balancing authority calibration tests on a small synthetic system
 
 These tests need no data downloads or cache and run in seconds. They check
-`loads.calibrate.CalibrateForm930` on six synthetic counties served by three
+`loads.calibrate.CalibrateHourly` on six synthetic counties served by three
 balancing authorities (BAs), one of which (`XX`) reports no demand, and the
 `allocate` method on three nodes. The EIA-930 download is replaced by a stub.
 """
@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from loads.calibrate import CalibrateForm930, CalibrationError
+from loads.calibrate import CalibrateHourly, CalibrationError
 
 UNITS = ["A1 ST","A2 ST","B1 ST","B2 ST","AB ST","BX ST"]
 FACTORS = [
@@ -77,7 +77,7 @@ def naive(load,wide,demand) -> pd.DataFrame:
 
 def test_matches_naive_loop(system):
     """Vectorized result equals a direct loop over hours and BAs"""
-    result = CalibrateForm930(system["load"],system["factors"],system["demand"])
+    result = CalibrateHourly(system["load"],system["factors"],system["demand"])
     expected = naive(system["load"],system["wide"],system["demand"])
     assert list(result.columns) == UNITS
     assert result.index.equals(system["load"].index)
@@ -86,7 +86,7 @@ def test_matches_naive_loop(system):
 
 def test_ba_shares_sum_to_demand(system):
     """Unit shares of each reporting BA sum to its demand"""
-    result = CalibrateForm930(system["load"],system["factors"],system["demand"])
+    result = CalibrateHourly(system["load"],system["factors"],system["demand"])
     for ba in ["AAA","BBB"]:
         shares = system["load"][system["wide"].index] * system["wide"][ba] * result.scale[ba].values[:,None]
         np.testing.assert_allclose(shares.sum(axis=1),system["demand"][ba],rtol=1e-12)
@@ -96,7 +96,7 @@ def test_ba_shares_sum_to_demand(system):
 
 def test_attributes(system):
     """Attributes report the factors, demand, estimate and scale used"""
-    result = CalibrateForm930(system["load"],system["factors"],system["demand"])
+    result = CalibrateHourly(system["load"],system["factors"],system["demand"])
     assert result.uncalibrated == ["XX"]
     assert not result.unassigned
     assert list(result.demand.columns) == ["AAA","BBB"]
@@ -110,8 +110,8 @@ def test_attributes(system):
 
 def test_wide_factors(system):
     """Wide and long factors give the same result"""
-    long = CalibrateForm930(system["load"],system["factors"],system["demand"])
-    wide = CalibrateForm930(system["load"],system["wide"],system["demand"])
+    long = CalibrateHourly(system["load"],system["factors"],system["demand"])
+    wide = CalibrateHourly(system["load"],system["wide"],system["demand"])
     pd.testing.assert_frame_equal(pd.DataFrame(long),pd.DataFrame(wide))
 
 
@@ -119,7 +119,7 @@ def test_zero_estimate_splits_by_factors(system):
     """BA demand is split by the factors when its estimated load is zero"""
     load = system["load"].copy()
     load.iloc[:3,:] = 0.0
-    result = CalibrateForm930(load,system["factors"],system["demand"])
+    result = CalibrateHourly(load,system["factors"],system["demand"])
     for t in range(3):
         assert result.iloc[t]["A1 ST"] == pytest.approx(system["demand"]["AAA"].iloc[t]/2.25)
         assert result.iloc[t]["AB ST"] == pytest.approx(system["demand"]["AAA"].iloc[t]*0.25/2.25
@@ -134,7 +134,7 @@ def test_missing_demand(system):
     demand.iloc[0,0] = np.nan                 # AAA
     demand.iloc[1,1] = -5.0                   # BBB
     demand = demand.drop(demand.index[2])     # both
-    result = CalibrateForm930(system["load"],system["factors"],demand)
+    result = CalibrateHourly(system["load"],system["factors"],demand)
     assert result.iloc[0][["A1 ST","A2 ST","AB ST"]].isna().all()
     assert result.iloc[0][["B1 ST","B2 ST","BX ST"]].notna().all()
     assert result.iloc[1][["B1 ST","B2 ST","AB ST","BX ST"]].isna().all()
@@ -142,7 +142,7 @@ def test_missing_demand(system):
     assert result.iloc[3:].notna().all().all()
     assert np.isnan(result.scale.iloc[0]["AAA"])
 
-    keep = CalibrateForm930(system["load"],system["factors"],demand,missing="keep")
+    keep = CalibrateHourly(system["load"],system["factors"],demand,missing="keep")
     assert keep.notna().all().all()
     load = system["load"]
     np.testing.assert_allclose(keep.iloc[2],load.iloc[2])
@@ -153,7 +153,7 @@ def test_missing_demand(system):
 def test_unassigned_units_unchanged(system):
     """Units without factors are returned unchanged"""
     load = system["load"].assign(**{"Other ST":7.0})
-    result = CalibrateForm930(load,system["factors"],system["demand"])
+    result = CalibrateHourly(load,system["factors"],system["demand"])
     assert result.unassigned == ["Other ST"]
     assert (result["Other ST"] == 7.0).all()
     assert list(result.columns) == UNITS + ["Other ST"]
@@ -163,28 +163,28 @@ def test_invalid_inputs(system):
     """Invalid inputs raise CalibrationError"""
     load,factors,demand = system["load"],system["factors"],system["demand"]
     with pytest.raises(CalibrationError):
-        CalibrateForm930(load.reset_index(drop=True),factors,demand)
+        CalibrateHourly(load.reset_index(drop=True),factors,demand)
     with pytest.raises(CalibrationError):
-        CalibrateForm930(load - 100,factors,demand)
+        CalibrateHourly(load - 100,factors,demand)
     bad = load.copy()
     bad.iloc[0,0] = np.nan
     with pytest.raises(CalibrationError):
-        CalibrateForm930(bad,factors,demand)
+        CalibrateHourly(bad,factors,demand)
     with pytest.raises(CalibrationError):
-        CalibrateForm930(load,factors.assign(factor=factors["factor"]*0.9),demand)
+        CalibrateHourly(load,factors.assign(factor=factors["factor"]*0.9),demand)
     with pytest.raises(CalibrationError):
-        CalibrateForm930(load,factors.assign(factor=-factors["factor"]),demand)
+        CalibrateHourly(load,factors.assign(factor=-factors["factor"]),demand)
     with pytest.raises(CalibrationError):
-        CalibrateForm930(load,factors.values,demand)
+        CalibrateHourly(load,factors.values,demand)
     with pytest.raises(CalibrationError):
-        CalibrateForm930(load,factors,demand.reset_index(drop=True))
+        CalibrateHourly(load,factors,demand.reset_index(drop=True))
     with pytest.raises(CalibrationError):
-        CalibrateForm930(load,factors,demand,missing="drop")
+        CalibrateHourly(load,factors,demand,missing="drop")
 
 
 def test_allocate(system):
     """Allocation to nodes conserves the total and propagates NaN"""
-    result = CalibrateForm930(system["load"],system["factors"],system["demand"])
+    result = CalibrateHourly(system["load"],system["factors"],system["demand"])
     nodes = result.allocate(system["nodes"])
     assert list(nodes.columns) == ["n1","n2","n3"]
     np.testing.assert_allclose(nodes.sum(axis=1),result.sum(axis=1),rtol=1e-12)
@@ -192,7 +192,7 @@ def test_allocate(system):
 
     demand = system["demand"].copy()
     demand.iloc[0,0] = np.nan
-    nodes = CalibrateForm930(system["load"],system["factors"],demand).allocate(system["nodes"])
+    nodes = CalibrateHourly(system["load"],system["factors"],demand).allocate(system["nodes"])
     assert nodes.iloc[0].isna().all()  # every node has a county served by AAA
     assert nodes.iloc[1:].notna().all().all()
 
@@ -214,10 +214,10 @@ def test_form930_download(system,monkeypatch):
                 "load_MW":system["demand"][region].reindex(hours).values})
 
     monkeypatch.setitem(sys.modules,"eia",types.SimpleNamespace(Form930=Form930))
-    result = CalibrateForm930(system["load"],system["factors"])
+    result = CalibrateHourly(system["load"],system["factors"])
     assert sorted(calls) == [("AAA",2020,7,False),("AAA",2020,8,False),("BBB",2020,7,False),("BBB",2020,8,False)]
     assert result.uncalibrated == ["XX"]
-    expected = CalibrateForm930(system["load"],system["factors"],system["demand"])
+    expected = CalibrateHourly(system["load"],system["factors"],system["demand"])
     pd.testing.assert_frame_equal(pd.DataFrame(result),pd.DataFrame(expected))
 
 
@@ -249,7 +249,7 @@ def naive_dg(gross,dg,wide,demand) -> pd.DataFrame:
 
 def test_dg_negative_net(system,solar):
     """With DG, net load may be negative and BA net shares still sum to demand"""
-    result = CalibrateForm930(system["load"],system["factors"],system["demand"],dg=solar)
+    result = CalibrateHourly(system["load"],system["factors"],system["demand"],dg=solar)
     expected = naive_dg(system["load"],solar,system["wide"],system["demand"])
     np.testing.assert_allclose(result.values,expected.values,rtol=1e-10,atol=1e-10)
     assert (result.values < 0).any()                   # negative net load allowed
@@ -267,18 +267,18 @@ def test_dg_negative_net(system,solar):
 
 def test_dg_sign_and_alignment(system,solar):
     """DG may be given as elec_dg_MW (<= 0); mixed signs, NaN and extra columns raise"""
-    positive = CalibrateForm930(system["load"],system["factors"],system["demand"],dg=solar)
-    negative = CalibrateForm930(system["load"],system["factors"],system["demand"],dg=-solar)
+    positive = CalibrateHourly(system["load"],system["factors"],system["demand"],dg=solar)
+    negative = CalibrateHourly(system["load"],system["factors"],system["demand"],dg=-solar)
     pd.testing.assert_frame_equal(pd.DataFrame(positive),pd.DataFrame(negative))
     assert (positive.dg["A2 ST"] == 0).all()
     mixed = solar.copy()
     mixed.iloc[12,0] = -1.0
     with pytest.raises(CalibrationError):
-        CalibrateForm930(system["load"],system["factors"],system["demand"],dg=mixed)
+        CalibrateHourly(system["load"],system["factors"],system["demand"],dg=mixed)
     with pytest.raises(CalibrationError):
-        CalibrateForm930(system["load"],system["factors"],system["demand"],dg=solar.iloc[:10])
+        CalibrateHourly(system["load"],system["factors"],system["demand"],dg=solar.iloc[:10])
     with pytest.raises(CalibrationError):
-        CalibrateForm930(system["load"],system["factors"],system["demand"],dg=solar.assign(**{"Z ST":1.0}))
+        CalibrateHourly(system["load"],system["factors"],system["demand"],dg=solar.assign(**{"Z ST":1.0}))
 
 
 def test_without_dg_rejects_negative_load(system):
@@ -286,7 +286,7 @@ def test_without_dg_rejects_negative_load(system):
     load = system["load"].copy()
     load.iloc[0,0] = -1.0
     with pytest.raises(CalibrationError,match="dg="):
-        CalibrateForm930(load,system["factors"],system["demand"])
+        CalibrateHourly(load,system["factors"],system["demand"])
 
 
 def test_dg_unassigned_and_missing(system,solar):
@@ -295,8 +295,8 @@ def test_dg_unassigned_and_missing(system,solar):
     dg = solar.assign(**{"Other ST":2.0})
     demand = system["demand"].copy()
     demand.iloc[0,0] = np.nan
-    result = CalibrateForm930(load,system["factors"],demand,dg=dg,missing="keep")
+    result = CalibrateHourly(load,system["factors"],demand,dg=dg,missing="keep")
     assert (result["Other ST"] == 5.0).all()
     assert result.iloc[0]["A1 ST"] == pytest.approx(load.iloc[0]["A1 ST"] - solar.iloc[0]["A1 ST"])
-    result = CalibrateForm930(load,system["factors"],demand,dg=dg)
+    result = CalibrateHourly(load,system["factors"],demand,dg=dg)
     assert result.iloc[0][["A1 ST","A2 ST","AB ST"]].isna().all()

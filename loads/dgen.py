@@ -79,7 +79,7 @@ sets `elec_net_MW = elec_total_MW + elec_dg_MW`.
 
 To compile the DG of every WECC county for 2018 through 2022 into a single
 file (one `County ST` column per county, nonnegative MW as expected by the
-`dg` argument of `loads.calibrate.Calibrate`) use
+`dg` argument of `loads.calibrate.CalibrateEnergyPeak`) use
 
     python3 -m loads.dgen --target=county_dg_eia.csv.gz
 

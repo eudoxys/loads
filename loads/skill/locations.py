@@ -3,7 +3,7 @@
 `loads` has two location conventions:
 
 - most classes take `state="CA", county="Alameda"` (no "County" suffix);
-- `Estimator`, `Cluster`, `clusters.csv`, `Calibrate` columns and the
+- `Estimator`, `Cluster`, `clusters.csv`, `CalibrateEnergyPeak` columns and the
   `loads/wecc/` files take one
   `"Alameda CA"` string.
 
