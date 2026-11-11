@@ -152,7 +152,7 @@ and `Y`, not the sector breakdown.
 | industrial, agricultural | NREL county inventories (#97), 2019 | — | not checked against EIA |
 | weather | NSRDB via `eudoxys/weather` | — | — |
 | DG (`DG`, `Total(dg=True)`) | EIA-861M small-scale PV by state and month (`eia.Form861m`), allocated by county share of state load (`wecc/county_mwh.csv`), shaped by NSRDB GHI or dGen county profiles | state dGen profile for counties missing or all zero in dGen; NaN for months without EIA data | monthly county DG = EIA × load share |
-| DG (calibration) | NREL dGen nodal DG → `wecc/county_dg.csv.gz` | — | scaled to EIA small-scale PV (`county_dg_scale.py`) |
+| DG (calibration) | NREL dGen nodal DG → `wecc/county_dg.csv.gz`, unscaled (calibration test, validation and review) | none (counties missing from it have no DG) | not scaled; `county_dg_scale.py` builds an EIA-scaled copy that they do not use |
 | county monthly energy | EIA 861M retail sales (`HS861m`), allocated by `Energy` | — | state sales |
 | regional peaks | EIA-930 BA demand, cleaned (`_test/data`) | — | CAISO, WECC |
 | BA monthly min/max (review) | EIA-930 BA demand, cleaned (`_test/data/ba_minmax_target.csv`) | — | 28 US WECC BAs |

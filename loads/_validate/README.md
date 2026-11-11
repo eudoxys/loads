@@ -34,7 +34,7 @@ UTC calendar months.
 | Input | File | Basis |
 | ----- | ---- | ----- |
 | Gross county load $X$ | cache `loads/0/_validate/calibrate_X_2020.csv.gz` | TSGAM prediction of `elec_total_MW` for each of the 407 WECC counties with 2020 weather; excludes rooftop PV |
-| Rooftop PV (DG) $D$ | `loads/wecc/county_dg_scaled.csv.gz` | county rooftop PV output (MW, positive), scaled to EIA small-scale solar generation (see below) |
+| Rooftop PV (DG) $D$ | `loads/wecc/county_dg.csv.gz` | unscaled county rooftop PV output (MW, positive); counties missing from it have no DG (see below) |
 | State energy targets | `loads/_test/data/energy_target.csv` | monthly net-load energy (MWh) of the 13 WECC states |
 | Regional peak targets | `loads/_test/data/peak_target.csv` | monthly CAISO and WECC peak demand (MW) from EIA-930 (see below) |
 | Region membership | `loads/_test/data/state_groups.csv` | each county's CAISO and WECC membership, 0 to 1 (see below) |
@@ -64,11 +64,13 @@ EIA-930 demand:
 Placer (Roseville, BANC), Shasta (Redding, BANC), Merced (TID) and San
 Joaquin (Modesto ID) are partly outside CAISO but remain full members.
 
-**Rooftop PV.** `loads/wecc/county_dg.csv` has about a third of EIA's
-estimated California small-scale solar generation, no year-to-year growth,
-and no DG for 39 WECC counties (e.g., Kern, San Bernardino, Ada, Canyon,
-Bernalillo, Clackamas). `loads/wecc/county_dg_scale.py` builds
-`county_dg_scaled.csv.gz` from it:
+**Rooftop PV.** Testing, validation and review use the unscaled
+`loads/wecc/county_dg.csv.gz` (the compressed `county_dg.csv`). It has about
+a third of EIA's estimated California small-scale solar generation, no
+year-to-year growth, and no DG for 39 WECC counties (e.g., Kern, San
+Bernardino, Ada, Canyon, Bernalillo, Clackamas), which therefore have no DG.
+`loads/wecc/county_dg_scale.py` also builds an EIA-scaled
+`county_dg_scaled.csv.gz` from it, which is not used here:
 
 1. Each missing county gets its state's DG profile in proportion to its
    share of the state's 2020 gross load.
@@ -87,7 +89,7 @@ is 3.18 (5.48 to 17.41 TWh, peak about 8.5 GW).
 1. **Gross load.** `validate_calibrate.gross_load()` predicts $X$ for every
    WECC county and caches it; negative predictions are clipped to zero.
 2. **DG.** `validate_calibrate.distributed_generation()` aligns
-   `county_dg_scaled.csv.gz` with $X$.
+   `county_dg.csv.gz` with $X$.
 3. **Calibration.** `validate_calibrate.calibrated_load()` runs
    `Calibrate(X,dg=D,energy=...,peak=...,regions=...,search=True)`. For each
    UTC month it finds a per-county scale and offset of the gross load so
@@ -95,7 +97,8 @@ is 3.18 (5.48 to 17.41 TWh, peak about 8.5 GW).
    reaches, without exceeding, the CAISO and WECC peak targets, where the
    regional net load is $\sum_j g_j(L_{tj}-D_{tj})$ with $g_j$ the county's
    membership. It searches the predeclared 88-point weight grid and applies
-   the selection rule. Results are cached as `calibrate_L_2020.csv.gz`,
+   the selection rule. Results are cached (cache version 1, so results
+   computed with the scaled DG, version 0, are not reused) as `calibrate_L_2020.csv.gz`,
    `calibrate_summary_2020.csv`, `calibrate_regions_2020.csv` and
    `calibrate_states_2020.csv`.
 4. **Comparison.** The notebook compares the CAISO-region net load of the
@@ -114,17 +117,21 @@ August 2020 only.
 All 12 months pass the selection tolerances, every state's energy is within
 0.5% of its target, and the CAISO and WECC peaks reach their targets. Fit of
 the CAISO-region net load to the CAISO reported load over 8,776 hours, with
-the EIA-scaled DG (CAISO-region DG 15.5 TWh, peak 7.5 GW) and, for
-reference, the unscaled `county_dg.csv` DG (4.4 TWh, 2.1 GW):
+the unscaled `county_dg.csv` DG (CAISO-region DG 4.4 TWh, peak 2.1 GW), now
+used by the validation, and, for reference, the EIA-scaled DG (15.5 TWh,
+7.5 GW) used before. These results were produced before the switch to the
+unscaled DG and have not been re-run since (`validate_calibrate.py` needs
+NSRDB weather and takes hours on an empty cache):
 
 | Model | Energy error | Peak error | MAPE | CV(RMSE) | R² | Correlation |
 | ----- | ------------ | ---------- | ---- | -------- | -- | ----------- |
 | TSGAM input, unscaled DG | +25.7% | +21.7% | 26.7% | 31.5% | −1.44 | 0.775 |
-| Calibrated, unscaled DG | −3.8% | −0.7% | 14.5% | 17.1% | 0.28 | 0.771 |
+| **Calibrated, unscaled DG** | **−3.8%** | **−0.7%** | **14.5%** | **17.1%** | **0.28** | **0.771** |
 | TSGAM input, scaled DG | +20.7% | +15.3% | 21.6% | 24.4% | −0.47 | 0.854 |
-| **Calibrated, scaled DG** | **−3.7%** | **−0.7%** | **11.2%** | **13.9%** | **0.53** | **0.844** |
+| Calibrated, scaled DG | −3.7% | −0.7% | 11.2% | 13.9% | 0.53 | 0.844 |
 
-The scaled DG reproduces the reported midday dip; the calibrated net load is
+With the scaled DG, the calibrated net load reproduces the reported midday
+dip and is
 within about 1.6 GW of the reported load between 10:00 and 16:00 Pacific in
 April and August. The largest remaining errors are at night, when the
 calibrated load is about 2–5 GW (April) and 8–10 GW (August) below the
@@ -154,8 +161,11 @@ negative.
   distribution losses. The state energy targets are not adjusted for losses,
   so the calibrated regional energy may fall short of the reported energy by
   about the loss rate (EIA estimates about 5% nationally).
-- **DG shape.** Only DG energy is scaled to EIA. Errors in its hourly shape or
-  county distribution appear directly as net-load errors in daylight hours.
+- **DG.** The unscaled DG is about a third of EIA's estimated small-scale
+  solar generation in California and is missing for 39 counties, so the
+  midday net load is too high (R² 0.28 against 0.53 with the scaled DG).
+  Errors in its energy, hourly shape or county distribution appear directly
+  as net-load errors in daylight hours.
 - **Membership.** Shares are annual and based on 2020; partly non-CAISO
   counties listed above remain full members.
 
