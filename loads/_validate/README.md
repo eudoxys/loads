@@ -33,7 +33,7 @@ UTC calendar months.
 
 | Input | File | Basis |
 | ----- | ---- | ----- |
-| Gross county load $X$ | cache `loads/0/_validate/calibrate_X_2020.csv.gz` | TSGAM prediction of `elec_total_MW` for each of the 407 WECC counties with 2020 weather; excludes rooftop PV |
+| Gross county load $X$ | cache `loads/1/_validate/calibrate_X_2020.csv.gz` | `Estimator` TSGAM estimate of `elec_total_MW` for each of the 407 WECC counties with 2020 weather; excludes rooftop PV |
 | Rooftop PV (DG) $D$ | `loads/wecc/county_dg_scaled.csv.gz` | county rooftop PV output (MW, positive), scaled to EIA small-scale solar generation (see below) |
 | State energy targets | `loads/_test/data/energy_target.csv` | monthly net-load energy (MWh) of the 13 WECC states |
 | Regional peak targets | `loads/_test/data/peak_target.csv` | monthly CAISO and WECC peak demand (MW) from EIA-930 (see below) |

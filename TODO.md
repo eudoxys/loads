@@ -16,8 +16,8 @@
 - [x] Calibrate net loads w.r.t. EIA energy use at state level and regional
   peaks (see `loads.calibrate`)
 
-- [x] Produce 95th percentile samples from TSGAM (see `samples` and
-  `percentile` in `loads.total.Total`)
+- [x] Produce 95th percentile samples from TSGAM (removed with the `Total`
+  TSGAM, see `DESIGN.md` decision 20)
 
 # Clustering
 

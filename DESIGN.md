@@ -5,7 +5,9 @@ Status: draft, 2026-10-22. Reconstructed from the code on `main` at
 what is implemented and need the maintainer's confirmation. Issue and PR
 numbers (`#n`) refer to `github.com/eudoxys/loads`. Draft 2, 2026-10-22:
 adds decision 19 and `skill/` (the agent skill merged from
-`eudoxys/loads-skill`), proposed in the PR that adds them.
+`eudoxys/loads-skill`), proposed in the PR that adds them. 2026-11-11: adds
+decision 20, which resolves open question 2 (`Total` only sums the sectors;
+`Estimator` is the prediction API).
 
 ## Purpose
 
@@ -40,7 +42,7 @@ reversed decision in place and note the date.
 | 2 | 2018 is the reference (training) year, because ResStock/ComStock 2018 AMY is the hourly source. Industrial and agricultural inventories are 2019 annual energy. `Total.TRAINING_YEAR = 2018`. |
 | 3 | Residential load is ResStock building-type shapes scaled by Census housing units; commercial load is ComStock building-type shapes scaled by OpenEI floor area. |
 | 4 | Industrial and agricultural load are spread evenly over the year (flat shape) unless a `loadshape` is supplied. They do not respond to weather. |
-| 5 | Other periods are predicted with a TSGAM (`tsgam_estimator`) fitted to the 2018 load and the county's NSRDB weather (`temperature_degF`, `humidity_pc`; `direct_Wpms`, `diffuse_Wpms` for `elec_dg_MW`), on log load. |
+| 5 | Other periods are predicted with a TSGAM (`tsgam_estimator`) fitted to the 2018 load and the county's NSRDB weather (`temperature_degF`, `humidity_pc` by default), on log load, by `Estimator` (decision 20). Edited 2026-11-11: the separate `Total` TSGAM (which also predicted `elec_dg_MW` from `direct_Wpms`, `diffuse_Wpms`) is removed. |
 | 6 | Every data accessor subclasses `pd.DataFrame` and does its work in `__init__`; `Units` subclasses `float`. |
 | 7 | Every expensive accessor is cache-first through `eudoxys/cache`, namespaced `package="loads"` with a cache `version` that is bumped when the cached format changes; `CACHEDIR` class attribute and `refresh` argument. |
 | 8 | Columns encode fuel, category and unit: `{elec\|nonelec}_{baseload\|cooling\|heating\|total\|dg\|net}_MW`; `Total` reports `elec_{sector}_MW`. Weather columns keep `weather.Weather` names. |
@@ -55,6 +57,7 @@ reversed decision in place and note the date.
 | 17 | Sibling packages are dependencies through `git+` URLs in `requirements.txt`; dependencies are dynamic in `pyproject.toml`. Python is pinned to 3.12. |
 | 18 | Tests have two tiers: fast offline tests always run; networked tests are marked `network`, use Alameda CA or a single month, and are skipped when they would need a full WECC build that is not in the cache. |
 | 19 | The agent skill for users of the package (`SKILL.md`, `reference/`) and its helpers ship inside the package as the `loads.skill` subpackage (the one exception to the flat layout, because a skill is a folder), so the skill always describes the installed version. `import loads` does not import it. `loads/_test/test_skill_loads_api.py` pins, offline, every `loads` behavior the skill documents; a change that breaks one updates the skill in the same PR. |
+| 20 | `Total` only sums the sectors: `Total(state,county,*,fuel="elec",refresh=False)` returns the 2018 `{fuel}_{sector}_MW` columns and `{fuel}_total_MW`, their sum, and nothing more (no weather, DG, net load, prediction or sampling). `Estimator` is the supported prediction API; DG is added to either with `DG.merge`. AR sampling is dropped with the `Total` TSGAM. Resolves open question 2 (2026-11-11). |
 
 ## Conventions inherited
 
@@ -92,8 +95,8 @@ loads/
                      DG.merge(data,state,county); SmallScaleSolar(year,state=None,source=None); compile()
   _solar_estimator.py SolarEstimator (private, unused by DG default)
   # models
-  total.py           Total(state,county,*,Y,X,dg,date_range,samples,percentile,holdout,refresh)
-  estimator.py       Estimator(county_st,years=None,*,config=EstimatorConfig())
+  total.py           Total(state,county,*,fuel="elec",refresh=False): 2018 sector sum only
+  estimator.py       Estimator(county_st,years=None,*,config=EstimatorConfig()): prediction API
   energy.py          Energy(state,counties,year,month=None,*,groupby="1MS",...)
   calibrate.py       Calibrate(load,*,energy,peak,dg=None,states=None,regions=None,search=False,...)
   cluster.py         Cluster(counties,column,threshold=0.99,...)
@@ -125,15 +128,16 @@ accessor takes `refresh:bool=False`.
 | `Residential`, `Commercial` | `timestamp` (2018) | `elec_{baseload,cooling,heating,total}_MW`, `nonelec_{...}_MW` |
 | `Industry`, `Agriculture` | `timestamp` (2019 shape) | `elec_`/`nonelec_` `baseload`, `total`, `net` (flat); cooling, heating, DG columns always zero |
 | `DG` | `timestamp` | `elec_dg_MW` (≤ 0) |
-| `Total` (training) | `timestamp` (2018) | weather, `elec_{residential,commercial,industrial,agricultural,transportation}_MW`, `elec_total_MW`, `elec_dg_MW`, `elec_net_MW` |
-| `Total` (predict/sample) | `timestamp` (`date_range`) | `X` weather columns and `Y` |
+| `Total` | `timestamp` (2018) | `{fuel}_{residential,commercial,industrial,agricultural,transportation}_MW`, `{fuel}_total_MW` |
 | `Estimator` | `timestamp` (`years`) | weather, `enduse`; with `years=None` also `status` (`T`/`H`), `actual`, `prediction` |
 | `Energy` | period start | one column per county, MWh |
 | `Calibrate` | as `load` | shaped load (MW); `.parameters`, `.summary`, `.states`, `.constraints` |
 
 Composition: `Total` sums the sector frames on the 2018 index;
-`elec_total_MW` is their sum and excludes DG. Predictions return only `X`
-and `Y`, not the sector breakdown.
+`elec_total_MW` is their sum and excludes DG. `Total` adds nothing else
+(decision 20). `Estimator` returns only its weather columns and `enduse`,
+not the sector breakdown. `DG.merge` adds `elec_dg_MW` and `elec_net_MW` to
+either.
 
 ## Sources
 
@@ -145,7 +149,7 @@ and `Y`, not the sector breakdown.
 | commercial scale | OpenEI #906 floor area | zero load (logged) | — |
 | industrial, agricultural | NREL county inventories (#97), 2019 | — | not checked against EIA |
 | weather | NSRDB via `eudoxys/weather` | — | — |
-| DG (`DG`, `Total(dg=True)`) | EIA-861M small-scale PV by state and month (`eia.Form861m`), allocated by county share of state load (`wecc/county_mwh.csv`), shaped by NSRDB GHI or dGen county profiles | state dGen profile for counties missing or all zero in dGen; NaN for months without EIA data | monthly county DG = EIA × load share |
+| DG (`DG`, `DG.merge`) | EIA-861M small-scale PV by state and month (`eia.Form861m`), allocated by county share of state load (`wecc/county_mwh.csv`), shaped by NSRDB GHI or dGen county profiles | state dGen profile for counties missing or all zero in dGen; NaN for months without EIA data | monthly county DG = EIA × load share |
 | DG (calibration) | NREL dGen nodal DG → `wecc/county_dg.csv.gz` | — | scaled to EIA small-scale PV (`county_dg_scale.py`) |
 | county monthly energy | EIA 861M retail sales (`HS861m`), allocated by `Energy` | — | state sales |
 | regional peaks | EIA-930 BA demand, cleaned (`_test/data`) | — | CAISO, WECC |
@@ -154,13 +158,13 @@ and `Y`, not the sector breakdown.
 ## Method
 
 1. **Sector loads (2018).** Build each sector frame from its source, scale
-   to the county, and sum into `Total`'s training frame with 2018 weather.
-2. **Prediction.** Fit TSGAM on the training frame (log `Y`, yearly/weekly/
-   daily harmonics, temperature and humidity); predict or sample `Y` for the
-   requested `date_range` from that period's weather.
-3. **DG and net load.** With `Total(dg=True)`, allocate the state's monthly
-   EIA-861M small-scale PV to the county by load share, shape it hourly,
-   and add it (negative) to total load; `dg=False` (default) adds none.
+   to the county, and sum them (`Total`).
+2. **Prediction.** `Estimator` fits TSGAM on the 2018 sector sum and 2018
+   weather (log load, yearly/weekly/daily harmonics, temperature and
+   humidity) and predicts the requested years from their weather.
+3. **DG and net load.** `DG` allocates the state's monthly EIA-861M
+   small-scale PV to the county by load share and shapes it hourly;
+   `DG.merge` adds it (negative) to a load frame and sets net load.
 4. **Calibration (optional).** For a panel of counties, solve decision 12
    month by month. State energy is soft (reported, not forced); regional
    peaks are hard ceilings.
@@ -197,7 +201,7 @@ each county's `cf` sums to 1.
 ## Files and formats
 
 - Cache: `{cache dir}/loads/{version}/{state}/{county}/{code}.csv.gz`, codes
-  `R`, `C`, `T_elec_1h_training`, building types, `units`, `MWH_*`, `CF_*`.
+  `R`, `C`, `T_{fuel}_1h_sectors` (`Total`, version 3), building types, `units`, `MWH_*`, `CF_*`.
 - Checked-in outputs are `.csv.gz` with hourly UTC rows and `County ST`
   columns. Their sizes (18–82 MB) make the repo large to clone (see open
   questions).
@@ -229,9 +233,10 @@ they bear on the version 1 contract.
   submodules.
 - **DG sign.** `wecc/county_dg*.csv*` and `Calibrate(dg=...)` use positive
   DG; `elec_dg_MW` is negative (decision 10). Conversions must be explicit.
-- **`Total`.** No `year` argument; CLI `-Y` only reaches `weather` (#26);
-  non-contiguous `date_range` is bridged and sampling isn't seeded (#32);
-  first/last hours of a prediction are NaN.
+- **`Total`.** No `year` argument by design (decision 20); CLI `-Y` only
+  reaches `weather` (#26). The prediction issues of #32 (bridged
+  non-contiguous `date_range`, unseeded sampling) left with the `Total`
+  TSGAM. `Estimator` estimates start with NaN hours (weather lags).
 - **`DG`.** Months are taken in UTC (EIA's are local, well under 1% of
   monthly energy); `profile="weather"` ignores panel orientation and
   temperature; `profile="dgen"` covers 2018–2022 only. The EIA-861M rewrite
@@ -256,7 +261,7 @@ Proposed scope, for the maintainer to confirm:
 1. Packaging: ship curated data (`package-data`), set the version, add
    `"eudoxys"` to `keywords`, verify a non-editable install runs the tests.
 2. Fix or explicitly document the known issues above that affect `Total`,
-   `DG`, `Calibrate` and the CLI (#26, #27, #28, #30, #32); remove
+   `DG`, `Calibrate` and the CLI (#26, #27, #28, #30); remove
    non-functional CLI verbs or implement them.
 3. Clean up stale references in `loads/__init__.py` and `CLAUDE.md`; add
    re-exports of the public classes.
@@ -267,8 +272,8 @@ Proposed scope, for the maintainer to confirm:
 
 1. **Version number.** `1.0.0` (stable contract) or `0.1.0` with
    `Development Status :: 3 - Alpha` kept?
-2. **Front end.** Is `Estimator` the supported prediction API and `Total`
-   the training-data accessor, or are both public with overlapping roles?
+2. ~~**Front end.**~~ Resolved 2026-11-11 by decision 20: `Total` only sums
+   the sectors; `Estimator` is the prediction API.
 3. **Large outputs.** Keep `wecc_estimate.csv.gz`, `node_estimate.csv.gz`,
    `county_dg.csv`, `examples/*.csv.gz` in the repo, ship them as release
    assets, or regenerate on demand? (`county_dg.csv` duplicates its `.gz`;

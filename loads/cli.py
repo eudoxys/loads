@@ -58,17 +58,19 @@ To plot the Alameda County CA 2018 electric loads by sector, the command
     loads plot -S=CA -C=Alameda
 
 displays an area plot of `elec_residential_MW`, `elec_commercial_MW`,
-`elec_industrial_MW`, `elec_agricultural_MW`, `elec_transportation_MW`, and
-`elec_dg_MW`. Use `-o FILE` to save the plot to a file instead.
+`elec_industrial_MW`, `elec_agricultural_MW`, and `elec_transportation_MW`
+(and `elec_dg_MW` with `-G`). Use `-o FILE` to save the plot to a file
+instead.
 
 To print the Alameda County CA 2018 loads by sector with the county's
-distributed generation from EIA-861M small-scale solar (see `loads.dgen`)
-in place of the building stock PV, the command
+distributed generation from EIA-861M small-scale solar (see `loads.dgen`),
+the command
 
     loads print -S=CA -C=Alameda -G -f=csv
 
-replaces `elec_dg_MW` and recomputes `elec_net_MW`. The `-G` option only
-applies to the `total` dataset.
+adds `elec_dg_MW` and `elec_net_MW` to the sector loads with
+`loads.dgen.DG.merge` (`loads.total.Total` itself only sums the sectors).
+The `-G` option only applies to the `total` dataset.
 
 Caveats
 -------
@@ -77,7 +79,7 @@ Caveats
     cached locally (see https://www.eudoxys.com/cache for information on
     managing the cache data).
 
-  - The `total` dataset always returns the 2018 training data, so `-Y` has
+  - The `total` dataset always returns the 2018 sector loads, so `-Y` has
     no effect on it. The year is only used by the `weather` dataset.
 
   - `plot` only supports the `weather` and `total` datasets at present.
@@ -106,6 +108,7 @@ from loads.industry import Industry
 from loads.residential import Residential
 from loads.resstock import RESstock
 from loads.total import Total
+from loads.dgen import DG
 
 E_OK = 0
 """Exit code on success"""
@@ -277,6 +280,8 @@ def _getdata(args):
         case "total":
             kwargs = Total.makeargs(**vars(args))
             data = Total(**kwargs)
+            if args.dg:
+                data = DG.merge(data,args.state,args.county)
 
         case None:
             data = None
@@ -351,8 +356,11 @@ def _plot(args,data):
         case "total":
             pd.options.display.max_columns = None
             pd.options.display.width = None
-            data[["elec_residential_MW","elec_commercial_MW","elec_industrial_MW",
-                "elec_agricultural_MW","elec_transportation_MW","elec_dg_MW"]].plot(
+            columns = ["elec_residential_MW","elec_commercial_MW","elec_industrial_MW",
+                "elec_agricultural_MW","elec_transportation_MW"]
+            if "elec_dg_MW" in data.columns:
+                columns.append("elec_dg_MW")
+            data[columns].plot(
                     figsize=(20,10),
                     kind="area",
                     grid=True,

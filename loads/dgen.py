@@ -2,8 +2,9 @@
 
 This module provides the hourly distributed generation (DG) of a county, i.e.,
 the small-scale (behind-the-meter) solar output that is not included in the
-EIA Form 860 and Form 923 data, as the `elec_dg_MW` column used by
-`loads.total.Total`.
+EIA Form 860 and Form 923 data, as an `elec_dg_MW` column that
+`loads.dgen.DG.merge` adds to a load frame such as a `loads.total.Total` or
+`loads.estimator.Estimator` result.
 
 The method follows the REGROW EIA-861M small-scale solar procedure
 (`data/EIA861M_SmallScaleSolar.md` in `slacgismo/regrow`), which allocates
@@ -23,7 +24,7 @@ flowchart LR
     SSS --> DG
     NSRDB[("NSRDB GHI")] -->|profile=weather| DG
     DGEN[("wecc/county_dg.csv.gz")] -->|profile=dgen| DG
-    DG -->|elec_dg_MW| Total
+    DG -->|elec_dg_MW| MERGE[DG.merge]
     DG -->|compile| FILE[county DG file]
 ```
 
@@ -67,11 +68,11 @@ To get the hourly DG of Alameda County CA in 2020 use
 
 which returns 8784 hourly rows with the single column `elec_dg_MW`.
 
-To add the DG to a total load data frame, e.g., a `loads.total.Total`
-prediction, and recompute the net load use
+To add the DG to a total load data frame, e.g., a
+`loads.estimator.Estimator` estimate, and compute the net load use
 
-    from loads.total import Total
-    total = Total("CA","Alameda",date_range=date_range,samples=0)
+    from loads.estimator import Estimator
+    total = Estimator("Alameda CA",[2020])
     total = DG.merge(total,"CA","Alameda")
 
 which replaces (or adds) `elec_dg_MW` and, when `elec_total_MW` is present,
@@ -320,7 +321,7 @@ class DG(pd.DataFrame):
         ---------
 
           - `data`: hourly load data frame indexed by timestamp, e.g., a
-            `loads.total.Total` result
+            `loads.total.Total` or `loads.estimator.Estimator` result
 
           - `state`: state abbreviation
 

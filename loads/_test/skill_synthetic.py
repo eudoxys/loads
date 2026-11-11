@@ -1,11 +1,14 @@
-"""Synthetic `loads.Total`-shaped frames for the offline `loads.skill` tests"""
+"""Synthetic county frames for the offline `loads.skill` tests"""
 
 import numpy as np
 import pandas as pd
 
 
 def synthetic_total(year: int = 2018, seed: int = 0) -> pd.DataFrame:
-    """A frame shaped like `loads.Total` training output, built offline."""
+    """A county frame (weather, sectors, total, DG, net), built offline.
+
+    Shaped like `loads.skill.county_loads(..., sectors=True, dg=True)`;
+    its `schema.TOTAL_COLUMNS` are what `loads.Total` returns."""
     rng = np.random.default_rng(seed)
     idx = pd.date_range(f"{year}-01-01", f"{year}-12-31 23:00", freq="1h", tz="UTC", name="timestamp")
     h = np.arange(len(idx))

@@ -25,14 +25,14 @@ def county_file(c, year, outdir):
         df = ls.read_csv(path)
         if ls.validate(df).ok:
             return df
-    df = ls.county_loads(c, year)
+    df = ls.county_loads(c, year, dg=True)
     ls.validate(df).raise_if_failed()
     ls.to_csv(df, path)
     return df
 
 
 def main(state: str, year: int, nodes_csv: str, outdir: str = "out/counties") -> None:
-    ls.configure(estimator_cache=False)
+    ls.configure()
     nodes = pd.read_csv(nodes_csv).set_index("id")[["lat", "lon"]]
     places = ls.counties(state=state)
     ambiguous = [c.county_st for c in places if c.ambiguous]

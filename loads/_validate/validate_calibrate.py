@@ -2,10 +2,10 @@
 
 Builds and caches the inputs used by `validate_calibrate_marimo.py`:
 
-  - the 2020 gross load matrix $X$: `Total(...,samples=0)` TSGAM predictions
-    of `elec_total_MW` for every WECC county, driven by 2020 weather (the
-    same construction as `loads/_test/test_calibrate.py`, for the whole
-    year instead of August);
+  - the 2020 gross load matrix $X$: `Estimator` TSGAM estimates of
+    `elec_total_MW` for every WECC county, driven by 2020 weather (the same
+    construction as `loads/_test/test_calibrate.py`, for the whole year
+    instead of August);
 
   - the calibrated load $L$: `Calibrate(...,search=True)` month by month,
     with the default settings of `loads/_explore/explore_calibrate_marimo.py`
@@ -23,8 +23,8 @@ Usage
 
 builds the load matrix and runs the calibration, so the notebook only reads
 the cache. The load matrix is cached as
-`loads/0/_validate/calibrate_X_2020.csv.gz` and the calibration as
-`loads/0/_validate/calibrate_L_2020.csv.gz` (plus `calibrate_summary_2020.csv`,
+`loads/1/_validate/calibrate_X_2020.csv.gz` and the calibration as
+`loads/1/_validate/calibrate_L_2020.csv.gz` (plus `calibrate_summary_2020.csv`,
 `calibrate_regions_2020.csv` and `calibrate_states_2020.csv`). The load
 matrix runs 407 county predictions in parallel (`LOADS_TEST_WORKERS`
 processes, default all cores) and the calibration solves 89 programs for
@@ -50,7 +50,6 @@ DATA = os.path.join(PACKAGE,"_test","data")
 CAISO = os.path.join(PACKAGE,"caiso")
 DG_FILE = os.path.join(PACKAGE,"wecc","county_dg_scaled.csv.gz")
 YEAR = 2020
-LAGS = 3 # Total trims this many hours from each end of a prediction
 REGIONS = ["CAISO","WECC"]
 
 _logger = logging.getLogger(__file__)
@@ -73,7 +72,7 @@ def wecc_units() -> list[tuple[str,str]]:
 
 def _cache(name:str,year:int=YEAR) -> Cache:
     """@private Validation cache file"""
-    return Cache(package="loads",version=0,path=["_validate",name.format(year=year)])
+    return Cache(package="loads",version=1,path=["_validate",name.format(year=year)])
 
 
 def load_cache(year:int=YEAR) -> Cache:
@@ -92,22 +91,29 @@ def result_caches(year:int=YEAR) -> dict[str,Cache]:
 
 
 def missing_inputs(year:int=YEAR) -> list[str]:
-    """Counties whose TSGAM training data or weather is not in the cache
+    """Counties whose TSGAM inputs (sector loads and weather) are not in the cache
 
-    The cache files are named exactly as `loads.total.Total` (version 2
-    training data) and `weather.Weather` (version 0) name them. The padded
-    prediction window reaches into the previous and next years. Only the
-    local cache folder is checked: a file that is only in the `cache`
-    archive counts as missing.
+    The cache files are named exactly as `loads.residential.Residential`
+    (version 1), `loads.commercial.Commercial` (version 2),
+    `loads.industry.Industry` and `loads.agriculture.Agriculture` (version 0)
+    and `weather.Weather` (version 0) name them. The estimate starts in the
+    previous year so the weather lags are filled at the start of `year`.
+    Only the local cache folder is checked: a file that is only in the
+    `cache` archive counts as missing.
     """
+    national = [Cache(package="loads",version=0,path=[x]) for x in ("industry.csv.gz","agriculture.csv.gz")]
+    if not all(os.path.exists(x.pathname) for x in national):
+        return ["industry/agriculture inventories"]
     missing = []
     for state,county in wecc_units():
-        training = Cache(package="loads",version=2,path=[state,county,"T_elec_1h_training.csv.gz"])
-        weather = [Cache([state,county,f"W_{x}.csv.gz"],package="weather",version=0)
-            for x in (year-1,year,year+1)]
+        files = [
+            Cache(package="loads",version=1,path=[state,county,"R.csv.gz"]),
+            Cache(package="loads",version=2,path=[state,county,"C.csv.gz"]),
+            ] + [Cache([state,county,f"W_{x}.csv.gz"],package="weather",version=0)
+                for x in sorted({2018,year-1,year})]
         # local cache only: files that are only in the cache archive are
         # not counted as available (see the docstring)
-        if not os.path.exists(training.pathname) or not all(os.path.exists(x.pathname) for x in weather):
+        if not all(os.path.exists(x.pathname) for x in files):
             missing.append(f"{county} {state}")
     return missing
 
@@ -117,11 +123,10 @@ def _predict(args:tuple[str,str,str|None,int]) -> tuple[str,np.ndarray]:
     state,county,cachedir,year = args
     if cachedir:
         Cache.CACHEDIR = cachedir
-    from loads.total import Total # pylint: disable=import-outside-toplevel
-    Total.cache = None # don't hold every fitted estimator in the worker
+    from loads.estimator import Estimator # pylint: disable=import-outside-toplevel
     index = hours(year)
-    padded = pd.date_range(index[0] - pd.Timedelta(hours=LAGS),index[-1] + pd.Timedelta(hours=LAGS),freq="1h")
-    data = Total(state,county,date_range=padded,samples=0)["elec_total_MW"]
+    # start a year early so the weather lags are filled at the start of year
+    data = Estimator(f"{county} {state}",[year-1,year])["elec_total_MW"]
     data.index = pd.DatetimeIndex(data.index).tz_convert("UTC")
     return f"{county} {state}",data.loc[index[0]:index[-1]].values
 

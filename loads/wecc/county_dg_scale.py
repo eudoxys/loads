@@ -4,7 +4,7 @@ Builds `county_dg_scaled.csv.gz` from `county_dg.csv`:
 
   1. Counties that `county_dg.csv` lacks get their state's DG profile in
      proportion to their share of the state's 2020 gross load (the cached
-     validation load matrix `loads/0/_validate/calibrate_X_2020.csv.gz`).
+     validation load matrix `loads/1/_validate/calibrate_X_2020.csv.gz`).
 
   2. Each state's DG is scaled, year by year (UTC calendar years), so its
      annual energy equals EIA's estimated small-scale solar generation

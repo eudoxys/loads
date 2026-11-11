@@ -2,8 +2,8 @@
 
 The test assembles the county form of the shaping problem for August 2020:
 
-  - gross load $X$: `Total(...,samples=0)` TSGAM predictions of
-    `elec_total_MW` for every WECC county, driven by 2020 weather;
+  - gross load $X$: `Estimator` TSGAM estimates of `elec_total_MW` for
+    every WECC county, driven by 2020 weather;
 
   - fixed DG $D$: `loads/wecc/county_dg_scaled.csv.gz`;
 
@@ -17,9 +17,9 @@ It then searches the predeclared 88-point weight grid and checks the selected
 solution against the selection tolerances and unit safeguards.
 
 The TSGAM inputs are built only from the local `cache` package files (2018
-training data and 2020 weather), so nothing is downloaded when the cache is
+sector loads and 2018 and 2020 weather), so nothing is downloaded when the cache is
 populated. The assembled load matrix is itself cached as
-`loads/0/_test/calibrate_X_2020-08.csv.gz`, so only the first run pays for
+`loads/1/_test/calibrate_X_2020-08.csv.gz`, so only the first run pays for
 the 407 county predictions (run in parallel; set `LOADS_TEST_WORKERS` to
 change the number of processes). Set `LOADS_CACHEDIR` to use a cache folder
 other than the `cache` package default.
@@ -47,7 +47,6 @@ DATA = os.path.join(os.path.dirname(__file__),"data")
 MONTH = "2020-08"
 START = pd.Timestamp(f"{MONTH}-01 00:00:00+00:00")
 END = pd.Timestamp("2020-08-31 23:00:00+00:00")
-LAGS = 3 # Total trims this many hours from each end of a prediction
 DG_FILE = os.path.join(os.path.dirname(loads.__file__),"wecc","county_dg_scaled.csv.gz")
 
 pytestmark = pytest.mark.network
@@ -71,36 +70,42 @@ def _predict(args:tuple[str,str,str|None]) -> tuple[str,np.ndarray]:
     state,county,cachedir = args
     if cachedir:
         Cache.CACHEDIR = cachedir
-    from loads.total import Total # pylint: disable=import-outside-toplevel
-    Total.cache = None # don't hold every fitted estimator in the worker
-    padded = pd.date_range(START - pd.Timedelta(hours=LAGS),END + pd.Timedelta(hours=LAGS),freq="1h")
-    data = Total(state,county,date_range=padded,samples=0)["elec_total_MW"]
+    from loads.estimator import Estimator # pylint: disable=import-outside-toplevel
+    data = Estimator(f"{county} {state}",[START.year])["elec_total_MW"]
     data.index = pd.DatetimeIndex(data.index).tz_convert("UTC")
     return f"{county} {state}",data.loc[START:END].values
 
 
 def _load_cache() -> Cache:
     """Cache file holding the assembled August 2020 load matrix"""
-    return Cache(package="loads",version=0,path=["_test",f"calibrate_X_{MONTH}.csv.gz"])
+    return Cache(package="loads",version=1,path=["_test",f"calibrate_X_{MONTH}.csv.gz"])
 
 
 def _missing_inputs() -> list[str]:
-    """Counties whose TSGAM training data or 2020 weather is not in the cache
+    """Counties whose TSGAM inputs (sector loads, 2018 and 2020 weather) are not in the cache
 
-    The cache files are named exactly as `loads.total.Total` (version 2
-    training data) and `weather.Weather` (version 0) name them. Only the
+    The cache files are named exactly as `loads.residential.Residential`
+    (version 1), `loads.commercial.Commercial` (version 2),
+    `loads.industry.Industry` and `loads.agriculture.Agriculture` (version 0)
+    and `weather.Weather` (version 0) name them. Only the
     local cache folder is checked: a file that is only in the `cache`
     archive counts as missing, so the test stays skipped on an empty cache.
     """
     if os.path.exists(_load_cache().pathname):
         return []
+    national = [Cache(package="loads",version=0,path=[x]) for x in ("industry.csv.gz","agriculture.csv.gz")]
+    if not all(os.path.exists(x.pathname) for x in national):
+        return ["industry/agriculture inventories"]
     missing = []
     for state,county in _wecc_units():
-        training = Cache(package="loads",version=2,path=[state,county,"T_elec_1h_training.csv.gz"])
-        weather = Cache([state,county,f"W_{START.year}.csv.gz"],package="weather",version=0)
+        files = [
+            Cache(package="loads",version=1,path=[state,county,"R.csv.gz"]),
+            Cache(package="loads",version=2,path=[state,county,"C.csv.gz"]),
+            ] + [Cache([state,county,f"W_{x}.csv.gz"],package="weather",version=0)
+                for x in sorted({2018,START.year})]
         # local cache only: files that are only in the cache archive are
         # not counted, so the test is still skipped on an empty cache
-        if not os.path.exists(training.pathname) or not os.path.exists(weather.pathname):
+        if not all(os.path.exists(x.pathname) for x in files):
             missing.append(f"{county} {state}")
     return missing
 

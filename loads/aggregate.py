@@ -3,13 +3,13 @@
 The `loads.aggregate.Aggregator` class is used to sum data from multiple load
 sources into a panel with target columns and date/time rows. The
 `loads.aggregate.aggregate` function uses it to map every WECC county to its
-nearest target location and sum the county loads predicted by
-`loads.total.Total`.
+nearest target location and sum the county loads estimated by
+`loads.estimator.Estimator`.
 
 Example
 -------
 
-To aggregate the county net loads in August 2018 to the WECC 240 nodes, do
+To aggregate the county total loads in August 2018 to the WECC 240 nodes, do
 the following
 
     # load the targets
@@ -19,7 +19,7 @@ the following
 
     # create the target aggregator
     from loads.aggregate import Aggregator
-    elec_net_MW = Aggregator(locations.unique(),"2018-08-01 00:00:00+00:00","2018-08-31 23:59:59+00:00")
+    elec_total_MW = Aggregator(locations.unique(),"2018-08-01 00:00:00+00:00","2018-08-31 23:59:59+00:00")
 
     # add the sources into the targets
     from fips.counties import Counties
@@ -28,28 +28,13 @@ the following
     for state,county,lat,lon,geohash in Counties(use_index="SYSTEM",selection="WECC")[["ST","COUNTY","LAT","LON","GEOHASH"]].values:
         nearest,_,_ = nearest2([lat,lon],latlons)
         target = locations[nearest]
-        elec_net_MW.add(target,Total(state,county)[["elec_net_MW"]].rename({"elec_net_MW":target},axis=1))
+        elec_total_MW.add(target,Total(state,county)[["elec_total_MW"]].rename({"elec_total_MW":target},axis=1))
 
     # show the result
-    elec_net_MW
+    elec_total_MW
 
-which outputs the following
-
-                                    9wdb95      9we1bp       9w1zzg      9w1wf0      9w3h8n  ...       9wve62      9x5w98     9r0vxp      9q9wtp     9qcf5u
-    timestamp                                                                                ...                                                           
-    2018-08-01 00:00:00+00:00  1621.573616  414.073611  1782.010695  262.994463  195.116403  ...  4524.774448  178.820562  18.938856  733.006805  29.857368
-    2018-08-01 01:00:00+00:00  1530.552684  390.532792  1658.643979  248.203058  185.773275  ...  4223.061368  173.201746  17.857119  705.921253  28.133774
-    2018-08-01 02:00:00+00:00  1458.137901  379.217986  1584.314139  224.212423  170.230022  ...  4024.300160  160.189473  15.008123  645.901691  26.311544
-    2018-08-01 03:00:00+00:00  1335.935348  351.448744  1467.182127  202.378768  162.879603  ...  3739.634554  145.575807  12.877674  580.512879  23.023998
-    2018-08-01 04:00:00+00:00  1184.926588  294.431022  1271.337030  178.383016  150.824905  ...  3301.198850  119.546684  11.816122  518.329300  19.926388
-    ...                                ...         ...          ...         ...         ...  ...          ...         ...        ...         ...        ...
-    2018-08-31 19:00:00+00:00  1534.926260  386.855379  1970.102717  210.877473  149.757533  ...  4726.463890  120.781514   7.811379  404.228875  14.377003
-    2018-08-31 20:00:00+00:00  1582.044330  406.931965  2072.660856  215.731027  160.488766  ...  4596.176870  125.019204   8.673329  444.622690  14.551050
-    2018-08-31 21:00:00+00:00  1585.495644  421.218430  2127.867872  218.461188  160.421810  ...  4463.478650  125.066515   9.958405  488.985919  13.789322
-    2018-08-31 22:00:00+00:00  1596.007055  429.829066  2163.327877  225.021390  165.854757  ...  4250.042867  136.517815  11.951432  526.965799  15.507520
-    2018-08-31 23:00:00+00:00  1642.285736  435.021499  2090.116596  231.605925  164.110512  ...  4091.273032  143.445191  13.862095  551.231402  17.259998
-
-    [744 rows x 126 columns]
+which returns 744 hourly rows with one column of 2018 total load (MW) per
+target node.
 
 Caveat
 ------
@@ -76,7 +61,7 @@ import pandas as pd
 from cache import Cache
 from fips.counties import Counties
 from geohash import nearest2
-from loads.total import Total
+from loads.estimator import Estimator, EstimatorConfig
 
 _logger = logging.getLogger(__file__)
 
@@ -149,8 +134,8 @@ def aggregate(
 
       - `dt_range`: date range or year for which aggregates are collected
 
-      - `column`: `loads.total.Total` column to aggregate (must end with
-        `_MW`)
+      - `column`: sector enduse column to estimate and aggregate (must end
+        with `_MW`, see `loads.estimator.EstimatorConfig.enduse`)
 
       - `refresh`: force refresh of cached data
 
@@ -165,8 +150,9 @@ def aggregate(
     Description
     -----------
 
-    Each WECC county is mapped to its nearest target and one AR sample
-    (`samples=1`) of its `column` over `dt_range` is added to that target.
+    Each WECC county is mapped to its nearest target and its `column`
+    estimated by `loads.estimator.Estimator` over `dt_range` is added to that
+    target.
     """
 
     assert column.endswith("_MW"), f"{column=} is not a column to aggregate (only MW columns can be aggregated)"
@@ -194,11 +180,11 @@ def aggregate(
 
     # read cache if possible/desired
     if start == end:
-        mapping_cache = Cache(package="loads",version=0,path=["aggregated",start,f"mapping.csv"])
-        data_cache = Cache(package="loads",version=0,path=["aggregated",start,f"{column}.csv"])
+        mapping_cache = Cache(package="loads",version=1,path=["aggregated",start,f"mapping.csv"])
+        data_cache = Cache(package="loads",version=1,path=["aggregated",start,f"{column}.csv"])
     else:
-        mapping_cache = Cache(package="loads",version=0,path=["aggregated",f"{start}-{end}",f"mapping.csv"])
-        data_cache = Cache(package="loads",version=0,path=["aggregated",f"{start}-{end}",f"{column}.csv"])            
+        mapping_cache = Cache(package="loads",version=1,path=["aggregated",f"{start}-{end}",f"mapping.csv"])
+        data_cache = Cache(package="loads",version=1,path=["aggregated",f"{start}-{end}",f"{column}.csv"])            
     if not refresh and data_cache.download() and mapping_cache.download():
 
         # read mapping
@@ -244,9 +230,10 @@ def aggregate(
             mapping[geohash] = target
 
             # read county totals
-            Total._clear_cache()
-            total = Total(state,county,Y=column,date_range=dt_range,samples=1).fillna(0)
-            assert column in total.columns, f"{column=} is not found in totals for {state=} {county=} {year=}"
+            total = Estimator(f"{county} {state}",sorted(set(dt_range.year)),
+                config=EstimatorConfig(enduse=column),
+                ).reindex(dt_range).fillna(0)
+            assert column in total.columns, f"{column=} is not found in estimate for {state=} {county=}"
 
             # add county load to aggregated load
             data.add(target,pd.DataFrame(

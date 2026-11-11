@@ -57,36 +57,40 @@ actual weather. It is intended for power-system planning studies that need a
 realistic county load shape for a specific year, and it can sum county loads
 onto network nodes (e.g., the WECC 240-bus model) with `loads.aggregate`.
 
-Given a state and a county, `loads.total.Total` returns a data frame that is
-expected to satisfy the following:
+Two classes form the front end:
 
-  1. **Reference-year sector breakdown.** By default (`samples=None`) the
-     frame holds the 2018 training data: one row per hour of 2018 indexed by
-     a UTC `timestamp`, the county's 2018 weather, and separate columns for
-     residential, commercial, industrial, agricultural and transportation
-     load (`elec_residential_MW`, ..., `elec_transportation_MW`).
+  - `loads.total.Total` returns the 2018 reference-year sector loads of a
+    county and their sum, and nothing more.
 
-  2. **Consistent totals.** In the training data `elec_total_MW` is the sum
-     of the sector columns and excludes distributed generation.
-     `elec_dg_MW` (rooftop solar and other distributed generation) is never
-     positive, and `elec_net_MW = elec_total_MW + elec_dg_MW`.
+  - `loads.estimator.Estimator` is the prediction API: it estimates the
+    county's load for other years from their weather.
 
-  3. **Predictions for other periods.** Given a `date_range` and
-     `samples=0`, the frame holds the weather variables used as inputs and
-     a TSGAM prediction of one load column (`Y`, default `elec_total_MW`)
-     for every hour of the range. With `samples=1` the prediction is replaced
-     by one autoregressive sample, and with `samples>1` by the requested
-     `percentile` of that many samples.
+They are expected to satisfy the following:
 
-  4. **Weather response.** Predicted residential, commercial and total load
-     follow the county's outdoor temperature and humidity for the requested
-     period, and predicted distributed generation follows its direct and
-     diffuse sunlight. Industrial and agricultural load do not depend on
-     weather.
+  1. **Reference-year sector breakdown.** `Total(state,county)` holds one
+     row per hour of 2018 indexed by a UTC `timestamp`, with separate columns
+     for residential, commercial, industrial, agricultural and
+     transportation load (`elec_residential_MW`, ...,
+     `elec_transportation_MW`).
 
-  5. **Repeatability.** Training data and the downloaded inputs are cached
-     locally after the first run unless `refresh=True` is given. Predictions
-     (`samples=0`) are deterministic; sampled results are not.
+  2. **Consistent totals.** `elec_total_MW` is the sum of the sector columns.
+     `Total` has no weather, distributed generation or net load columns; add
+     distributed generation with `loads.dgen.DG.merge`, which sets
+     `elec_dg_MW` (never positive) and `elec_net_MW = elec_total_MW +
+     elec_dg_MW`.
+
+  3. **Estimates for other periods.** `Estimator("County ST",years)` holds
+     the weather variables used as inputs and a TSGAM estimate of one load
+     column (`EstimatorConfig.enduse`, default `elec_total_MW`) for every
+     hour of the requested years.
+
+  4. **Weather response.** Estimated load follows the county's outdoor
+     temperature and humidity for the requested period. Industrial and
+     agricultural load do not depend on weather.
+
+  5. **Repeatability.** Sector loads and the downloaded inputs are cached
+     locally after the first run unless `refresh=True` is given. Estimates
+     are deterministic.
 
 How the estimate is produced
 ----------------------------
@@ -102,11 +106,10 @@ How the estimate is produced
 
   - Transportation is not yet modeled and is reported as zero.
 
-  - The 2018 sector loads and the county's 2018 weather are used to train a
-    time-series model (TSGAM). Loads for other periods are predicted from
-    that period's weather, so a hotter summer produces more cooling load.
-    `loads.estimator.Estimator` is a newer front end to the same kind of
-    model that uses a single `"County ST"` location argument.
+  - `loads.estimator.Estimator` trains a time-series model (TSGAM) on the
+    2018 sector loads and the county's 2018 weather. Loads for other periods
+    are predicted from that period's weather, so a hotter summer produces
+    more cooling load.
 
   - Calibration to published totals is a separate step.
     `loads.calibrate.Calibrate` shapes a panel of county (or node) loads so
@@ -124,18 +127,17 @@ What is not promised
   - Industrial and agricultural loads have no hourly, daily or seasonal shape
     and are not checked against EIA totals.
 
-  - `Total` itself does not calibrate to EIA totals. Neither the training
-    data nor the predictions are adjusted to reported state sales unless
-    `loads.calibrate` (or another rescaling) is applied afterwards.
+  - Neither `Total` nor `Estimator` calibrates to EIA totals. Their results
+    are not adjusted to reported state sales unless `loads.calibrate` (or
+    another rescaling) is applied afterwards.
 
   - Results are only available for periods with weather data and have
     mostly been exercised for 2018-2022 in western (WECC) states.
 
-  - Predictions and samples only contain the weather inputs and the one
-    predicted column, not the full sector breakdown.
+  - Estimates only contain the weather inputs and the one estimated column,
+    not the full sector breakdown.
 
-  - The first and last few hours of a prediction or sample are NaN (see
-    `loads.total`).
+  - The first few hours of an estimate are NaN (see `loads.estimator`).
 
 Load data
 ---------
@@ -175,10 +177,8 @@ Load data frames generally contain any of the following, indexed by date/time:
 
 `loads.total.Total` instead reports electric load by sector
 (`elec_residential_MW`, `elec_commercial_MW`, `elec_industrial_MW`,
-`elec_agricultural_MW`, `elec_transportation_MW`) together with
-`elec_total_MW`, `elec_dg_MW`, `elec_net_MW` and the weather columns from
-`weather.Weather` (e.g., `temperature_degF`, `humidity_pc`, `global_Wpms`,
-`direct_Wpms`, `diffuse_Wpms`).
+`elec_agricultural_MW`, `elec_transportation_MW`) and their sum
+`elec_total_MW`.
 
 Not all data frames will contain all these columns.
 
@@ -251,23 +251,28 @@ flowchart TB
     NLR97 --> IND
     NLR97 --> AGR
 
-    %% ---------- total load model ----------
+    %% ---------- total load and estimator ----------
     subgraph TOTALG["total.py · Total"]
+        SUM["2018 sector loads<br/>elec_total_MW = Σ sectors"]
+    end
+
+    subgraph ESTG["estimator.py · Estimator"]
         direction TB
         FIT["TSGAM fit<br/>(nimish/estimator)"]
-        SAMPLE["Sample / predict<br/>hourly county load"]
-        NET["elec_total_MW<br/>elec_dg_MW · elec_net_MW"]
-        FIT --> SAMPLE --> NET
+        PREDICT["Predict hourly<br/>county load"]
+        EST["elec_total_MW<br/>for other years"]
+        FIT --> PREDICT --> EST
     end
 
     CAL(["calibrate.py · Calibrate<br/>state energy & regional peaks"])
-    NET --> CAL
+    EST --> CAL
 
-    RESID --> FIT
-    COMM --> FIT
-    IND --> FIT
-    AGR --> FIT
-    TRANS -.-> FIT
+    RESID --> SUM
+    COMM --> SUM
+    IND --> SUM
+    AGR --> SUM
+    TRANS -.-> SUM
+    SUM -. "same 2018 sector sum" .-> FIT
     WX --> FIT
 
     DGFILE["wecc/county_mwh.csv<br/>county load shares"]
@@ -277,7 +282,7 @@ flowchart TB
     DGFILE --> DG
     EIA -- "state sales" --> CAL
     DG --> CAL
-    DG -. "dg=True" .-> NET
+    DG -. "DG.merge" .-> EST
 
     %% ---------- offline build of county DG ----------
     subgraph BUILD["Offline build · dgen.compile()"]
@@ -292,7 +297,7 @@ flowchart TB
         DGEN_RAW --> COMPILE
         COMPILE --> DGOUT
     end
-    NET -. "Energy() calls Total()" .-> ENERGY
+    EST -. "Energy() calls Estimator()" .-> ENERGY
     NODES --> COMPILE
 
     %% ---------- downstream uses ----------
@@ -303,10 +308,10 @@ flowchart TB
     AGG(["aggregate.py<br/>WECC 240 node loads"])
 
     GEOJSON --> CLUSTER
-    NET --> CLUSTER
+    SUM --> CLUSTER
     CLUSTER --> CLUSTERS --> EVAL
-    NET --> CLI
-    NET --> AGG
+    SUM --> CLI
+    EST --> AGG
     WECCGIS --> AGG
 
     %% ---------- styles ----------
@@ -316,7 +321,7 @@ flowchart TB
     classDef note fill:#fffde7,stroke:#c9b458,color:#4a4000
     class FIPS,GEOJSON,EIA,OEDI_RES,CENSUS,OEDI_COM,OPENEI,NLR97,WX,WECCGIS,NODES external
     class DGEN_RAW,DGFILE,DGOUT,MWH_CF,CLUSTERS bundled
-    class NET,CAL,CLI,AGG,EVAL output
+    class SUM,EST,CAL,CLI,AGG,EVAL output
     class NOTE note
     style EXT fill:#fff8f2,stroke:#d9480f,stroke-width:2px
 ```

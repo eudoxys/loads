@@ -78,8 +78,10 @@ must match the CLI option's dest name (`state`, `county`, `year`, `building_type
 
 **Column naming.** Columns are `{elec|nonelec}_{category}_MW` with categories
 `baseload`, `cooling`, `heating`, `total`, `dg`, `net`. `Total` uses
-`elec_{sector}_MW` (training data only; predictions return just the `X`
-weather columns and the `Y` column). Invariants:
+`elec_{sector}_MW` and `elec_total_MW`, their sum, and nothing else (no
+weather, DG, net load or prediction; see `DESIGN.md` decision 20).
+`Estimator` is the prediction API and returns its weather columns and the
+`enduse` column. Invariants:
 - `elec_total_MW = baseload + cooling + heating`
 - `elec_net_MW = elec_total_MW + elec_dg_MW` and `elec_dg_MW <= 0`
   (DG is a negative load)
@@ -152,17 +154,15 @@ make docs                           # pdoc → ./docs (creates its own .venv)
   duplicate `viewer` case. `_plot`/`_getdata` use `case "_":` (a string
   literal) instead of `case _:`, so `plot` draws nothing for the sector
   datasets.
-- `Total` has no year argument; the CLI's `-Y` only reaches `Weather`, and
-  `Total`'s `holdout` argument is unused.
+- `Total` has no year argument (it only sums the 2018 sectors); the CLI's
+  `-Y` only reaches `Weather`.
 - `dgen.DG` allocates EIA-861M state small-scale PV to counties by
   `wecc/county_mwh.csv` load share and shapes it hourly (NSRDB GHI or dGen),
-  returning `elec_dg_MW <= 0`; `DG.merge` adds it to a `Total` frame.
+  returning `elec_dg_MW <= 0`; `DG.merge` adds it to a load frame.
   `dgen.compile` writes nonnegative MW (as `Calibrate` expects), and the
   checked-in `wecc/county_dg*.csv.gz` files are also nonnegative, opposite to
-  the `elec_dg_MW` sign convention. `Total(...,dg=True)` (CLI `-G`) merges
-  this DG into its result (replacing the RESstock/COMstock PV in training
-  data); the default `dg=False` leaves results unchanged. TSGAM training
-  never uses it.
+  the `elec_dg_MW` sign convention. The CLI's `-G` merges this DG into the
+  `total` dataset. TSGAM training never uses it.
 - `Energy` requires a list/tuple `year` (the cache name uses `min(year)`),
   its cache ignores `counties`, and a failing county appends the previous
   county's result.
@@ -170,9 +170,8 @@ make docs                           # pdoc → ./docs (creates its own .venv)
   class attribute (default `None`, outlier component off), not a
   `NamedTuple` field.
 - `tsgam_evaluate.py` writes `tests/test_config.csv` but then reads
-  `tests/best_config.csv`. It and `Total`'s `__main__` use the gitignored
-  `tests/` scratch folder; the checked-in cluster files are
-  `loads/clusters.csv` (current `elec_total_MW` k=6 medoids) and
+  `tests/best_config.csv`. It uses the gitignored `tests/` scratch folder;
+  the checked-in cluster files are `loads/clusters.csv` (current `elec_total_MW` k=6 medoids) and
   `loads/configs.csv` (TSGAM configs for an earlier medoid set).
 
 ## Agent skill (`loads/skill/`)
@@ -189,7 +188,7 @@ work offline.
   of the code in this repository. Read the module before documenting it;
   copy signatures from source.
 - `loads/_test/test_skill_loads_api.py` reproduces, offline, the behaviors
-  the skill documents (signatures, `Total` modes, `Calibrate` input rules,
+  the skill documents (signatures, `Total` columns, `Calibrate` input rules,
   DG sign conventions, ...). When a change to `loads` makes one fail,
   update `SKILL.md`, `reference/` (usually `api.md` and `footguns.md`) and
   `loads/skill/schema.py` in the same PR, then the test; don't just relax

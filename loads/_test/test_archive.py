@@ -29,7 +29,6 @@ from loads import residential as residential_module
 from loads import commercial as commercial_module
 from loads import industry as industry_module
 from loads import agriculture as agriculture_module
-from loads import total as total_module
 from loads.residential import Residential
 from loads.commercial import Commercial
 from loads.resstock import RESstock
@@ -137,7 +136,6 @@ def real_archive(tmp_path,monkeypatch):
         monkeypatch.setattr(cls,"SOURCE",INVALID)
     monkeypatch.setattr(industry_module,"CACHE",None)
     monkeypatch.setattr(agriculture_module,"CACHE",None)
-    monkeypatch.setattr(total_module,"Weather",_fail)
     return cachedir
 
 def _local(cachedir:str,version:int,*path:str) -> str:
@@ -176,10 +174,12 @@ def test_national_from_archive(real_archive,cls,name):
     assert len(data) > 0
 
 @pytest.mark.network
-def test_training_from_archive(real_archive):
-    """`Total` training data comes from the archive (weather is not built)"""
-    X = Total.EXOGENOUS_VARIABLES["elec_total_MW"]
-    data = Total._get_training(STATE,COUNTY,X,"elec_total_MW") # pylint: disable=protected-access
-    assert os.path.exists(_local(real_archive,2,STATE,COUNTY,"T_elec_1h_training.csv.gz"))
-    assert "elec_total_MW" in data.columns
+def test_total_from_archive(real_archive):
+    """`Total` sums the archived sector files (nothing is built from source)"""
+    data = Total(STATE,COUNTY)
+    assert os.path.exists(_local(real_archive,1,STATE,COUNTY,"R.csv.gz"))
+    assert os.path.exists(_local(real_archive,2,STATE,COUNTY,"C.csv.gz"))
+    sectors = [f"elec_{x}_MW" for x in Total.SECTORS]
+    assert list(data.columns) == sectors + ["elec_total_MW"]
     assert data["elec_total_MW"].sum() > 0
+    np.testing.assert_allclose(data["elec_total_MW"],data[sectors].sum(axis=1))

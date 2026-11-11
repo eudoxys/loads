@@ -30,9 +30,9 @@ counties to the state energy and CAISO/WECC peak targets in `data/`
 (`energy_target.csv`, `peak_target.csv`, `state_groups.csv`) using the
 predeclared 88-point weight search of `loads.calibrate.Calibrate`.
 
-County loads are TSGAM predictions from the local `cache` package files
-(2018 training data and 2020 weather), so nothing is downloaded when the
-cache is populated. The first run builds and caches the 744 x 407 load matrix
+County loads are `Estimator` TSGAM estimates from the local `cache`
+package files (2018 sector loads and 2018 and 2020 weather), so nothing is
+downloaded when the cache is populated. The first run builds and caches the 744 x 407 load matrix
 in parallel (`LOADS_TEST_WORKERS` processes, default all cores); later runs
 read it from the cache. Running `python test_calibrate.py` (optionally with
 `--refresh`) builds the load matrix without running the tests. The weight
@@ -62,7 +62,7 @@ https://github.com/eudoxys/wecc) instead of being built.
 
   - The `network` tests read the real archive for Alameda County CA into an
     empty temporary cache (`RESstock`, `COMstock`, `Units`, `Floorarea`,
-    `Industry`, `Agriculture`, and `Total` training data), with every
+    `Industry`, `Agriculture`, and the `Total` sector sum built from them), with every
     original source pointed at an invalid host so a rebuild fails. They
     download about 25 MB and take about 20 seconds.
 
@@ -75,25 +75,25 @@ The `test_skill_*.py` files test `loads.skill` (see `loads/skill/SKILL.md`).
 They run offline in seconds, except `test_skill_network.py`.
 
   - `test_skill_loads_api.py` checks, without network, the `loads` behaviors
-    that the skill documents (signatures, `Total` modes, `Calibrate` input
+    that the skill documents (signatures, `Total` columns, `Calibrate` input
     rules, DG sign conventions). A failure means `loads` changed: update
     `loads/skill/SKILL.md` and `loads/skill/reference/` to match.
 
-  - `test_skill_fetch_offline.py` exercises the `Total` front ends against a
-    stand-in for `loads.Total` that reproduces its output contract.
+  - `test_skill_fetch_offline.py` exercises the `Total` and `Estimator`
+    front ends against stand-ins that reproduce their output contracts.
 
   - `test_skill_validate.py`, `test_skill_summarize_calibrate_aggregate.py`
     and `test_skill_locations_export.py` test the frame helpers on synthetic
-    `Total`-shaped frames (`skill_synthetic.py`) and the bundled `fips` data;
+    county frames (`skill_synthetic.py`) and the bundled `fips` data;
     `test_skill_examples.py` runs `loads/skill/examples/offline_demo.py`.
 
   - `test_skill_wecc.py` reads the precomputed files in `loads/wecc/`
     (skipped when they are not installed).
 
-  - `test_skill_network.py` builds Alameda County CA end to end (training
-    data, a 2020 prediction, and the sector frame). It downloads the
+  - `test_skill_network.py` builds Alameda County CA end to end (2018
+    sector sum, a 2020 estimate, and the sector frame). It downloads the
     national commercial, industrial and agricultural inventories and fits
-    four TSGAM models, so it only runs when `LOADS_TEST_SKILL=1` is set.
+    three TSGAM models, so it only runs when `LOADS_TEST_SKILL=1` is set.
 
 	pytest loads/_test -k skill -m "not network"
 	LOADS_TEST_SKILL=1 pytest loads/_test/test_skill_network.py

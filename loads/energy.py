@@ -2,7 +2,8 @@
 
 The `Energy` class calculates the total electric energy consumed at the
 county level on a periodic basis, i.e., the sum over each period of the
-`elec_total_MW` predicted by `loads.total.Total` (`samples=0`).  Groupings can
+`elec_total_MW` estimated by `loads.estimator.Estimator` (default
+configuration, so 2018 hours keep the 2018 sector loads).  Groupings can
 be daily, weekly, monthly, quarterly, or annually. Values are stored in MWh,
 with one `County ST` column per county.
 
@@ -36,7 +37,7 @@ Caveats
   - The `year` argument must be a list or tuple of the start and stop years
     in this version.
 
-  - Counties for which `loads.total.Total` fails are reported with a warning
+  - Counties for which `loads.estimator.Estimator` fails are reported with a warning
     and omitted from the result, so downstream users (e.g.,
     `loads/wecc/wecc_estimate.py`) treat them as having no energy data. A
     `RuntimeError` is raised if every county fails.
@@ -49,7 +50,7 @@ from warnings import warn
 import pandas as pd
 
 from cache import Cache
-from loads.total import Total
+from loads.estimator import Estimator
 from fips import Counties
 
 class Energy(pd.DataFrame):
@@ -100,7 +101,7 @@ class Energy(pd.DataFrame):
         else:
             assert hasattr(counties,"__iter__"), f"counties is not iterable"
 
-        cache = Cache(package="loads",version=0,path=[state,f"T_{min(year)}-{max(year)}_{month}_{groupby}.csv.gz"])
+        cache = Cache(package="loads",version=1,path=[state,f"T_{min(year)}-{max(year)}_{month}_{groupby}.csv.gz"])
         energy = None
         if isinstance(year,(list,tuple)):
             assert month is None, f"month cannot be specified when multiple years are specified"
@@ -127,8 +128,8 @@ class Energy(pd.DataFrame):
                 # a failed county is omitted rather than filled, so it can't
                 # be mistaken for real data (see issue #44)
                 try:
-                    total = Total(state,county,date_range=date_range,samples=0)
-                    county_energy = total.drop(Total.EXOGENOUS_VARIABLES["elec_total_MW"],axis=1).resample(groupby).sum()
+                    total = Estimator(f"{county} {state}",sorted(set(date_range.year)))
+                    county_energy = total[["elec_total_MW"]].reindex(date_range).resample(groupby).sum()
                     county_energy.columns = [f"{county} {state}"]
                 except Exception as err: # pylint: disable=broad-exception-caught
                     warn(f"{county} {state}: no total load, county omitted -- {err}")
@@ -152,7 +153,6 @@ if __name__ == '__main__':
 
     # Calculate the energy contribution factors for each state from 2018 to 2022
     # Stores results in cache for <state>/CF_2018-2022.csv
-    Total.cache = None
 
     import matplotlib.pyplot as plt
     import matplotlib.dates as mdates

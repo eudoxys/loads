@@ -41,8 +41,8 @@ ln -s "$PWD/loads/skill" ~/.claude/skills/loads     # or a project's .claude/ski
 | Census housing-unit estimates | `Units` | `www2.census.gov` |
 | OpenEI commercial floor area (#906) | `Floorarea` | `data.openei.org` |
 | NLR county industry/agriculture (#97) | `Industry`, `Agriculture` | `data.nlr.gov` |
-| NSRDB PSM4 hourly weather (via pvlib) | `weather.Weather` → every `Total` | NSRDB API (key) |
-| EIA-861M sales / small-scale solar | `eia.HS861m`, `Form861m` → `loads.dgen.DG`, `Total(dg=True)` | `www.eia.gov` |
+| NSRDB PSM4 hourly weather (via pvlib) | `weather.Weather` → every `Estimator`, `DG` | NSRDB API (key) |
+| EIA-861M sales / small-scale solar | `eia.HS861m`, `Form861m` → `loads.dgen.DG`, `DG.merge` | `www.eia.gov` |
 | WECC240 node GIS (optional) | your aggregation | `github.com/eudoxys/wecc240` |
 
 Bundled (offline; `loads/_test/data`, `loads/caiso` and `loads/isone`
@@ -97,20 +97,18 @@ ls.configure(cachedir="/data/eudoxys-cache")   # or env LOADS_CACHEDIR
 
 ## Runtime and memory
 
-- First call for a county: several downloads plus a TSGAM fit per target
-  column (CVXPY + CLARABEL). Expect minutes. Cached reruns: seconds plus
-  the fit (fitted models are cached only in memory, per process).
-- `county_loads(sectors=True)` fits four models (total, residential,
-  commercial, DG); without sectors, two.
+- First call for a county: several downloads plus a TSGAM fit per
+  estimated column (CVXPY + SCS). Expect minutes. Cached reruns: seconds
+  plus the fit (fitted models are not cached; `Total` needs no fit).
+- `county_loads(sectors=True)` fits two models (residential, commercial),
+  three with `total="direct"`; without sectors, one.
 - Reading `wecc_estimate` takes a few seconds even for all 407 counties
   (65 MB compressed; about 150 MB as a frame, about 400 MB peak while
   parsing).
 - `Calibrate(search=True)` solves 88 (two regions) programs per month; for
   all 407 WECC counties a month takes minutes.
-- Sampling cost scales with `samples`.
 - A full WECC sweep (≈400 counties) takes hours. Run it in the background,
   log progress, write per-county outputs so it can resume.
-- `Total.cache` holds fitted estimators; disable or clear it in sweeps.
 - Parallelism: separate processes per state are safe if they share no
   county; the cache layout is per county.
 

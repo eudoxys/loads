@@ -19,9 +19,9 @@ def _(mo):
     
         county_cf.csv --> cf
         eia.HS861m --> state_mwh
-        loads.Total -->|Σ
+        loads.Estimator -->|Σ
     months| model_mwh
-        loads.Total --> mw
+        loads.Estimator --> mw
 
         cf --> mul1
         state_mwh --> mul1
@@ -33,7 +33,7 @@ def _(mo):
 
 
 @app.cell
-def _(Total, pd):
+def _(pd):
     # Setup and configuration
     start = "2018-01-01 00:00:00+0000"
     stop = "2022-12-31 23:59:59+0000"
@@ -41,8 +41,6 @@ def _(Total, pd):
     # pd.options.display.max_rows = None 
     pd.options.display.max_columns = None
     pd.options.display.width = None
-
-    Total.cache = None # disables estimator caching (saves memory)
 
     date_range = pd.date_range(start,stop,freq="1h")
     return date_range, refresh, start, stop
@@ -93,7 +91,7 @@ def _(HS861m, date_range, dt, mo, pd, wecc_counties):
 @app.cell
 def _(
     Cache,
-    Total,
+    Estimator,
     date_range,
     mo,
     pd,
@@ -113,12 +111,12 @@ def _(
             _bar.update(subtitle=_county_st)
             messages = []
     
-            cache = Cache(package="loads",version=0,path=[_state,_county,f"Total_{start[:4]}-{stop[:4]}.csv"])
+            cache = Cache(package="loads",version=1,path=[_state,_county,f"Estimate_{start[:4]}-{stop[:4]}.csv"])
             if cache.exists() and not refresh:
                 load = pd.read_csv(cache.pathname,index_col=[0],parse_dates=[0])
             else:
                 try:
-                    load = Total(_state,_county,date_range=date_range,refresh=refresh,samples=0).round(3)
+                    load = Estimator(_county_st,sorted(set(date_range.year))).reindex(date_range).round(3)
                     load.to_csv(cache.pathname,index=True)
                 except Exception as err:
                     messages.append(str(err))
@@ -185,11 +183,11 @@ def _():
     import pandas as pd
 
     from fips import Counties
-    from loads.total import Total
+    from loads.estimator import Estimator
     from eia import HS861m
     from cache import Cache
 
-    return Cache, Counties, HS861m, Total, dt, mo, pd
+    return Cache, Counties, Estimator, HS861m, dt, mo, pd
 
 
 if __name__ == "__main__":

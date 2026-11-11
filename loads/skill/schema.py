@@ -33,34 +33,45 @@ END_USE_CATEGORIES = ("baseload", "cooling", "heating")
 ELEC_ENDUSE_COLUMNS = tuple(f"elec_{c}_MW" for c in END_USE_CATEGORIES)
 NONELEC_ENDUSE_COLUMNS = tuple(f"nonelec_{c}_MW" for c in END_USE_CATEGORIES)
 
-# --- total model (`Total`) ----------------------------------------------------
+# --- sector sum (`Total`) -----------------------------------------------------
 
 SECTORS = ("residential", "commercial", "industrial", "agricultural", "transportation")
 
 SECTOR_COLUMNS = tuple(f"elec_{s}_MW" for s in SECTORS)
 
+TOTAL_COLUMNS = SECTOR_COLUMNS + ("elec_total_MW",)
+"""Columns of `loads.Total` (in order): the sectors and their sum, nothing else."""
+
 WEATHER_DRIVEN_SECTORS = ("residential", "commercial")
 """Sectors whose shape follows weather. Industrial and agricultural are flat
 (constant) load shapes; transportation is always zero."""
 
-PREDICTABLE_TARGETS = {
-    # Y column -> default exogenous X columns (`loads.Total.EXOGENOUS_VARIABLES`)
-    "elec_residential_MW": ("temperature_degF", "humidity_pc"),
-    "elec_commercial_MW": ("temperature_degF", "humidity_pc"),
-    "elec_total_MW": ("temperature_degF", "humidity_pc"),
-    "elec_dg_MW": ("direct_Wpms", "diffuse_Wpms"),
-    "nonelec_residential_MW": ("temperature_degF", "humidity_pc"),
-    "nonelec_commercial_MW": ("temperature_degF", "humidity_pc"),
-    "nonelec_total_MW": ("temperature_degF", "humidity_pc"),
-}
-"""Columns `Total` can predict for an arbitrary year without passing `X`."""
-
 TRAINING_YEAR = 2018
-"""RESstock/COMstock reference year; `Total` trains on it."""
+"""RESstock/COMstock reference year; `Total` reports it and `Estimator`
+trains on it."""
 
-TSGAM_LAGS = (-3, -2, -1, 0, 1, 2, 3)
-"""Exogenous lags of `Total.TSGAM_CONFIG`; `Total` blanks max(-lag) leading
-and max(lag) trailing rows of every predicted/sampled series."""
+# --- prediction (`Estimator`) ---------------------------------------------------
+
+_ALL = ("residential", "commercial", "industrial", "agricultural")
+
+PREDICTABLE_TARGETS = {
+    # column -> (`EstimatorConfig.sectors`, `EstimatorConfig.enduse`)
+    "elec_total_MW": (_ALL, "elec_total_MW"),
+    "elec_residential_MW": (("residential",), "elec_total_MW"),
+    "elec_commercial_MW": (("commercial",), "elec_total_MW"),
+    "nonelec_total_MW": (_ALL, "nonelec_total_MW"),
+    "nonelec_residential_MW": (("residential",), "nonelec_total_MW"),
+    "nonelec_commercial_MW": (("commercial",), "nonelec_total_MW"),
+}
+"""Columns `loads.skill.series` estimates, and the `Estimator` configuration
+that produces each."""
+
+ESTIMATOR_WEATHER = ("temperature_degF", "humidity_pc")
+"""Default `EstimatorConfig.weather`."""
+
+ESTIMATOR_LAGS = (-3, -2, -1, 0)
+"""Union of the lags of `loads.estimator.WEATHER_CONFIG` for
+`ESTIMATOR_WEATHER`; an estimate's first max(-lag) hours are NaN."""
 
 # --- building types -----------------------------------------------------------
 

@@ -1,6 +1,6 @@
 """Hourly UTC time axes in the form `loads` expects.
 
-`Total(..., date_range=...)` requires a `pd.DatetimeIndex`; it does not take a
+`DG(..., date_range=...)` requires a `pd.DatetimeIndex`; it does not take a
 year. All `loads` output is indexed by tz-aware UTC `timestamp`, hourly, with
 8760 rows per normal year and 8784 per leap year.
 """
@@ -18,7 +18,7 @@ def hourly_range(
     start: str | pd.Timestamp | None = None,
     end: str | pd.Timestamp | None = None,
 ) -> pd.DatetimeIndex:
-    """Build the hourly UTC index `Total` needs.
+    """Build the hourly UTC index `DG` and the `loads.skill` helpers need.
 
     `hourly_range(2020)` -> 8784 hours of 2020.
     `hourly_range([2019, 2021])` -> 2019 and 2021 only (no 2020 gap filler).

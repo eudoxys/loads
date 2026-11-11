@@ -1,6 +1,6 @@
 """Energy tests with a stubbed total load model
 
-These tests need no data downloads and run in seconds. `loads.total.Total`
+These tests need no data downloads and run in seconds. `loads.estimator.Estimator`
 is replaced by a stub that returns a constant load per county and fails for
 selected counties, so the tests check how `loads.energy.Energy` assembles
 county columns, in particular that a failed county does not inherit the
@@ -19,28 +19,29 @@ LOADS = {"Pima":3.0,"Pinal":2.0,"Santa Cruz":1.0,"Yavapai":4.0}
 """Constant county loads in MW returned by the stub"""
 
 
-class _StubTotal(pd.DataFrame):
-    """Stand-in for `loads.total.Total` returning a constant load"""
+class _StubEstimator(pd.DataFrame):
+    """Stand-in for `loads.estimator.Estimator` returning a constant load"""
 
-    EXOGENOUS_VARIABLES = {"elec_total_MW":["temperature_degF"]}
     FAIL = set()
 
-    def __init__(self,state,county,date_range,samples): # pylint: disable=unused-argument
+    def __init__(self,county_st,years):
+        county = " ".join(county_st.split()[:-1])
         if county in self.FAIL:
-            raise ValueError(f"stub failure for {county} {state}")
+            raise ValueError(f"stub failure for {county_st}")
+        index = pd.date_range(f"{min(years)}-01-01",f"{max(years)}-12-31 23:00",freq="1h",tz="UTC")
         super().__init__({
             "temperature_degF":70.0,
             "elec_total_MW":LOADS[county],
-            },index=date_range)
+            },index=index)
 
 
 @pytest.fixture
 def stub(monkeypatch,tmp_path):
     """Install the stub and keep `Energy` cache files in a temporary folder"""
-    monkeypatch.setattr(energy_module,"Total",_StubTotal)
+    monkeypatch.setattr(energy_module,"Estimator",_StubEstimator)
     monkeypatch.setattr(Cache,"CACHEDIR",str(tmp_path))
-    _StubTotal.FAIL = set()
-    return _StubTotal
+    _StubEstimator.FAIL = set()
+    return _StubEstimator
 
 
 def test_energy_all_counties(stub): # pylint: disable=unused-argument

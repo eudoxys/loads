@@ -12,8 +12,8 @@ The `loads.skill` subpackage is two things:
              ~/.claude/skills/loads
 
   2. **Helpers** that make the safe path the easy one: place-name resolution
-     (`resolve`), explicit `loads.total.Total` modes (`series`,
-     `county_loads`, `training`), contract checks (`validate`), summaries,
+     (`resolve`), front ends to `loads.Total` and `loads.Estimator`
+     (`training`, `series`, `county_loads`), contract checks (`validate`), summaries,
      proportional and convex calibration (`scale_monthly`,
      `shape_to_targets`), county to node allocation (`allocate`), readers for
      the precomputed WECC estimates (`wecc_estimate`, `wecc_dg`,
@@ -27,7 +27,7 @@ Example
 
     ls.configure()                                  # cache folder + NSRDB credential check
     c = ls.resolve("Alameda County, CA")
-    df = ls.county_loads(c,2020,sectors=True)       # sectors, total, DG, net (MW, hourly UTC)
+    df = ls.county_loads(c,2020,sectors=True,dg=True)  # sectors, total, DG, net (MW, hourly UTC)
     ls.validate(df,require_full_years=True).raise_if_failed()
     ls.summary(df,"elec_net_MW")                    # energy, peak, load factor
     ls.to_csv(df,"out/alameda_2020.csv.gz")         # + .meta.json provenance

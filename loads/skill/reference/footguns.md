@@ -6,66 +6,64 @@ the workaround. Items marked **[tested]** are reproduced offline in
 `loads` changed: update this file in the same change, do not just delete the
 test.
 
-Tracking: #26 (items 1, 3), #29 (16), #32 (7, 9), #33 (17), #15
-(22), #12 (DG sign, lag trimming), all at
+Tracking: #26 (items 1, 3), #29 (16), #33 (17), #15 (22), #12 (DG
+sign), all at
 https://github.com/eudoxys/loads/issues. #27 and #28 described the
 calibration API that the `Calibrate` rewrite (#20) replaced, and #30
-described the `DG` file reader that #43 replaced; #31 and #44 are fixed. Check whether an issue is closed before relying on a workaround
+described the `DG` file reader that #43 replaced; #31 and #44 are fixed.
+`DESIGN.md` decision 20 (`Total` only sums the sectors; `Estimator` is the
+prediction API) removed the `Total` modes behind the old items 2, 6, 7, 9
+and 25 and #32 with them; their numbers are kept so references stay valid. Check whether an issue is closed before relying on a workaround
 below.
 
 Do not silently "fix" these in `loads` from inside a workflow. Work around
 them and mention them to the user when they affect results; offer to check
 the tracking issues above or open a new one.
 
-## Modes and arguments
+## Front ends and arguments
 
 1. **`Total` has no `year`.** `Total("CA","Alameda",2020)`, a pattern
-   older docs and notebooks used, raises `TypeError` **[tested]**. Pass
-   `date_range=` and `samples=`. → `ls.series` / `county_loads`.
+   older docs and notebooks used, raises `TypeError` **[tested]**. `Total`
+   is always 2018. → `Estimator("Alameda CA", [2020])`, `ls.series` /
+   `county_loads`.
 
-2. **Default `samples=None` returns 2018 training data and ignores
-   `date_range`.** Asking for 2021 without `samples` silently gives 2018.
-   → always pass `samples`, or use `loads.skill` modes and check
-   `df.index.year`.
+2. *(Removed by decision 20: `Total` no longer has a `samples` argument or
+   a `date_range` to ignore.)* What remains: `Total` returns 2018 whatever
+   you meant. → check `df.index.year`.
 
 3. **CLI `-Y` is dropped for totals.** `Total.makeargs` keeps only
    annotated `__init__` args; `year` is not one **[tested]**. `loads print
    -S CA -C Alameda -Y 2020` prints 2018 (the CLI docs now say so). →
    `python3 -m loads.skill county`.
 
-4. **Prediction frames hold one target.** `samples>=0` returns `X` + `Y`
-   only (plus the EIA DG and net with `dg=True`). Sector columns and the
-   model DG need separate calls. → `county_loads`.
+4. **`Total` and estimates hold no DG, no net, and estimates no sectors.**
+   `Total` has the sectors and their sum only **[tested]**; `Estimator`
+   returns weather + one `enduse`. Sector columns need one `Estimator` per
+   sector, and DG/net need `DG.merge`. → `county_loads(sectors=True,
+   dg=True)`.
 
-5. **Industrial/agricultural cannot be predicted by default.** They are
-   absent from `EXOGENOUS_VARIABLES` (`KeyError` without `X`), and are flat
-   anyway. → copy the 2018 level (`county_loads(sectors=True)` does).
+5. **Industrial/agricultural cannot be estimated meaningfully.** They are
+   flat annual averages with no weather response. → copy the 2018 level
+   (`county_loads(sectors=True)` does; `series` refuses them).
 
-6. **Percentile ≠ realization.** `samples=n, percentile=p` gives the
-   per-hour p-th percentile; its daily energy/peak are not those of any
-   sample and overstate coincident peaks. → `mode="samples"` and compute
-   statistics per sample.
+6. *(Removed by decision 20: there is no percentile mode.)*
 
-7. **`samples=1` is random.** Upstream `aggregate()` uses it, so nodal
-   aggregates differ run to run (TSGAM sampling is not seeded in
-   `Total.TSGAM_CONFIG`: `random_state=None`). → use predictions for
-   expected values; sample deliberately and record that you did.
+7. *(Removed by decision 20: there is no AR sampling, and
+   `loads.aggregate.aggregate` now sums deterministic `Estimator`
+   estimates.)*
 
-8. **Lag-window NaN.** First/last 3 hours of every prediction are NaN.
-   Downstream tools that reject NaN (players, solvers) fail or hold stale
-   values. → `edges="fill"`/`"pad"`; `validate` reports edge NaN.
+8. **Lag-window NaN.** The first 3 hours of the first estimated year are
+   NaN (weather lags, `schema.ESTIMATOR_LAGS`). Downstream tools that
+   reject NaN (players, solvers) fail or hold stale values. →
+   `edges="fill"`/`"pad"`; `validate` reports edge NaN.
 
-9. **Non-contiguous date ranges are bridged.** `Total` treats the whole
-   `date_range` as one series; `[2019, 2021]` is fitted as if Dec 31 2019
-   were followed by Jan 1 2021 (AR and lags cross the gap). →
-   `ls.series` predicts each contiguous block separately.
+9. *(Removed by decision 20: `Estimator` estimates whole years and fills
+   the gaps between requested years itself, so nothing is bridged.)*
 
-10. **`Estimator` vs `Total`.** Different TSGAM configs (Estimator: log
-    space, no AR, 3/3/8 harmonics, OSQP, no outlier model; Total: linear, AR 1–9,
-    4/4/12 harmonics), different results, different location argument
-    (`"Alameda CA"`). `Estimator` cannot model DG or net (log of ≤ 0).
-    `wecc_estimate.csv.gz` is `Estimator`-based. → pick one per study and
-    record it.
+10. **`Estimator` is log-space.** It fits log load (`log=True`), so it
+    cannot model zero or negative columns (DG, net). `wecc_estimate.csv.gz`
+    is `Estimator`-based with per-medoid harmonics, so its shapes differ
+    from a default `Estimator` run. → state the configuration you used.
 
 ## Calibration and energy
 
@@ -89,8 +87,8 @@ the tracking issues above or open a new one.
 
 13. **`Calibrate` needs a peak region and clean input.** `peak={}` raises
     `KeyError` while building the region table **[tested]**, so
-    energy-only shaping is not available; NaN (e.g. `Total`'s lag-window
-    edges) raises `CalibrationError` **[tested]**; columns without a
+    energy-only shaping is not available; NaN (e.g. an `Estimator`
+    estimate's lag-window edges) raises `CalibrationError` **[tested]**; columns without a
     `"County ST"` name need `states=`. → `shape_to_targets` checks all three
     up front; for energy only, use `scale_monthly`.
 
@@ -101,11 +99,11 @@ the tracking issues above or open a new one.
     `Calibrate(load, energy=..., peak=..., dg=...)` or the `ls.scale_*`
     helpers; `ls.fit_energy_peak` reproduces `fit_load`'s energy + peak fit.
 
-15. **Nothing in `Total` is calibrated.** Neither the 2018 training frame
-    nor predictions are adjusted to EIA sales; scaling only enters through
-    Census housing units and OpenEI floor area. Only the DG can be
-    EIA-based (`dg=True`), and then net load mixes uncalibrated load with
-    EIA-matched DG. → calibrate explicitly
+15. **Nothing in `Total` or `Estimator` is calibrated.** Neither the 2018
+    sector loads nor estimates are adjusted to EIA sales; scaling only
+    enters through Census housing units and OpenEI floor area. Only the DG
+    is EIA-based (`loads.dgen.DG`), so net load mixes uncalibrated load
+    with EIA-matched DG. → calibrate explicitly
     (above), or for WECC 2018–2022 use `wecc_estimate`, whose monthly
     energy matches EIA-861M retail allocations plus rooftop PV; state which
     figures you matched.
@@ -113,7 +111,7 @@ the tracking issues above or open a new one.
 16. **`Energy` needs a year pair.** An int `year` fails at `min(year)`
     **[tested]**. Its cache key ignores the county list (second call for a
     different county in the same state/period returns the first result).
-    A county whose `Total` fails is omitted with a warning, so check the
+    A county whose `Estimator` fails is omitted with a warning, so check the
     columns you got. → `Energy(state, counties, [y0, y1], refresh=True)` or
     `ls.energy(frame, "MS")`.
 
@@ -127,21 +125,18 @@ the tracking issues above or open a new one.
 18. **Two location formats.** `Total`/sector classes: `state=, county=`.
     `Estimator`, `Cluster`, CSV maps: `"County ST"`.
 
-19. **Two DGs, and `Total(dg=True)` changes which one you get.** By
-    default `elec_dg_MW` is the ResStock/ComStock rooftop PV (training) or
-    its TSGAM prediction; `dg=True` (#43) replaces it with `loads.dgen.DG`,
-    EIA-861M small-scale solar allocated by county energy share, which is
-    several times larger in California. `DG` gives **zero with only a
-    warning** for counties outside the 13 WECC states **[tested]**, needs
-    EIA access, and NaN for months EIA has not published. →
-    `county_loads(dg_source="model"|"eia")`, and report which DG you used;
-    don't mix them across counties or years. (The earlier footgun about a
-    cwd-relative, positive-valued `DG` file reader is gone with #43.)
+19. **One DG, EIA-based, and only where EIA shares exist.**
+    `loads.dgen.DG` (EIA-861M small-scale solar allocated by county energy
+    share) is the only DG: `Total` and `Estimator` have none, and the
+    ResStock/ComStock rooftop PV is no longer reported by `Total`. `DG`
+    gives **zero with only a warning** for counties outside the 13 WECC
+    states **[tested]**, needs EIA access, and NaN for months EIA has not
+    published. → `county_loads(dg=True)` or `DG.merge`, and report it.
 
-19b. **Load growth (#19) is not in `Total`.** `Units` (1%/yr after
+19b. **Load growth (#19) is not in estimates.** `Units` (1%/yr after
     2024; before 2020 only with `backcast=True`) and `Floorarea`
     (1.75%/yr from 2019) now extrapolate, but `Residential` and `Commercial`
-    still request their 2018/2019 bases, so a `Total` prediction for 2030 has
+    still request their 2018/2019 bases, so an `Estimator` estimate for 2030 has
     2020 housing units and 2019 floor area **[tested]**. → apply growth to
     the predicted sector series yourself and state the rate.
 
@@ -156,7 +151,7 @@ the tracking issues above or open a new one.
     with suspiciously low commercial load may lack ComStock coverage. →
     enable DEBUG logging for the `loads` modules when results look thin.
 
-22. **`aggregate()` is WECC-only, nearest-node only, sample-based**, caches
+22. **`aggregate()` is WECC-only, nearest-node only**, caches
     by year+column (changing targets needs `refresh=True`), and mishandles
     a list of years. → `nearest_nodes` + `allocate`, or `node_estimate`
     for WECC240.
@@ -171,9 +166,8 @@ the tracking issues above or open a new one.
     overwrite the global `Cache.CACHEDIR` when their own `CACHEDIR` is set.
     → set it once with `configure(cachedir=...)`.
 
-25. **`Total.cache` keeps every fitted estimator in memory.** Sweeps over
-    hundreds of counties grow without bound. → `configure(estimator_cache=
-    False)` or `batch(clear_estimator_cache=True)`.
+25. *(Removed by decision 20: the `Total.cache` of fitted estimators is
+    gone; `Estimator` keeps none.)*
 
 26. **Python 3.12 only** (`requires-python == 3.12.*`).
 
@@ -186,7 +180,7 @@ the tracking issues above or open a new one.
 28. **What a pip install leaves out.** The files the code reads are
     package data: `wecc/county_mwh.csv`, `county_dg.csv.gz`,
     `county_dg_scaled.csv.gz`, `wecc_estimate.csv.gz` and
-    `node_estimate.csv.gz`, so `DG`, `Total(dg=True)` and every `ls.wecc_*`
+    `node_estimate.csv.gz`, so `DG`, `DG.merge` and every `ls.wecc_*`
     reader work from any install (about 126 MB). Repository-only: the build
     inputs and by-products in `loads/wecc/` (`dgen.csv.gz`,
     `county_dg.csv`, `county_cf.csv`, `node_estimate_cf.csv`,

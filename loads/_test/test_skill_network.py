@@ -2,7 +2,7 @@
 
 Slow on first run: they download ResStock/ComStock, Census, OpenEI, NLR and
 NSRDB data (including the national commercial floor-area and industrial and
-agricultural inventories) and fit four TSGAM models. To keep CI cheap they
+agricultural inventories) and fit three `Estimator` TSGAM models. To keep CI cheap they
 only run when `LOADS_TEST_SKILL=1` is set:
 
     LOADS_TEST_SKILL=1 pytest loads/_test/test_skill_network.py

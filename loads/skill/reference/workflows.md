@@ -32,8 +32,8 @@ monthly = ls.energy(net.rename(columns=lambda c: f"{c}_MW"), "MS")
   `wecc_dg(scaled=True)` is the EIA-small-scale-solar-scaled DG (larger,
   e.g. ×3.2 for California in 2020); use it when the question is about
   behind-the-meter solar itself, and say which you used.
-- No sectors, no weather, no uncertainty, one hourly realization, 2018–2022
-  only. Use recipes 2–6 when the question needs those.
+- No sectors, no weather, one hourly realization, 2018–2022 only. Use
+  recipes 2–5 when the question needs those.
 - Nodes: `ls.node_estimate(when=2021)` gives the WECC240 load nodes
   (uncalibrated; see footguns.md #30).
 - Shell: `python3 -m loads.skill wecc --years 2021 -o wecc_2021.csv`
@@ -46,7 +46,7 @@ c = ls.resolve("Maricopa County, AZ")
 if c.ambiguous:
     print(f"warning: {c.county_st} is ambiguous in fips; loads cannot disambiguate")
 
-df = ls.county_loads(c, [2019, 2020, 2021], sectors=True)   # total = Σ sectors
+df = ls.county_loads(c, [2019, 2020, 2021], sectors=True, dg=True)  # total = Σ sectors
 ls.validate(df, require_full_years=True).raise_if_failed()
 
 print(ls.summary(df, "elec_total_MW"))
@@ -57,23 +57,19 @@ ls.to_csv(df, "out/maricopa_2019_2021.csv.gz")
 ```
 
 Choices to state in the write-up: `total="sum"` vs `"direct"`, `edges`,
-the DG source, and that 2018 rows (if any) are training data.
+that DG is EIA-based (`loads.dgen.DG`), and that 2018 rows (if any) are the
+2018 sector loads (`Total`).
 
-Only the total (no sectors) is cheaper: `county_loads(c, years)` fits two
-models (total, DG) instead of four.
+Only the total (no sectors) is cheaper: `county_loads(c, years)` fits one
+model instead of two.
 
-DG: by default `elec_dg_MW` is the TSGAM prediction of the building-stock
-rooftop PV. For DG that matches EIA's reported small-scale solar each
-month (WECC states only; needs EIA access and NSRDB), use
+DG: `Total` and `Estimator` have none. `dg=True` takes `elec_dg_MW` from
+`loads.dgen.DG` (what `DG.merge` adds), which matches EIA's reported
+small-scale solar each month (WECC states only; needs EIA access and
+NSRDB), and adds `elec_net_MW`. Without `dg=True` there is no DG or net
+column.
 
-```python
-df = ls.county_loads(c, [2019, 2020, 2021], sectors=True, dg_source="eia")
-```
-
-which takes `elec_dg_MW` from `loads.dgen.DG` (what `Total(dg=True)`
-merges) and fits one model fewer.
-
-Load growth: predictions keep 2020 housing units and 2019 commercial floor
+Load growth: estimates keep 2020 housing units and 2019 commercial floor
 area in every year. To show growth, scale the predicted sector series, e.g.
 
 ```python
@@ -89,7 +85,7 @@ and recompute the total and net; record the rates in the provenance
 
 ```python
 places = ls.counties(state="NV")            # or system="WECC", region="CAISO"
-res = ls.batch(places, ls.county_loads, 2020,
+res = ls.batch(places, ls.county_loads, 2020, dg=True,
                progress=lambda name, n, k: print(f"{n}/{k} {name}", flush=True))
 print(f"{len(res.frames)} ok, {len(res.errors)} failed")
 for name, err in res.errors.items():
@@ -100,8 +96,8 @@ state_total = panel.sum(axis=1, min_count=1)
 cp = ls.coincident_peak(panel)              # contribution at the state peak
 ```
 
-- `batch` collects failures instead of aborting, and clears fitted models
-  between counties (`clear_estimator_cache=True`) to bound memory.
+- `batch` collects failures instead of aborting (`Estimator` keeps no
+  fitted models, so memory stays bounded).
 - Make long sweeps resumable: write each county to its own file and skip
   files that already exist and validate. `loads`' own cache makes repeated
   fetches fast, but your assembled frames are not cached.
@@ -239,17 +235,18 @@ shaped_net = out.net                                 # L - D_output, MW
 
 ## 6. Uncertainty and peaks
 
+`loads` has no sampling (`DESIGN.md` decision 20 removed the `Total` AR
+sampler). `Estimator` gives the expected load given weather, which is
+smoother than real load, so its peaks are biased low. For a sense of
+weather-driven spread, estimate several weather years and compare:
+
 ```python
-ens = ls.series(c, 2020, mode="samples", samples=50)
-S = ens.filter(like="sample_")
-peak_dist = S.max()                       # peak of each realization (MW)
-energy_dist = S.sum()                     # annual MWh of each realization
-band = S.quantile([0.1, 0.5, 0.9], axis=1).T   # hourly P10/P50/P90 (not trajectories)
-print(peak_dist.describe(), energy_dist.describe())
+years = ls.series(c, [2018, 2019, 2020, 2021, 2022], keep_actuals=False)
+by_year = years["elec_total_MW"].groupby(years.index.year)
+print(by_year.max(), by_year.sum())       # peak MW and energy MWh per weather year
 ```
 
-`mode="percentile"` is cheaper but only gives a per-hour envelope; never
-report its maximum as "the P95 peak".
+Say that this is weather-year spread, not model uncertainty.
 
 ## 7. Measure model skill for a county
 
@@ -275,10 +272,9 @@ Report the fold mean and spread rather than a single holdout. For a quick
 check, `sectors=["residential"]` in the config skips the national
 commercial, industrial and agricultural downloads.
 
-`Estimator` uses its own configuration (log space, no AR). For the `Total`
-model, use `Total.test(state, county, holdout_index, X=[...], Y=...)` with
-a holdout index such as the last week of each month (the upstream
-convention: `idx[idx.month != (idx + pd.Timedelta(days=7)).month]`).
+A callable `holdout` takes the training frame and returns the held-out
+index, e.g. the last week of each month:
+`EstimatorConfig(holdout=lambda f: f.index[f.index.month != (f.index + pd.Timedelta(days=7)).month])`.
 
 ### Compare with measured load (`Normalize`)
 
@@ -351,7 +347,7 @@ state the assumed heat-pump COP explicitly.
 ## 10. Report
 
 When results go to a person, include: county list (and any ambiguous or
-failed ones), years, mode (`prediction`/`sample`/`percentile`/training),
-total convention (`direct`/`sum`), DG source (model or EIA), any growth
+failed ones), years, front end (`Estimator` estimate or 2018 `Total`),
+total convention (`direct`/`sum`), whether EIA DG was added, any growth
 applied, edge handling, calibration targets, and the provenance sidecar. Quote the scope limits from
 [methodology.md](methodology.md#not-promised) that matter for the question.

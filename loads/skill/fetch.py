@@ -1,9 +1,12 @@
-"""Safe front ends to `loads.Total` for use inside larger workflows.
+"""Safe front ends to `loads.Total` and `loads.Estimator` for larger workflows.
 
-`loads.Total` has four modes selected by `samples`, and their outputs differ in
-shape. Agents keep tripping on that, so these wrappers make the mode explicit,
-build the time axis, deal with the lag-trimmed edges, and assemble the
-quantities downstream tools usually want (total, DG, net, sectors).
+`loads.Total` returns the 2018 sector loads and their sum, nothing more.
+`loads.Estimator` is the prediction API: it takes a `"County ST"` string and
+a list of years, picks the predicted column through an `EstimatorConfig`,
+and leaves the first hours of the first year NaN. These wrappers resolve the
+place, build the configuration, select the requested hours, deal with the
+NaN edge, and assemble the quantities downstream tools usually want
+(total, DG, net, sectors).
 
 Nothing here changes the model; every number still comes from `loads`.
 """
@@ -25,7 +28,7 @@ from .timeaxis import hourly_range
 
 _log = logging.getLogger(__name__)
 
-Mode = Literal["training", "predict", "sample", "percentile", "samples"]
+Mode = Literal["training", "predict"]
 Edges = Literal["fill", "pad", "nan"]
 
 DEFAULT_CACHEDIR = os.path.join(os.path.expanduser("~"), ".cache", "eudoxys")
@@ -38,7 +41,7 @@ def check_credentials(path: str = NSRDB_CREDENTIALS) -> bool:
     """True when the NSRDB credentials file `weather` needs is present and
     parses as `{"email": "api_key"}`.
 
-    `weather.Weather(state, county, year)` (used by every `Total` call)
+    `weather.Weather(state, county, year)` (used by every `Estimator` call)
     downloads NSRDB data. With no credentials file it tries to open a sign-up
     page in a browser, which hangs or fails in headless agents. Check first.
     """
@@ -54,7 +57,6 @@ def configure(
     cachedir: str | None = None,
     *,
     require_credentials: bool = True,
-    estimator_cache: bool = True,
 ) -> dict[str, Any]:
     """Prepare the process for `loads` calls. Call once at workflow start.
 
@@ -62,18 +64,11 @@ def configure(
       or `~/.cache/eudoxys`). Upstream defaults to a folder inside
       site-packages, which is lost on reinstall and often read-only.
     - Raises `RuntimeError` early if NSRDB credentials are missing.
-    - `estimator_cache=False` sets `Total.cache = None` so fitted TSGAM models
-      are not kept in memory (do this for many-county sweeps).
     """
     from cache import Cache
-    from loads import Total
 
     cachedir = cachedir or os.environ.get("LOADS_CACHEDIR") or DEFAULT_CACHEDIR
     Cache.cachedir(cachedir)
-    if not estimator_cache:
-        Total.cache = None
-    elif Total.cache is None:
-        Total.cache = {}
     ok = check_credentials()
     if require_credentials and not ok:
         raise RuntimeError(
@@ -81,7 +76,7 @@ def configure(
             "https://developer.nlr.gov/signup/ and write {\"<email>\": \"<api_key>\"} "
             "to that file (the user must do this; never invent a key)."
         )
-    return {"cachedir": cachedir, "nsrdb_credentials": ok, "estimator_cache": Total.cache is not None}
+    return {"cachedir": cachedir, "nsrdb_credentials": ok}
 
 
 # --- results --------------------------------------------------------------------
@@ -95,8 +90,6 @@ class Provenance:
     columns: list[str]
     start: str | None = None
     end: str | None = None
-    samples: int | None = None
-    percentile: float | None = None
     edges: str | None = None
     edge_hours_filled: int = 0
     notes: list[str] = field(default_factory=list)
@@ -127,22 +120,14 @@ def _stamp(frame: pd.DataFrame, prov: Provenance) -> pd.DataFrame:
     return frame
 
 
-def _contiguous_runs(index: pd.DatetimeIndex) -> list[pd.DatetimeIndex]:
-    if len(index) < 2:
-        return [index]
-    breaks = [i + 1 for i, d in enumerate(index[1:] - index[:-1]) if d != pd.Timedelta(hours=1)]
-    bounds = [0] + breaks + [len(index)]
-    return [index[a:b] for a, b in zip(bounds[:-1], bounds[1:])]
-
-
 # --- single-series access --------------------------------------------------------
 
 def training(place, refresh: bool = False) -> pd.DataFrame:
-    """The 2018 reference frame `Total` trains on (`samples=None`).
+    """The 2018 sector loads `loads.Total` returns.
 
-    Columns: weather, `elec_{sector}_MW` for every sector, `elec_dg_MW` (<=0),
-    `elec_total_MW`, `elec_net_MW`. 8760 rows. This is the closest thing to
-    "actual" county load `loads` has; it ignores any date range.
+    Columns: `elec_{sector}_MW` for every sector and `elec_total_MW`, their
+    sum. 8760 rows, no weather, no DG, no net load. This is the closest
+    thing to "actual" county load `loads` has; it is always 2018.
     """
     from loads import Total
 
@@ -161,88 +146,63 @@ def series(
     column: str = "elec_total_MW",
     *,
     mode: Mode = "predict",
-    samples: int = 100,
-    percentile: float = 50.0,
     edges: Edges = "fill",
     X: Iterable[str] | None = None,
+    keep_actuals: bool = True,
     refresh: bool = False,
 ) -> pd.DataFrame:
-    """One `Total` target for an arbitrary period.
+    """One `Estimator` target for an arbitrary period.
 
     `when` is a year, list of years, or a `DatetimeIndex` (see
-    `timeaxis.hourly_range`). Modes map to `Total(samples=...)`:
+    `timeaxis.hourly_range`). `mode="predict"` returns the `X` weather
+    columns (default `schema.ESTIMATOR_WEATHER`) and `column`;
+    `mode="training"` returns `training()`. `column` must be one of
+    `schema.PREDICTABLE_TARGETS`, which maps it to the `Estimator`
+    `sectors` and `enduse`. With `keep_actuals` (the `Estimator` default)
+    2018 hours hold the 2018 sector loads instead of the estimate.
 
-    | mode         | `samples` | output                                   |
-    |--------------|-----------|------------------------------------------|
-    | `predict`    | 0         | X columns + `column` (deterministic)     |
-    | `sample`     | 1         | X columns + `column` (one AR draw)       |
-    | `percentile` | n>1       | X columns + `column` at `percentile`     |
-    | `samples`    | n>1       | X columns + `sample_0..sample_{n-1}`     |
-
-    `Total` blanks the first 3 and last 3 hours (exogenous lag window).
-    `edges="fill"` copies the nearest valid hour into them, `"pad"` widens
-    the request by the lag window and trims (needs weather for the adjacent
-    hours, i.e. possibly another NSRDB year), `"nan"` leaves them.
+    `Estimator` leaves the first `max(-lag)` hours of the first estimated
+    year NaN (weather lags, `schema.ESTIMATOR_LAGS`). `edges="fill"` copies
+    the first valid hour into them, `"pad"` also estimates the previous year
+    and trims it (needs that year's NSRDB weather), `"nan"` leaves them.
+    `refresh` only applies to `mode="training"`.
     """
-    from loads import Total
+    from loads.estimator import Estimator, EstimatorConfig
 
     c = place if isinstance(place, County) else resolve(place)
     if mode == "training":
         return training(c, refresh=refresh)
+    if mode != "predict":
+        raise ValueError(f"mode must be 'predict' or 'training', not {mode!r}")
     index = when if isinstance(when, pd.DatetimeIndex) else hourly_range(when)
-    if column not in schema.PREDICTABLE_TARGETS and X is None:
+    if column not in schema.PREDICTABLE_TARGETS:
         raise ValueError(
-            f"{column!r} has no default exogenous variables in Total; pass X=..., "
-            f"or use one of {sorted(schema.PREDICTABLE_TARGETS)}. Industrial and "
-            "agricultural loads are flat: take them from training()."
+            f"{column!r} cannot be estimated; use one of {sorted(schema.PREDICTABLE_TARGETS)}. "
+            "Industrial and agricultural loads are flat: take them from training(). "
+            "DG is not estimated: use loads.dgen.DG (county_loads(dg=True))."
         )
-    runs = _contiguous_runs(index)
-    if len(runs) > 1:
-        # Total treats its date_range as one series (lags, AR); a gap would be
-        # bridged as if adjacent. Predict each contiguous block separately.
-        parts = [series(c, r, column, mode=mode, samples=samples, percentile=percentile,
-                        edges=edges, X=X, refresh=refresh) for r in runs]
-        out = pd.concat(parts)
-        prov = Provenance(**parts[0].attrs["loadskill"])
-        prov.start, prov.end = str(index[0]), str(index[-1])
-        prov.edge_hours_filled = sum(p_.attrs["loadskill"]["edge_hours_filled"] for p_ in parts)
-        prov.notes.append(f"{len(runs)} contiguous blocks predicted separately")
-        return _stamp(out, prov)
-    head = max([0] + [-lag for lag in schema.TSGAM_LAGS])
-    tail = max([0] + list(schema.TSGAM_LAGS))
-    request = index
-    if edges == "pad":
-        request = pd.date_range(index[0] - pd.Timedelta(hours=head),
-                                index[-1] + pd.Timedelta(hours=tail), freq="1h")
-    nsamples = {"predict": 0, "sample": 1}.get(mode, samples)
-    if mode in ("percentile", "samples") and nsamples < 2:
-        raise ValueError(f"mode={mode!r} needs samples >= 2")
-    kwargs: dict[str, Any] = dict(Y=column, date_range=request, samples=nsamples, refresh=refresh)
-    if X is not None:
-        kwargs["X"] = list(X)
-    if mode == "percentile":
-        kwargs["percentile"] = percentile
-    elif mode == "samples":
-        kwargs["percentile"] = None
-    data = pd.DataFrame(Total(c.state, c.county, **kwargs))
-    data = data.loc[data.index.isin(index)]
-    targets = [col for col in data.columns if col == column or col.startswith("sample_")]
+    sectors, enduse = schema.PREDICTABLE_TARGETS[column]
+    weather = list(X) if X is not None else list(schema.ESTIMATOR_WEATHER)
+    head = max([0] + [-lag for lag in schema.ESTIMATOR_LAGS])
+    years = sorted(set(index.year))
+    if edges == "pad" and (index[0] - pd.Timedelta(hours=head)).year < index[0].year:
+        years = [years[0] - 1] + years
+    config = EstimatorConfig(sectors=list(sectors), enduse=enduse, weather=weather,
+                             keep_actuals=keep_actuals)
+    data = pd.DataFrame(Estimator(c.county_st, years, config=config))
+    data = data.rename(columns={enduse: column}) if enduse != column else data
+    data = data.reindex(index).rename_axis("timestamp")
     filled = 0
     if edges == "fill":
-        before = int(data[targets].isna().sum().max()) if targets else 0
-        data[targets] = data[targets].ffill().bfill()
-        filled = before
-    if column == "elec_dg_MW":
-        data[targets] = data[targets].clip(upper=0.0)
+        filled = int(data[column].isna().sum())
+        data[column] = data[column].ffill().bfill()
     prov = Provenance(
         county=c.county_st, mode=mode, columns=list(data.columns),
         start=str(index[0]), end=str(index[-1]),
-        samples=nsamples if mode in ("percentile", "samples") else None,
-        percentile=percentile if mode == "percentile" else None,
         edges=edges, edge_hours_filled=filled,
     )
-    if column == "elec_dg_MW":
-        prov.notes.append("elec_dg_MW clipped to <= 0")
+    if keep_actuals and (index.year == schema.TRAINING_YEAR).any():
+        prov.notes.append(f"{schema.TRAINING_YEAR} hours are Estimator keep_actuals (2018 sector loads)")
     return _stamp(data, prov)
 
 
@@ -252,8 +212,7 @@ def county_loads(
     place,
     when,
     *,
-    dg: bool = True,
-    dg_source: Literal["model", "eia"] = "model",
+    dg: bool = False,
     sectors: bool = False,
     total: Literal["direct", "sum"] | None = None,
     use_training_actuals: bool = True,
@@ -262,33 +221,34 @@ def county_loads(
 ) -> pd.DataFrame:
     """A county frame with the columns downstream models usually want.
 
-    Returns weather, `elec_total_MW`, and with `dg=True` also `elec_dg_MW`
-    and `elec_net_MW = elec_total_MW + elec_dg_MW`. With `sectors=True`,
-    residential and commercial are predicted from weather and industrial,
-    agricultural and transportation are copied from the flat 2018 training
-    level.
+    Returns the estimator weather columns and `elec_total_MW`. With
+    `sectors=True`, residential and commercial are estimated from weather
+    and industrial, agricultural and transportation are copied from the flat
+    2018 `Total` level.
 
-    `total="direct"` predicts `elec_total_MW` with its own model (what
-    `Total` does); `"sum"` sets it to the sum of the sector columns so the
-    sector identity holds exactly. Default: `"sum"` when `sectors` else
-    `"direct"`. The two differ by a few percent; never mix them in one study.
+    `total="direct"` estimates `elec_total_MW` with its own model (all
+    sectors, the `Estimator` default); `"sum"` sets it to the sum of the
+    sector columns so the sector identity holds exactly. Default: `"sum"`
+    when `sectors` else `"direct"`. The two differ by a few percent; never
+    mix them in one study.
 
-    `dg_source="model"` (default, what `Total` does with `dg=False`)
-    predicts `elec_dg_MW` from the TSGAM model of the ResStock/ComStock
-    rooftop PV. `"eia"` uses `loads.dgen.DG` instead (what `Total(dg=True)`
-    merges): EIA-861M state small-scale solar allocated to the county by its
-    share of state energy use and shaped by NSRDB irradiance, so monthly DG
-    energy matches EIA. It needs EIA access and covers only counties in
+    `dg=True` adds `elec_dg_MW` from `loads.dgen.DG` (what `DG.merge` adds):
+    EIA-861M state small-scale solar allocated to the county by its share of
+    state energy use and shaped by NSRDB irradiance, so monthly DG energy
+    matches EIA. It needs EIA access and covers only counties in
     `loads/wecc/county_mwh.csv` (the 13 WECC states); other counties get zero
-    DG with a warning, and months EIA has not published are NaN.
+    DG with a warning, and months EIA has not published are NaN. It also
+    adds `elec_net_MW = elec_total_MW + elec_dg_MW`. `Total` and `Estimator`
+    have no DG of their own.
 
     Hours in the training year (2018) are taken from `training()` when
-    `use_training_actuals` (mirrors `Estimator`'s `keep_actuals`); with
-    `dg_source="eia"` the EIA DG is kept for those hours.
+    `use_training_actuals` (as `Estimator`'s `keep_actuals` does).
     """
     c = place if isinstance(place, County) else resolve(place)
     index = when if isinstance(when, pd.DatetimeIndex) else hourly_range(when)
     total = total or ("sum" if sectors else "direct")
+    if total not in ("direct", "sum"):
+        raise ValueError(f"total must be 'direct' or 'sum', not {total!r}")
     notes: list[str] = []
     ref = None
     if sectors or use_training_actuals:
@@ -296,21 +256,12 @@ def county_loads(
 
     frames = []
     if total == "direct":
-        frames.append(series(c, index, "elec_total_MW", edges=edges, refresh=refresh))
+        frames.append(series(c, index, "elec_total_MW", edges=edges, keep_actuals=use_training_actuals))
     if sectors:
         for s in schema.WEATHER_DRIVEN_SECTORS:
-            frames.append(series(c, index, f"elec_{s}_MW", edges=edges, refresh=refresh)[[f"elec_{s}_MW"]])
-    if dg_source not in ("model", "eia"):
-        raise ValueError(f"dg_source must be 'model' or 'eia', not {dg_source!r}")
-    if dg and dg_source == "model":
-        frames.append(series(c, index, "elec_dg_MW", edges=edges, refresh=refresh)[["elec_dg_MW"]])
+            part = series(c, index, f"elec_{s}_MW", edges=edges, keep_actuals=use_training_actuals)
+            frames.append(part if not frames else part[[f"elec_{s}_MW"]])
     out = pd.concat(frames, axis=1)
-    if dg and dg_source == "eia":
-        from loads.dgen import DG
-
-        eia = pd.DataFrame(DG(c.state, c.county, date_range=index, refresh=refresh))
-        out["elec_dg_MW"] = eia["elec_dg_MW"].reindex(out.index).to_numpy()
-        notes.append("elec_dg_MW from loads.dgen.DG (EIA-861M small-scale solar, NSRDB shape)")
     out = out.loc[:, ~out.columns.duplicated()]
 
     if sectors:
@@ -326,19 +277,22 @@ def county_loads(
         hit = out.index.isin(ref.index)
         if hit.any():
             for col in out.columns:
-                if col == "elec_dg_MW" and dg_source == "eia":
-                    continue
                 if col in ref.columns:
                     out.loc[hit, col] = ref.loc[out.index[hit], col].values
             notes.append(f"{int(hit.sum())} hours replaced by 2018 training data")
 
     if dg:
+        from loads.dgen import DG
+
+        eia = pd.DataFrame(DG(c.state, c.county, date_range=index, refresh=refresh))
+        out["elec_dg_MW"] = eia["elec_dg_MW"].reindex(out.index).to_numpy()
         out["elec_net_MW"] = out["elec_total_MW"] + out["elec_dg_MW"]
+        notes.append("elec_dg_MW from loads.dgen.DG (EIA-861M small-scale solar, NSRDB shape)")
 
     weather = [c_ for c_ in schema.WEATHER_COLUMNS if c_ in out.columns]
     loads_cols = [c_ for c_ in out.columns if c_ not in weather]
     out = out[loads_cols + weather].rename_axis("timestamp")
-    mode = f"county_loads(total={total}" + (", dg_source=eia)" if dg and dg_source == "eia" else ")")
+    mode = f"county_loads(total={total}" + (", dg=eia)" if dg else ")")
     prov = Provenance(county=c.county_st, mode=mode,
                       columns=list(out.columns), start=str(index[0]), end=str(index[-1]),
                       edges=edges, notes=notes)
@@ -364,7 +318,6 @@ def batch(
     func: Callable[..., pd.DataFrame] = county_loads,
     *args,
     on_error: Literal["collect", "raise"] = "collect",
-    clear_estimator_cache: bool = True,
     progress: Callable[[str, int, int], None] | None = None,
     **kwargs,
 ) -> BatchResult:
@@ -372,11 +325,8 @@ def batch(
 
     Failures (missing data, solver trouble, network) are collected rather
     than aborting a long sweep; inspect `result.errors` and report them.
-    `clear_estimator_cache` drops fitted models between counties to bound
-    memory (each county fits its own TSGAM).
+    Each county fits its own TSGAM; `Estimator` keeps no fitted models.
     """
-    from loads import Total
-
     resolved = [p if isinstance(p, County) else resolve(p) for p in places]
     frames: dict[str, pd.DataFrame] = {}
     errors: dict[str, str] = {}
@@ -390,9 +340,6 @@ def batch(
                 raise
             errors[c.county_st] = f"{type(err).__name__}: {err}"
             _log.warning("%s failed: %s", c.county_st, err)
-        finally:
-            if clear_estimator_cache:
-                Total._clear_cache()
     return BatchResult(frames, errors)
 
 
