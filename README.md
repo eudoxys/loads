@@ -172,6 +172,8 @@ end in `_MW` and those columns are calibrated (others, e.g., weather, are
 unchanged); `basis=` names the column(s) to take the percentiles
 of and `columns=` the column(s) to calibrate, e.g.,
 `basis="elec_total_MW",columns=["elec_residential_MW",...,"elec_total_MW"]`.
+See https://www.eudoxys.com/loads for the `Estimator`, `Calibrate`, `CalibrateForm930`, `Cluster`,
+and `Aggregator` tools.
 
 # Agent skill
 

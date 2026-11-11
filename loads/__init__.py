@@ -114,6 +114,10 @@ How the estimate is produced
     `loads.calibrate.CalibratePeaks` instead maps percentiles of a load to
     observed interval peaks and troughs without a solver;
     and `loads/wecc/wecc_estimate.py` rescales each county's monthly energy
+    that it honors monthly state energy targets and regional peak ceilings,
+    `loads.calibrate.CalibrateForm930` splits the hourly EIA-930 demand of
+    each balancing authority among the counties it serves in proportion to
+    their estimated load, and `loads/wecc/wecc_estimate.py` rescales each county's monthly energy
     to its gross load, i.e., the EIA 861M retail sales allocated to it plus
     its distributed generation.
 
@@ -264,6 +268,8 @@ flowchart TB
 
     CAL(["calibrate.py · Calibrate<br/>state energy & regional peaks<br/>CalibratePeaks<br/>interval peaks & troughs"])
     NET --> CAL
+    CAL930(["calibrate.py · CalibrateForm930<br/>EIA-930 BA demand"])
+    NET --> CAL930
 
     RESID --> FIT
     COMM --> FIT
@@ -328,6 +334,8 @@ flowchart TB
 
   - `loads.calibrate`: net-load shaping to state energy and regional peak targets,
     and percentile calibration to observed interval peaks and troughs
+  - `loads.calibrate`: net-load shaping to state energy and regional peak
+    targets, and calibration to EIA-930 balancing authority demand
 
   - `loads.cast`: weather-based back/forecast of a 2018 load to another year
 
@@ -457,6 +465,7 @@ Package information
 from loads.aggregate import Aggregator
 from loads.agriculture import Agriculture
 from loads.calibrate import Calibrate, CalibratePeaks
+from loads.calibrate import Calibrate, CalibrateForm930
 from loads.cli import main
 from loads.cluster import Cluster
 from loads.commercial import Commercial
