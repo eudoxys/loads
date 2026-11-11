@@ -7,11 +7,14 @@ frame contains. Read [footguns.md](footguns.md) for the traps each entry
 mentions.
 
 Public exports (`from loads import ...`): `Aggregator`, `Agriculture`,
-`Calibrate`, `COMstock`, `Cluster`, `Commercial`, `DG`, `Energy`,
+`Calibrate`, `CalibrateTotal`, `CalibrateNet`, `CalibrateConfig`,
+`CalibrationError`, `CalibrateEnergy`,
+`CalibrateEnergyPeak`, `CalibratePeaks`, `CalibrateHourly`, `COMstock`, `Cluster`, `Commercial`, `DG`, `Energy`,
 `Estimator`, `Floorarea`, `Industry`, `Normalize`, `RESstock`,
 `Residential`, `Total`, `Transportation`, `Units`, `main` (CLI). `aggregate()` lives in
 `loads.aggregate` (`loads.aggregate` is the module, not the function);
-`CalibrationError` in `loads.calibrate`; `EstimatorConfig` and
+the calibration classes and `CalibrationError` also in `loads.calibrate`
+(each class is defined in a private `loads._calibrate_*` module); `EstimatorConfig` and
 `EstimatorError` in `loads.estimator`. `import loads` does not import
 `loads.skill`.
 
@@ -233,10 +236,118 @@ model output.
   so divide by the readings per hour (`scales={"kw": 1e-3 / 4}`). Hours
   with no rows are NaN. Super-hourly data is not upsampled.
 
-## Calibrate
+## Calibrate and CalibrateConfig
 
 ```python
-Calibrate(load: pd.DataFrame, *, energy, peak, dg=None, states=None, regions=None,
+CalibrateConfig(*, energy=None, peak=None, peaks=None, demand=None, dg=None, factors=None,
+                basis=None, **options)
+Calibrate(data: pd.DataFrame, config: CalibrateConfig)
+```
+
+The front end for calibrating **one** standard `loads` frame (a `Total`
+training frame, a `Total(...,dg=True)` prediction, an `Estimator` result).
+The data given to the config chooses the method (`config.method`):
+
+| Data | Method | Matches |
+| ---- | ------ | ------- |
+| `energy` | `CalibrateEnergy` | energy of the whole period (number) or of each UTC month (Series by month start) |
+| `energy` + `peak` | `CalibrateEnergyPeak` | monthly energy and peak ceiling (numbers only for data within one month; else Series by month start) |
+| `peaks` | `CalibratePeaks` | `max`/`min` of each interval; `peak`/`trough` are then the percentiles |
+| `demand` | `CalibrateHourly` | every hour of a Series (e.g., one BA's EIA-930 demand) |
+
+Anything else (nothing, `peak` alone, `energy` with `demand`, `peaks` with
+`energy`) raises `CalibrationError` when the config is built and again when
+`Calibrate` uses it. Options are the chosen class's keyword-only arguments
+that `Calibrate` does not set (`config.option_names()`; e.g. `search`,
+`shape_weight`, `energy_weight` for `CalibrateEnergyPeak`, `trough` for
+`CalibratePeaks`, `missing` for `CalibrateHourly`, none for
+`CalibrateEnergy`). They are keyword arguments of `CalibrateConfig` and
+attributes afterwards (`config.search = True`; an unset option reads as the
+class default); an option the method doesn't have raises
+`CalibrationError`. `config.options` is what is passed.
+
+- `basis`: the column matched (default `elec_net_MW` if present, else
+  `elec_total_MW`, else the only `_MW` column). For `{prefix}_net_MW` the
+  DG `{prefix}_dg_MW` is held fixed (through `np.abs`, whatever its sign)
+  and the gross load is calibrated; for `{prefix}_total_MW` the total is
+  matched and DG ignored; any other column is calibrated alone.
+- The basis and DG must have no NaN: drop or fill `Total`'s lag-window
+  edges first (`CalibrationError` names them).
+- Returns a frame with the **same index and columns**: `{prefix}_total_MW`
+  is the calibrated gross load, every other `{prefix}_..._MW` column (the
+  sectors) is scaled by calibrated/uncalibrated gross load in each hour
+  (hours with no gross load share it by mean share), `{prefix}_net_MW =
+  total − |dg|`, and `elec_dg_MW`, weather and other columns are unchanged.
+  With `CalibrateHourly` missing demand hours are NaN unless
+  `missing="keep"`.
+- Attributes: `config`, `method`, `calibration` (the class result, single
+  column `load`, e.g. `.calibration.parameters`), `uncalibrated` (input),
+  `basis`.
+
+`Calibrate` raises `CalibrationError` when the config has `dg` or
+`factors` (it reads DG from the frame) or the panel options `states` and
+`regions`.
+
+## CalibrateTotal and CalibrateNet
+
+```python
+CalibrateTotal(data: pd.DataFrame, config: CalibrateConfig)
+CalibrateNet(data: pd.DataFrame, config: CalibrateConfig)
+```
+
+The same method selection and options as `Calibrate`, for a **panel**: one
+column per county (`"County ST"`, checked against `fips`) or node (a
+geohash); any other column name raises `CalibrationError`.
+`CalibrateTotal` takes and returns total (gross) load, `CalibrateNet` net
+load; each also has the other as `.total` / `.net`.
+
+- `config.dg`: the panel's DG (columns a subset of `data`'s, one sign,
+  magnitude used), held fixed; the targets are then net of it. Any DG
+  works, scaled (`county_dg_scaled.csv.gz`) or not (`county_dg.csv.gz`);
+  the classes don't care. Without `dg`, `CalibrateTotal` matches the totals
+  themselves and `CalibrateNet` calibrates the net load directly (which
+  must then be ≥ 0 for every method but `CalibratePeaks`).
+- Targets for a panel are those of the chosen class: `energy` by unit
+  (`CalibrateEnergy`) or by state with `peak` by region
+  (`CalibrateEnergyPeak`, with options `states`, required for geohash
+  columns, and `regions`); `peaks` of the panel **sum**; `demand` as one
+  series for all units, or by BA with `config.factors` (e.g.
+  `wecc/county_ba.csv`; a multi-column demand without factors raises).
+- `basis` is refused (every column is calibrated); NaN raises.
+- Attributes: `config`, `method`, `calibration`, `uncalibrated`, `dg`
+  (magnitude or `None`), `total`, `net`, `counties`, `geohashes`.
+
+For coupled targets with more control (e.g. `CalibrateHourly.allocate`),
+call the classes below directly.
+
+## CalibrateEnergy
+
+```python
+CalibrateEnergy(load: pd.DataFrame | pd.Series, energy, *, dg=None)
+```
+
+Proportional energy-only calibration (the package form of
+`scale_to_energy`/`scale_monthly`): each unit's **gross** load is
+multiplied by one factor per block so its **net** energy (gross − DG)
+equals the target; shape and load factor are unchanged.
+
+- `load`: gross load (MW), one column per unit, no NaN, nothing negative.
+- `energy`: dict/Series by unit (energy over the whole period) or a
+  DataFrame indexed by month start with one column per unit (each UTC
+  month; every month of `load` needs a row). Partial months are matched
+  over the hours present.
+- `dg`: DG (MW) of one sign (either convention; magnitude used), columns a
+  subset of `load`'s, fixed.
+- A target needing a factor ≤ 0, a missing unit or month, or NaN raises
+  `CalibrationError`. A unit with no load and a zero target is unchanged.
+
+Returns the calibrated gross load with `parameters` (block, unit: target,
+input, DG and calibrated MWh, `scale`), `scale` (hourly) and `net`.
+
+## CalibrateEnergyPeak
+
+```python
+CalibrateEnergyPeak(load: pd.DataFrame, *, energy, peak, dg=None, states=None, regions=None,
           energy_weight=100.0, drive=None, shape_weight=1.0, ridge=1e-8,
           peak_multiple=5.0, relative_rmse=2.0, search=False, verbose=False,
           progress=None)
@@ -255,7 +366,7 @@ panel of units (counties or nodes) to published regional totals.
   Series (same targets for every month) or a DataFrame indexed by UTC month
   start (one row per month). Both are required, keyword-only, and `peak`
   needs at least one region: `peak={}` raises `KeyError` while building
-  the region table. A state with load but no target raises.
+  the region table (use `CalibrateEnergy` for energy only). A state with load but no target raises.
 - `regions`: unit × region membership in [0, 1] (or dict of region → unit
   list); default makes every unit a full member of every region.
 - Each **UTC calendar month** is solved independently with its own targets,
@@ -287,10 +398,100 @@ the EIA-scaled DG in `loads/wecc/county_dg_scaled.csv.gz`.
 
 `loads.skill.shape_to_targets` wraps it (DG sign conversion, input checks,
 provenance). For a proportional match to one county's energy use
-`scale_to_energy`/`scale_monthly`; for an affine energy + peak fit of one
+`CalibrateEnergy` (or `scale_to_energy`/`scale_monthly`); for an affine energy + peak fit of one
 series, `fit_energy_peak`. The pre-rewrite API (`fit_load`, `integrate`,
-`Calibrate.load`, `Calibrate.solar`, `start`/`end`/`scale`/`offset`) no
+`CalibrateEnergyPeak.load`, `CalibrateEnergyPeak.solar`, `start`/`end`/`scale`/`offset`) no
 longer exists.
+
+## CalibratePeaks
+
+```python
+CalibratePeaks(load: pd.DataFrame | pd.Series, peaks: pd.DataFrame, *,
+               peak: float = 1.0, trough: float = 0.0,
+               basis: str | list[str] | None = None,
+               columns: str | list[str] | None = None)
+```
+
+Solver-free calibration (no CVXPY) of a load to observed peaks and
+troughs only; no energy targets, no DG.
+
+- `load`: uncalibrated load (MW), timestamp index, one or more columns (a
+  Series becomes a one-column frame). The `basis` and `columns` columns
+  must be numeric with no NaN (`CalibrationError`); other columns may hold
+  anything and are passed through.
+- `peaks`: observed peak and trough (MW) per interval, columns `max` and
+  `min`, indexed by interval **start** timestamp (e.g. daily or monthly).
+  Interval `i` runs to the next timestamp; the last one has the index's
+  inferred frequency, else the length of the one before. Naive timestamps
+  in either frame are taken as UTC. `max < min` raises.
+- `basis`: column name or list whose **sum** is the basis `x` (default
+  every column whose name ends in `_MW`). `columns`: column name or list
+  to calibrate (default every `_MW` column); the rest are returned
+  unchanged. Unknown, repeated, empty or non-numeric selections, and a
+  default when no column ends in `_MW`, raise `CalibrationError`.
+- `peak`, `trough`: fractions with `0 <= trough < peak <= 1`. In each
+  interval the basis `x` is mapped affinely, `y = a·x + b`, so its
+  `peak` percentile (numpy method `"higher"`) equals `max` and its `trough`
+  percentile (method `"lower"`) equals `min`. Hence at most `1 − peak` of
+  the interval's hours exceed `max` and at most `trough` fall below `min`.
+  The defaults reproduce `max` and `min` exactly.
+- Every calibrated column `k` becomes `a·X_k + b·mean(X_k)/mean(x)` (means
+  over the interval): calibrated columns that sum to the basis still sum to
+  `y`, and a calibrated column that *is* the basis maps to `y` exactly.
+  With the defaults this means the `_MW` columns sum to `y`.
+- BA load reports (EIA-930) are net of behind-the-meter DG: use
+  `basis="elec_net_MW"`. DG known from another source (NSRDB via
+  `Total(dg=True)`/`DG`, dGen) is not calibrated: keep `elec_dg_MW` out of
+  `columns`, calibrate `elec_net_MW` alone and rebuild
+  `elec_total_MW = elec_net_MW + np.abs(elec_dg_MW)` (and the sectors in
+  proportion); see [workflows.md](workflows.md). Uncalibrated columns are
+  not recomputed, so cross-column identities are yours to restore. Fractions in
+  `parameters` refer to `y`, not to the individual columns.
+- `Calibrate(frame, CalibrateConfig(peaks=..., peak=..., trough=...))`
+  does that rebuild for you.
+- Hours outside every interval, or in an interval with NaN `max`/`min`,
+  are returned unchanged (warning logged). An interval with no spread
+  between the two percentiles is only shifted (`scale` 1). Negative output
+  is possible when the offset is large and negative.
+
+Returns the calibrated load (same index/columns) with attributes
+`parameters` (per interval start: `end`, `hours`, `max`, `min`,
+`peak_quantile`, `trough_quantile`, `scale`, `offset_MW`,
+`fraction_above`, `fraction_below`), `uncalibrated` (the input),
+`calibrated` (bool Series of the hours that were calibrated), `basis` and
+`calibrated_columns` (the resolved column lists).
+
+
+## CalibrateHourly
+
+```python
+CalibrateHourly(load: pd.DataFrame, factors: pd.DataFrame, demand: pd.DataFrame | None = None, *,
+                dg=None, missing="nan", refresh=False)
+```
+
+Proportional disaggregation (no solver) of hourly balancing authority (BA)
+demand, e.g. Form EIA-930, to the units (counties) each BA serves; every BA
+hour with demand is matched exactly.
+
+- `load`: hourly load (MW, ≥ 0), one column per unit: the **gross** load
+  with `dg`, else a nonnegative net load (clip it first).
+- `factors`: BA participation factors, wide (units × BAs) or long with a
+  `factor` column (e.g. `wecc/county_ba.csv`: `county_st,ba,factor,method`);
+  each unit's factors must sum to one.
+- `demand`: hourly MW by BA code; `None` downloads EIA-930 with
+  `eia.Form930` (needs an EIA API key; `refresh` refreshes that cache).
+- `dg`: DG of one sign (magnitude used), fixed; BA gross demand
+  `D + Σf·P` is split by gross load and the unit's DG subtracted, so net
+  load may be **negative**.
+- `missing`: `"nan"` (default) makes the units of a BA NaN in hours its
+  demand is missing/negative/non-finite; `"keep"` keeps their estimate.
+  BAs without demand keep the estimate (`.uncalibrated`); units without
+  factors are unchanged (`.unassigned`).
+
+Returns the net load (same index/columns) with `gross`, `dg`, `factors`,
+`demand`, `estimate`, `scale`, `uncalibrated`, `unassigned`, and
+`.allocate(node_factors)` to sum units onto nodes (e.g.
+`wecc/node_estimate_cf.csv`).
 
 ## Energy
 
@@ -343,7 +544,7 @@ monthly county DG energy matches EIA. Returns one column `elec_dg_MW`,
   **[tested]**.
 - Months are UTC; EIA's are local (less than 1% energy shift).
 - `compile` (`python3 -m loads.dgen --target=...`) writes every WECC
-  county as **positive** output, the convention `Calibrate(dg=...)`
+  county as **positive** output, the convention `CalibrateEnergyPeak(dg=...)`
   expects.
 
 This replaces the earlier `DG(..., source="wecc/county_dg.csv.gz")` file

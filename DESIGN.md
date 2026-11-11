@@ -46,8 +46,13 @@ reversed decision in place and note the date.
 | 8 | Columns encode fuel, category and unit: `{elec\|nonelec}_{baseload\|cooling\|heating\|total\|dg\|net}_MW`; `Total` reports `elec_{sector}_MW`. Weather columns keep `weather.Weather` names. |
 | 9 | Time index is hourly, tz-aware UTC, named `timestamp`, hour-beginning. |
 | 10 | DG is a negative load in `elec_dg_MW`; `elec_net_MW = elec_total_MW + elec_dg_MW`. |
-| 12 | Calibration solves the Meyers–Chassin hierarchical net-load shaping SOCP: per-unit affine map $L=sX+b$, soft per-state energy targets, hard regional peak ceilings, DG fixed; solved independently per UTC calendar month. |
-| 12b | Calibration weights are not tuned per run: with `search=True` a predeclared grid (`Calibrate.GRID`) is solved and a fixed rule selects the result (peak shortfall ≤ `PEAK_SHORTFALL_TOL`, state energy error ≤ `STATE_ENERGY_TOL`, nonnegative load, then least shape RMSE). |
+| 12 | Energy and peak calibration (`CalibrateEnergyPeak`, `Calibrate` before 2026-11-11) solves the Meyers–Chassin hierarchical net-load shaping SOCP: per-unit affine map $L=sX+b$, soft per-state energy targets, hard regional peak ceilings, DG fixed; solved independently per UTC calendar month. |
+| 12b | Calibration weights are not tuned per run: with `search=True` a predeclared grid (`CalibrateEnergyPeak.GRID`) is solved and a fixed rule selects the result (peak shortfall ≤ `PEAK_SHORTFALL_TOL`, state energy error ≤ `STATE_ENERGY_TOL`, nonnegative load, then least shape RMSE). |
+| 12c | `CalibratePeaks` is the solver-free alternative: within each interval of the observed peak/trough data (columns `max`, `min`, indexed by interval start) the sum of the `basis` columns is mapped affinely so its `peak` percentile (method `higher`) equals the observed max and its `trough` percentile (method `lower`) equals the observed min; each of the `columns` to calibrate is scaled and gets the offset times its interval mean over the basis mean. Both default to the columns whose names end in `_MW`. Other columns and hours outside the intervals are unchanged. |
+| 12d | Calibration to EIA-930 BA demand (`CalibrateHourly`) is a proportional disaggregation, not an optimization: each balancing authority's hourly demand is split among the units it serves in proportion to their estimated load times their BA participation factor (method of `eudoxys/wecc240` PR #2). Every BA hour with demand is matched exactly; BAs without demand keep the estimate; missing demand hours are `NaN` by default. Factors are inputs, not built by the class. EIA-930 demand is net of DG, so the result is net load and may be negative: with `dg`, the BA's gross demand (demand + the DG of its units) is split in proportion to the units' gross load and each unit's fixed DG is subtracted (as in decision 12, DG is never scaled). Without `dg` the load must be nonnegative (the `wecc240` method clips net load at zero); revised 2026-11-09. (`CalibrateForm930` before 2026-11-11.) |
+| 12e | Energy-only calibration (`CalibrateEnergy`) is the proportional rescale of the `loads` agent skill (`scale_to_energy`, `scale_monthly`): each unit's gross load is multiplied by one positive factor per block (the whole period, or each UTC calendar month) so its net energy (gross − fixed DG) equals the target. The shape and load factor are unchanged. Added 2026-11-11. |
+| 12f | `Calibrate(data,config)` calibrates one standard `loads` frame (e.g., `Total`, `Estimator`) and returns a frame with the same index and columns. The data in its `CalibrateConfig` chooses the class: `demand` → `CalibrateHourly`, `peaks` → `CalibratePeaks`, `energy` and `peak` → `CalibrateEnergyPeak`, `energy` → `CalibrateEnergy`; any other combination raises `CalibrationError`. Options are the chosen class's keyword arguments that `Calibrate` doesn't set; they are given when the configuration is constructed and are mutable attributes afterwards. The basis (default `elec_net_MW`, else `elec_total_MW`) is matched with `elec_dg_MW` fixed; the calibrated gross load replaces `elec_total_MW`, the other `elec_..._MW` columns are scaled hour by hour by calibrated/uncalibrated gross load, and `elec_net_MW = elec_total_MW − |elec_dg_MW|`. Each calibration class lives in its own private module (`_calibrate_energy.py`, `_calibrate_energypeak.py`, `_calibrate_peaks.py`, `_calibrate_hourly.py`) and is re-exported by `loads.calibrate`. Added 2026-11-11. |
+| 12g | `CalibrateTotal(data,config)` and `CalibrateNet(data,config)` calibrate a panel whose columns are counties (`"County ST"`, checked against `fips`) or nodes (geohashes) with the same method selection as `Calibrate`. The DG to consider is `CalibrateConfig.dg` (panel, either sign, magnitude used); it is held fixed and the targets are net of it, and the classes don't care whether it is scaled (e.g., `county_dg.csv.gz` or `county_dg_scaled.csv.gz`). `CalibrateTotal` returns total (gross) load, `CalibrateNet` net load (total − DG, may be negative); both carry the other as `.net`/`.total`. Panel targets may couple units: `CalibrateEnergyPeak` takes the `states` and `regions` options (required `states` for geohash columns), `CalibratePeaks` matches the panel sum, and `CalibrateHourly` takes `CalibrateConfig.factors` for demand by BA. `Calibrate` rejects `dg`, `factors`, `states` and `regions`. Added 2026-11-11. |
 | 13 | Counties are clustered by SVD + k-means on `elec_total_MW`; k = 6 (`loads/clusters.csv`). A cluster's medoid stands in for its members when per-county tuning is too costly. |
 | 14 | Estimator harmonics for each medoid are the most parsimonious within 1% of the best found in the sweep (`_explore/explore_estimator_clusters.csv`); the WECC estimate uses the MAPE row. |
 | 15 | The WECC county estimate keeps 2018 actual sector loads and rescales each month of 2018–2022 so its energy equals the EIA 861M retail sales allocated to the county plus the county's DG (gross load). |
@@ -95,7 +100,12 @@ loads/
   total.py           Total(state,county,*,Y,X,dg,date_range,samples,percentile,holdout,refresh)
   estimator.py       Estimator(county_st,years=None,*,config=EstimatorConfig())
   energy.py          Energy(state,counties,year,month=None,*,groupby="1MS",...)
-  calibrate.py       Calibrate(load,*,energy,peak,dg=None,states=None,regions=None,search=False,...)
+  calibrate.py       Calibrate(data,config); CalibrateTotal(data,config); CalibrateNet(data,config)
+                     CalibrateConfig(*,energy=None,peak=None,peaks=None,demand=None,dg=None,factors=None,basis=None,**options)
+  _calibrate_energy.py      CalibrateEnergy(load,energy,*,dg=None)
+  _calibrate_energypeak.py  CalibrateEnergyPeak(load,*,energy,peak,dg=None,states=None,regions=None,search=False,...)
+  _calibrate_peaks.py       CalibratePeaks(load,peaks,*,peak=1.0,trough=0.0,basis=None,columns=None)
+  _calibrate_hourly.py      CalibrateHourly(load,factors,demand=None,*,dg=None,missing="nan",refresh=False); .allocate(factors)
   cluster.py         Cluster(counties,column,threshold=0.99,...)
   aggregate.py       Aggregator(targets,start,end); aggregate(targets,dt_range,column)
   clusters.csv       county_st -> medoid
@@ -129,7 +139,12 @@ accessor takes `refresh:bool=False`.
 | `Total` (predict/sample) | `timestamp` (`date_range`) | `X` weather columns and `Y` |
 | `Estimator` | `timestamp` (`years`) | weather, `enduse`; with `years=None` also `status` (`T`/`H`), `actual`, `prediction` |
 | `Energy` | period start | one column per county, MWh |
-| `Calibrate` | as `load` | shaped load (MW); `.parameters`, `.summary`, `.states`, `.constraints` |
+| `Calibrate` | as `data` | `data` with calibrated `_MW` columns; `.config`, `.method`, `.calibration`, `.uncalibrated`, `.basis` |
+| `CalibrateTotal`, `CalibrateNet` | as `data` (county or geohash columns) | calibrated total or net load (MW); `.total`, `.net`, `.dg`, `.config`, `.method`, `.calibration`, `.uncalibrated`, `.counties`, `.geohashes` |
+| `CalibrateEnergy` | as `load` | scaled gross load (MW); `.parameters`, `.scale`, `.net` |
+| `CalibrateEnergyPeak` | as `load` | shaped load (MW); `.parameters`, `.summary`, `.states`, `.constraints` |
+| `CalibratePeaks` | as `load` | calibrated load (MW); `.parameters`, `.uncalibrated`, `.calibrated`, `.basis`, `.calibrated_columns` |
+| `CalibrateHourly` | as `load` | net load calibrated to BA demand (MW, may be negative with `dg`); `.gross`, `.dg`, `.factors`, `.demand`, `.estimate`, `.scale`, `.uncalibrated`, `.unassigned`; `.allocate(factors)` → node loads |
 
 Composition: `Total` sums the sector frames on the 2018 index;
 `elec_total_MW` is their sum and excludes DG. Predictions return only `X`
@@ -146,9 +161,12 @@ and `Y`, not the sector breakdown.
 | industrial, agricultural | NREL county inventories (#97), 2019 | — | not checked against EIA |
 | weather | NSRDB via `eudoxys/weather` | — | — |
 | DG (`DG`, `Total(dg=True)`) | EIA-861M small-scale PV by state and month (`eia.Form861m`), allocated by county share of state load (`wecc/county_mwh.csv`), shaped by NSRDB GHI or dGen county profiles | state dGen profile for counties missing or all zero in dGen; NaN for months without EIA data | monthly county DG = EIA × load share |
-| DG (calibration) | NREL dGen nodal DG → `wecc/county_dg.csv.gz` | — | scaled to EIA small-scale PV (`county_dg_scale.py`) |
+| DG (calibration) | NREL dGen nodal DG → `wecc/county_dg.csv.gz`, unscaled (calibration test, validation and review) | none (counties missing from it have no DG) | not scaled; `county_dg_scale.py` builds an EIA-scaled copy that they do not use |
 | county monthly energy | EIA 861M retail sales (`HS861m`), allocated by `Energy` | — | state sales |
 | regional peaks | EIA-930 BA demand, cleaned (`_test/data`) | — | CAISO, WECC |
+| BA monthly min/max (review) | EIA-930 BA demand, cleaned (`_test/data/ba_minmax_target.csv`) | — | 28 US WECC BAs |
+| county → BA factors | EIA-861 2018 service territory and utility sales by BA, fitted to `wecc/county_mwh.csv` (`wecc/county_ba.py`) | state BA shares for unlisted counties | curated overrides (`wecc/county_ba_overrides.csv`) |
+| BA demand (`CalibrateHourly`) | EIA-930 demand by BA, given or downloaded with `eia.Form930` | — (missing hours `NaN` or kept) | each BA's hourly demand, matched exactly |
 | node map | `eudoxys/wecc240` bus GIS and county–node map | nearest load node | WECC240 bus loads |
 
 ## Method
@@ -161,9 +179,16 @@ and `Y`, not the sector breakdown.
 3. **DG and net load.** With `Total(dg=True)`, allocate the state's monthly
    EIA-861M small-scale PV to the county by load share, shape it hourly,
    and add it (negative) to total load; `dg=False` (default) adds none.
-4. **Calibration (optional).** For a panel of counties, solve decision 12
-   month by month. State energy is soft (reported, not forced); regional
-   peaks are hard ceilings.
+4. **Calibration (optional).** `Calibrate` calibrates one county's frame
+   with the method its data supports (decision 12f), and `CalibrateTotal`/
+   `CalibrateNet` a panel of counties or nodes (12g). For a panel of
+   counties, decision 12 is solved month by month. State energy is soft (reported, not forced); regional
+   peaks are hard ceilings. Alternatively, `CalibrateHourly` splits each
+   balancing authority's hourly EIA-930 demand among its counties in
+   proportion to their estimated gross load, with their rooftop PV fixed, so
+   the calibrated net load may be negative (decision 12d); `CalibratePeaks`
+   matches interval peaks and troughs (12c) and `CalibrateEnergy` energy
+   alone (12e).
 5. **WECC estimate.** For each WECC county, estimate 2018–2022 with the
    medoid's harmonics and rescale monthly to gross load (decision 15). The
    monthly energy is forced to match; the hourly shape is not adjusted.
@@ -227,7 +252,7 @@ they bear on the version 1 contract.
   which are not in the repo.
 - **Public API.** `loads/__init__.py` re-exports nothing; users import from
   submodules.
-- **DG sign.** `wecc/county_dg*.csv*` and `Calibrate(dg=...)` use positive
+- **DG sign.** `wecc/county_dg*.csv*` and `CalibrateEnergyPeak(dg=...)` use positive
   DG; `elec_dg_MW` is negative (decision 10). Conversions must be explicit.
 - **`Total`.** No `year` argument; CLI `-Y` only reaches `weather` (#26);
   non-contiguous `date_range` is bridged and sampling isn't seeded (#32);
@@ -236,7 +261,7 @@ they bear on the version 1 contract.
   monthly energy); `profile="weather"` ignores panel orientation and
   temperature; `profile="dgen"` covers 2018–2022 only. The EIA-861M rewrite
   (PR #43) replaces the cwd-relative source and broken `SolarModel` of #30.
-- **`Calibrate`.** Issues #27, #28.
+- **`CalibrateEnergyPeak`.** Issues #27, #28.
 - **Commercial scaling.** Under-scaling by an extra building-type share (#3);
   equal weighting of overloaded building types (#1); no floor-area growth (#8).
 - **Other reviews.** `aggregate.py` (#15), `units.py` (#14), `floorarea.py`
@@ -256,7 +281,7 @@ Proposed scope, for the maintainer to confirm:
 1. Packaging: ship curated data (`package-data`), set the version, add
    `"eudoxys"` to `keywords`, verify a non-editable install runs the tests.
 2. Fix or explicitly document the known issues above that affect `Total`,
-   `DG`, `Calibrate` and the CLI (#26, #27, #28, #30, #32); remove
+   `DG`, `CalibrateEnergyPeak` and the CLI (#26, #27, #28, #30, #32); remove
    non-functional CLI verbs or implement them.
 3. Clean up stale references in `loads/__init__.py` and `CLAUDE.md`; add
    re-exports of the public classes.
@@ -273,7 +298,7 @@ Proposed scope, for the maintainer to confirm:
    `county_dg.csv`, `examples/*.csv.gz` in the repo, ship them as release
    assets, or regenerate on demand? (`county_dg.csv` duplicates its `.gz`;
    `examples/` duplicates two `wecc/` files.)
-4. **DG convention at the `Calibrate` boundary.** Accept `elec_dg_MW`
+4. **DG convention at the `CalibrateEnergyPeak` boundary.** Accept `elec_dg_MW`
    (negative) directly, or keep positive `D` and document it?
 5. **Open PRs.** Which of #19 (growth), #36 (normalize), #38 (folds),
    #43 (EIA DG) are in version 1?

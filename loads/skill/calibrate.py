@@ -1,22 +1,29 @@
 """Rescale county loads to known energy or peak values.
 
-Three tools, from simplest to most constrained:
+For one `loads` frame, `loads.calibrate.Calibrate` with a
+`loads.calibrate.CalibrateConfig` picks the calibration from the data
+given (energy, energy and peak, interval peaks and troughs, or hourly
+demand) and keeps the frame's columns and identities. `scale_to_energy` and
+`scale_monthly` are the frame-level helpers that
+`loads.calibrate.CalibrateEnergy` was made from. The helpers here, from simplest to most
+constrained:
 
 - `scale_to_energy` / `scale_monthly`: proportional rescaling
   (P_new = P_old * E_new / E_old), so the load shape is kept exactly. Pure
   pandas.
 - `fit_energy_peak`: an affine rescale of one series that hits an energy and
   a peak target at once. Pure numpy.
-- `shape_to_targets`: a front end to `loads.calibrate.Calibrate`, the convex
+- `shape_to_targets`: a front end to `loads.calibrate.CalibrateEnergyPeak`, the convex
   net-load shaping program that fits a whole panel of counties (or nodes) to
   monthly state net-load energy targets and regional peak ceilings at once.
   It converts the `loads` sign convention for DG, checks the inputs the
   program rejects, and records provenance.
 
-`loads.calibrate.Calibrate` is not a proportional rescale either: it fits a
+`loads.calibrate.CalibrateEnergyPeak` is not a proportional rescale: it fits a
 scale *and an offset* per unit and per UTC calendar month. Use it when the
 targets are regional (states, balancing areas) and coupled; use the
-proportional helpers when each county has its own energy target.
+proportional helpers (or `loads.calibrate.CalibrateEnergy`) when each
+county has its own energy target.
 """
 
 from __future__ import annotations
@@ -70,7 +77,7 @@ def scale_to_energy(
         for c in [col] + list((also_scale or {}).get(col, [])):
             out[c] = frame[c] * k
     if recompute_net and {"elec_net_MW", "elec_total_MW", "elec_dg_MW"} <= set(out.columns):
-        out["elec_net_MW"] = out["elec_total_MW"] + out["elec_dg_MW"]
+        out["elec_net_MW"] = out["elec_total_MW"] - np.abs(out["elec_dg_MW"])
     return out, factors
 
 
@@ -97,7 +104,7 @@ def scale_monthly(
     for c in [column] + list(also_scale or []):
         out[c] = frame[c].to_numpy() * per_row
     if recompute_net and {"elec_net_MW", "elec_total_MW", "elec_dg_MW"} <= set(out.columns):
-        out["elec_net_MW"] = out["elec_total_MW"] + out["elec_dg_MW"]
+        out["elec_net_MW"] = out["elec_total_MW"] - np.abs(out["elec_dg_MW"])
     return out, factor
 
 
@@ -116,7 +123,7 @@ def fit_energy_peak(series: pd.Series, *, energy: float | None = None, peak: flo
       peak hour is still the peak.
 
     Closed form; replaces the iterative `loads.calibrate.fit_load`, which
-    the `Calibrate` rewrite removed.
+    the `CalibrateEnergyPeak` rewrite removed.
     """
     for c in constraints:
         if c not in ("positive", "inverted"):
@@ -158,11 +165,11 @@ def shape_to_targets(
     **options: Any,
 ):
     """Shape a panel of gross loads to state energy and regional peak targets
-    with `loads.calibrate.Calibrate`.
+    with `loads.calibrate.CalibrateEnergyPeak`.
 
     - `load`: gross load panel in MW, one column per unit (`elec_total_MW` of
       each county, e.g. `BatchResult.column("elec_total_MW")`), hourly UTC,
-      no NaN, nothing negative. Columns named `"County ST"` let `Calibrate`
+      no NaN, nothing negative. Columns named `"County ST"` let `CalibrateEnergyPeak`
       infer state membership; otherwise pass `states`.
     - `energy`: *net-load* energy targets (MWh) per state, i.e. load minus
       DG; a frame indexed by UTC month start gives one row per month.
@@ -172,33 +179,33 @@ def shape_to_targets(
       means the `loads` sign convention (`elec_dg_MW <= 0`);
       `"output"` means positive generation (the bundled
       `loads/wecc/county_dg*.csv.gz` files). It is converted to the positive
-      output `Calibrate` requires.
+      output `CalibrateEnergyPeak` requires.
     - `regions`: peak-region membership (units x regions, 0..1, or dict of
       region -> unit list). Default: every unit is in every peak region.
-    - `search`: `True` (default) runs `Calibrate`'s predeclared weight grid
+    - `search`: `True` (default) runs `CalibrateEnergyPeak`'s predeclared weight grid
       (88 solves per month for two regions) and its selection rule; `False`
       uses fixed weights from `options` (`energy_weight`, `drive`).
-    - `options`: passed to `Calibrate` (`shape_weight`, `ridge`,
+    - `options`: passed to `CalibrateEnergyPeak` (`shape_weight`, `ridge`,
       `peak_multiple`, `relative_rmse`, `verbose`, ...).
 
     Each UTC calendar month is solved independently (expect small steps at
-    month boundaries) and needs its own target row. Returns the `Calibrate`
+    month boundaries) and needs its own target row. Returns the `CalibrateEnergyPeak`
     frame (shaped gross load, MW) with `.net`, `.parameters`, `.states`,
     `.regions`, `.summary` and `.constraints`; check `.summary.selection`
     and `.states.shaped_error`. Provenance is in `attrs["loadskill"]`.
     Raises `loads.calibrate.CalibrationError` when the program is infeasible.
     """
-    from loads.calibrate import Calibrate
+    from loads.calibrate import CalibrateEnergyPeak
 
     X = pd.DataFrame(load)
     if peak is None or len(peak) == 0 or (isinstance(peak, pd.DataFrame) and peak.shape[1] == 0):
-        # Calibrate builds its region table from the peak keys and raises
+        # CalibrateEnergyPeak builds its region table from the peak keys and raises
         # KeyError when there are none (see reference/footguns.md)
-        raise ValueError("Calibrate needs at least one peak region; for energy-only matching "
-                         "use scale_monthly or scale_to_energy")
+        raise ValueError("CalibrateEnergyPeak needs at least one peak region; for energy-only matching "
+                         "use loads.calibrate.CalibrateEnergy, scale_monthly or scale_to_energy")
     if X.isna().any().any():
         bad = [c for c in X.columns if X[c].isna().any()]
-        raise ValueError(f"load has NaN in {bad[:5]}; Calibrate rejects NaN (fill the lag-window "
+        raise ValueError(f"load has NaN in {bad[:5]}; CalibrateEnergyPeak rejects NaN (fill the lag-window "
                          "edges, e.g. series(..., edges='fill'))")
     if (X < 0).any().any():
         raise ValueError("load must be the nonnegative gross load (elec_total_MW), not net load")
@@ -223,7 +230,7 @@ def shape_to_targets(
         else:
             raise ValueError(f"dg_convention must be 'load' or 'output', not {dg_convention!r}")
         D = D.clip(lower=0.0)
-    result = Calibrate(X, energy=energy, peak=peak, dg=D, regions=regions, states=states,
+    result = CalibrateEnergyPeak(X, energy=energy, peak=peak, dg=D, regions=regions, states=states,
                        search=search, progress=progress, **options)
     months = sorted({f"{t:%Y-%m}" for t in X.index.tz_convert("UTC")})
     result.attrs["loadskill"] = {
@@ -232,10 +239,10 @@ def shape_to_targets(
         "start": str(X.index[0]),
         "end": str(X.index[-1]),
         "notes": [
-            "loads.calibrate.Calibrate: per-unit scale and offset per UTC month",
+            "loads.calibrate.CalibrateEnergyPeak: per-unit scale and offset per UTC month",
             f"blocks: {', '.join(months)}",
             f"search: {search if isinstance(search, bool) else f'{len(search)} candidates'}",
-            f"dg: {'none' if dg is None else dg_convention + ' convention, passed to Calibrate as output'}",
+            f"dg: {'none' if dg is None else dg_convention + ' convention, passed to CalibrateEnergyPeak as output'}",
         ],
     }
     return result

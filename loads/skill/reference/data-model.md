@@ -8,7 +8,8 @@ without data.
 ## Frames are DataFrames
 
 Every accessor (`RESstock`, `COMstock`, `Residential`, `Commercial`,
-`Industry`, `Agriculture`, `Total`, `Calibrate`, `Energy`, `Estimator`,
+`Industry`, `Agriculture`, `Total`, `Calibrate` and the `Calibrate*`
+classes, `Energy`, `Estimator`,
 `DG`, `Aggregator`) subclasses `pd.DataFrame` and does all its work in
 `__init__`. Constructing one *is* the computation (and the download, the
 first time). `Units` subclasses `float` (housing units for a county/year).
@@ -106,7 +107,9 @@ every part.
 | where | DG sign |
 |---|---|
 | `Total`, `Residential`, `Commercial`, `loads.skill` frames (`elec_dg_MW`) | ≤ 0 (negative load) |
-| `Calibrate(dg=...)`, `Calibrate.net = L − D` | ≥ 0 (generation) |
+| `CalibrateEnergyPeak(dg=...)`, `CalibrateEnergyPeak.net = L − D` | ≥ 0 (generation) |
+| `CalibrateEnergy(dg=...)`, `CalibrateHourly(dg=...)` | either, one sign (magnitude used); `.dg` of `CalibrateHourly` ≥ 0 |
+| `Calibrate` (reads `elec_dg_MW` of its frame) | either (magnitude used); `elec_dg_MW` returned unchanged |
 | `loads.dgen.DG(...)`, `Total(..., dg=True)` | ≤ 0 |
 | `loads/wecc/county_dg*.csv.gz`, `loads.dgen.compile()` output | ≥ 0 (generation) |
 | `ls.wecc_dg(convention="load")` (default) | ≤ 0 |
@@ -142,7 +145,7 @@ and logs at DEBUG rather than raising.
 
 - `state`: two-letter postal code. `county`: `fips` spelling without
   "County"/"Parish" (`"Alameda"`, `"Doña Ana"`, `"East Baton Rouge"`).
-- `Estimator`, `Cluster`, `loads/clusters.csv`, `Calibrate` columns and the
+- `Estimator`, `Cluster`, `loads/clusters.csv`, `CalibrateEnergyPeak` columns and the
   `loads/wecc/` files use one string `"Alameda CA"`.
 - `fips.Counties` holds duplicate `(state, county)` keys for independent
   cities that share a county's name (MD Baltimore, MO St. Louis, VA Fairfax,

@@ -79,7 +79,7 @@ sets `elec_net_MW = elec_total_MW + elec_dg_MW`.
 
 To compile the DG of every WECC county for 2018 through 2022 into a single
 file (one `County ST` column per county, nonnegative MW as expected by the
-`dg` argument of `loads.calibrate.Calibrate`) use
+`dg` argument of `loads.calibrate.CalibrateEnergyPeak`) use
 
     python3 -m loads.dgen --target=county_dg_eia.csv.gz
 
@@ -121,6 +121,7 @@ import sys
 import logging
 from warnings import warn
 
+import numpy as np
 import pandas as pd
 
 from fips import States, Counties
@@ -339,7 +340,7 @@ class DG(pd.DataFrame):
         dg = cls(state,county,date_range=pd.DatetimeIndex(result.index),**kwargs)
         result["elec_dg_MW"] = dg["elec_dg_MW"].values
         if "elec_total_MW" in result.columns:
-            result["elec_net_MW"] = result["elec_total_MW"] + result["elec_dg_MW"]
+            result["elec_net_MW"] = result["elec_total_MW"] - np.abs(result["elec_dg_MW"])
         return result
 
     @staticmethod

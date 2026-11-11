@@ -5,7 +5,8 @@ The test assembles the county form of the shaping problem for August 2020:
   - gross load $X$: `Total(...,samples=0)` TSGAM predictions of
     `elec_total_MW` for every WECC county, driven by 2020 weather;
 
-  - fixed DG $D$: `loads/wecc/county_dg_scaled.csv.gz`;
+  - fixed DG $D$: `loads/wecc/county_dg.csv.gz`, the unscaled rooftop PV
+    (counties missing from it have no DG);
 
   - state energy targets: `data/energy_target.csv` (August 2020 row);
 
@@ -39,7 +40,7 @@ from cache import Cache
 from fips import Counties
 
 import loads
-from loads.calibrate import Calibrate
+from loads.calibrate import CalibrateEnergyPeak
 
 _logger = logging.getLogger(__file__)
 
@@ -48,7 +49,7 @@ MONTH = "2020-08"
 START = pd.Timestamp(f"{MONTH}-01 00:00:00+00:00")
 END = pd.Timestamp("2020-08-31 23:00:00+00:00")
 LAGS = 3 # Total trims this many hours from each end of a prediction
-DG_FILE = os.path.join(os.path.dirname(loads.__file__),"wecc","county_dg_scaled.csv.gz")
+DG_FILE = os.path.join(os.path.dirname(loads.__file__),"wecc","county_dg.csv.gz")
 
 pytestmark = pytest.mark.network
 
@@ -168,9 +169,9 @@ def problem() -> dict:
 
 
 @pytest.fixture(scope="module")
-def result(problem) -> Calibrate:
+def result(problem) -> CalibrateEnergyPeak:
     """Calibrate with the predeclared weight search"""
-    return Calibrate(problem["load"],
+    return CalibrateEnergyPeak(problem["load"],
         dg=problem["dg"],
         energy=problem["energy"],
         peak=problem["peak"],
@@ -203,13 +204,13 @@ def test_peaks(result):
     """CAISO and WECC net-load peaks reach their ceilings without exceeding them"""
     for region,row in result.regions.droplevel(0).iterrows():
         assert row.shaped_MW <= row.target_MW * (1 + 1e-6), region
-        assert row.shaped_MW >= row.target_MW * (1 - Calibrate.PEAK_SHORTFALL_TOL), region
+        assert row.shaped_MW >= row.target_MW * (1 - CalibrateEnergyPeak.PEAK_SHORTFALL_TOL), region
 
 
 def test_state_energy(result):
     """Every state's net-load energy is within the selection tolerance"""
     errors = result.states.shaped_error.abs()
-    assert errors.max() <= Calibrate.STATE_ENERGY_TOL
+    assert errors.max() <= CalibrateEnergyPeak.STATE_ENERGY_TOL
     assert errors.max() < result.states.input_error.abs().max()
 
 
@@ -219,7 +220,7 @@ def test_safeguards(result,problem):
     parameters = result.parameters.droplevel(0).reindex(X.columns)
     expected = X * parameters.scale.values[None,:] + parameters.offset_MW.values[None,:]
     assert np.allclose(result.values,expected.values)
-    assert result.values.min() >= Calibrate.NONNEGATIVE_TOL
+    assert result.values.min() >= CalibrateEnergyPeak.NONNEGATIVE_TOL
     assert (parameters.scale >= -1e-9).all()
     assert (parameters.peak_multiple <= 5.0 + 1e-6).all()
     assert (parameters.relative_rmse <= 2.0 + 1e-6).all()

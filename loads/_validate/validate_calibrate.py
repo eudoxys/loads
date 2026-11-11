@@ -7,9 +7,9 @@ Builds and caches the inputs used by `validate_calibrate_marimo.py`:
     same construction as `loads/_test/test_calibrate.py`, for the whole
     year instead of August);
 
-  - the calibrated load $L$: `Calibrate(...,search=True)` month by month,
+  - the calibrated load $L$: `CalibrateEnergyPeak(...,search=True)` month by month,
     with the default settings of `loads/_explore/explore_calibrate_marimo.py`
-    (DG from `loads/wecc/county_dg_scaled.csv.gz`, the monthly state energy and
+    (DG from the unscaled rooftop PV `loads/wecc/county_dg.csv.gz`, the monthly state energy and
     CAISO/WECC peak targets and the CAISO/WECC membership in
     `loads/_test/data`, and the predeclared 88-point weight grid and
     selection rule);
@@ -24,7 +24,7 @@ Usage
 builds the load matrix and runs the calibration, so the notebook only reads
 the cache. The load matrix is cached as
 `loads/0/_validate/calibrate_X_2020.csv.gz` and the calibration as
-`loads/0/_validate/calibrate_L_2020.csv.gz` (plus `calibrate_summary_2020.csv`,
+`loads/1/_validate/calibrate_L_2020.csv.gz` (plus `calibrate_summary_2020.csv`,
 `calibrate_regions_2020.csv` and `calibrate_states_2020.csv`). The load
 matrix runs 407 county predictions in parallel (`LOADS_TEST_WORKERS`
 processes, default all cores) and the calibration solves 89 programs for
@@ -48,7 +48,7 @@ from fips import Counties
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(PACKAGE,"_test","data")
 CAISO = os.path.join(PACKAGE,"caiso")
-DG_FILE = os.path.join(PACKAGE,"wecc","county_dg_scaled.csv.gz")
+DG_FILE = os.path.join(PACKAGE,"wecc","county_dg.csv.gz")
 YEAR = 2020
 LAGS = 3 # Total trims this many hours from each end of a prediction
 REGIONS = ["CAISO","WECC"]
@@ -71,9 +71,14 @@ def wecc_units() -> list[tuple[str,str]]:
     return sorted(zip(counties.ST,counties.COUNTY),key=lambda x:f"{x[1]} {x[0]}")
 
 
-def _cache(name:str,year:int=YEAR) -> Cache:
+RESULT_VERSION = 1
+"""Cache version of the calibration results (1: unscaled DG `county_dg.csv.gz`;
+0: EIA-scaled DG); the load matrix does not depend on the DG and stays at 0"""
+
+
+def _cache(name:str,year:int=YEAR,version:int=0) -> Cache:
     """@private Validation cache file"""
-    return Cache(package="loads",version=0,path=["_validate",name.format(year=year)])
+    return Cache(package="loads",version=version,path=["_validate",name.format(year=year)])
 
 
 def load_cache(year:int=YEAR) -> Cache:
@@ -84,10 +89,10 @@ def load_cache(year:int=YEAR) -> Cache:
 def result_caches(year:int=YEAR) -> dict[str,Cache]:
     """Cache files holding the calibration results"""
     return {
-        "load": _cache("calibrate_L_{year}.csv.gz",year),
-        "summary": _cache("calibrate_summary_{year}.csv",year),
-        "regions": _cache("calibrate_regions_{year}.csv",year),
-        "states": _cache("calibrate_states_{year}.csv",year),
+        "load": _cache("calibrate_L_{year}.csv.gz",year,RESULT_VERSION),
+        "summary": _cache("calibrate_summary_{year}.csv",year,RESULT_VERSION),
+        "regions": _cache("calibrate_regions_{year}.csv",year,RESULT_VERSION),
+        "states": _cache("calibrate_states_{year}.csv",year,RESULT_VERSION),
         }
 
 
@@ -225,7 +230,7 @@ def calibrated_load(year:int=YEAR,
       - `refresh`: recalibrate even when the result is cached (the load
         matrix is not rebuilt)
 
-      - `progress`: `Calibrate` progress callback
+      - `progress`: `CalibrateEnergyPeak` progress callback
 
     Returns
     -------
@@ -246,10 +251,10 @@ def calibrated_load(year:int=YEAR,
             for cache in caches.values():
                 cache.delete()
 
-    from loads.calibrate import Calibrate # pylint: disable=import-outside-toplevel
+    from loads.calibrate import CalibrateEnergyPeak # pylint: disable=import-outside-toplevel
     load = gross_load(year)
     energy,peak = targets(year)
-    shaped = Calibrate(load,
+    shaped = CalibrateEnergyPeak(load,
         dg=distributed_generation(load),
         energy=energy,
         peak=peak,

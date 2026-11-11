@@ -17,6 +17,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+import numpy as np
 import pandas as pd
 
 from . import schema
@@ -333,7 +334,7 @@ def county_loads(
             notes.append(f"{int(hit.sum())} hours replaced by 2018 training data")
 
     if dg:
-        out["elec_net_MW"] = out["elec_total_MW"] + out["elec_dg_MW"]
+        out["elec_net_MW"] = out["elec_total_MW"] - np.abs(out["elec_dg_MW"])
 
     weather = [c_ for c_ in schema.WEATHER_COLUMNS if c_ in out.columns]
     loads_cols = [c_ for c_ in out.columns if c_ not in weather]

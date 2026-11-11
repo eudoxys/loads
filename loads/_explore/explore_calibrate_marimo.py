@@ -6,7 +6,7 @@ Run with
 
 The notebook uses the same inputs as `loads/_test/test_calibrate.py`: the
 assembled August 2020 county load matrix from the local cache, DG from
-`loads/wecc/county_dg_scaled.csv.gz`, and the targets and CAISO/WECC membership in
+`loads/wecc/county_dg.csv.gz` (unscaled rooftop PV), and the targets and CAISO/WECC membership in
 `loads/_test/data`. Build the load matrix first with
 
     python loads/_test/test_calibrate.py
@@ -31,9 +31,9 @@ def _():
     from matplotlib.colors import LogNorm
 
     from cache import Cache
-    from loads.calibrate import Calibrate
+    from loads.calibrate import CalibrateEnergyPeak
 
-    return Cache, Calibrate, ExitStack, LogNorm, Path, mo, np, os, pd, plt
+    return Cache, CalibrateEnergyPeak, ExitStack, LogNorm, Path, mo, np, os, pd, plt
 
 
 @app.cell(hide_code=True)
@@ -78,7 +78,7 @@ def _(DATA, PACKAGE, START, load_cache, mo, pd):
         return _data.loc[_data.index == START].iloc[0].dropna()
 
     load = pd.read_csv(load_cache.pathname,index_col=[0],parse_dates=[0])
-    dg = pd.read_csv(PACKAGE / "wecc" / "county_dg_scaled.csv.gz",index_col=[0],parse_dates=[0])
+    dg = pd.read_csv(PACKAGE / "wecc" / "county_dg.csv.gz",index_col=[0],parse_dates=[0])
     dg.index = pd.DatetimeIndex(dg.index).tz_convert("UTC")
     dg = dg.reindex(index=load.index,columns=load.columns).fillna(0.0).abs()
     energy = _month_row("energy_target.csv")
@@ -108,7 +108,7 @@ def _(mo):
 
 
 @app.cell
-def _(Calibrate, ExitStack, dg, energy, load, mo, peak, pd, regions, report_sweep, search_button, sweep_cache):
+def _(CalibrateEnergyPeak, ExitStack, dg, energy, load, mo, peak, pd, regions, report_sweep, search_button, sweep_cache):
     if search_button.value:
         with ExitStack() as _stack:
             _bar = {}
@@ -126,7 +126,7 @@ def _(Calibrate, ExitStack, dg, energy, load, mo, peak, pd, regions, report_swee
                 else:
                     _subtitle = "Polishing the selected solution"
                 _bar["bar"].update(subtitle=_subtitle)
-            _result = Calibrate(load,dg=dg,energy=energy,peak=peak,regions=regions,
+            _result = CalibrateEnergyPeak(load,dg=dg,energy=energy,peak=peak,regions=regions,
                 search=True,progress=_progress)
         sweep = _result.sweep.copy()
         sweep.to_csv(sweep_cache.pathname,index=False,compression="gzip")
@@ -150,12 +150,12 @@ def _(Calibrate, ExitStack, dg, energy, load, mo, peak, pd, regions, report_swee
 
 
 @app.cell
-def _(Calibrate, sweep):
+def _(CalibrateEnergyPeak, sweep):
     # apply the predeclared selection rule to the saved sweep
     _qualifying = sweep[
-        (sweep[["caiso_peak_shortfall_fraction","wecc_peak_shortfall_fraction"]].max(axis=1) <= Calibrate.PEAK_SHORTFALL_TOL)
-        & (sweep.state_energy_max_abs_relative_error <= Calibrate.STATE_ENERGY_TOL)
-        & (sweep.minimum_load_mw >= Calibrate.NONNEGATIVE_TOL)
+        (sweep[["caiso_peak_shortfall_fraction","wecc_peak_shortfall_fraction"]].max(axis=1) <= CalibrateEnergyPeak.PEAK_SHORTFALL_TOL)
+        & (sweep.state_energy_max_abs_relative_error <= CalibrateEnergyPeak.STATE_ENERGY_TOL)
+        & (sweep.minimum_load_mw >= CalibrateEnergyPeak.NONNEGATIVE_TOL)
         ].assign(drive_total=lambda x:x.lambda_caiso + x.lambda_wecc)
     rule_row = _qualifying.sort_values(["shape_relative_rmse","state_energy_rms_relative_error",
         "energy_weight","drive_total"]).iloc[0] if len(_qualifying) else None
@@ -307,11 +307,11 @@ def _(mo):
 
 
 @app.cell
-def _(Calibrate, dg, energy, load, mo, peak, regions):
+def _(CalibrateEnergyPeak, dg, energy, load, mo, peak, regions):
     @mo.cache
     def solve_point(mu,lambda_caiso,lambda_wecc):
         """Calibrate with fixed weights"""
-        return Calibrate(load,dg=dg,energy=energy,peak=peak,regions=regions,
+        return CalibrateEnergyPeak(load,dg=dg,energy=energy,peak=peak,regions=regions,
             energy_weight=mu,drive={"CAISO":lambda_caiso,"WECC":lambda_wecc})
     return (solve_point,)
 

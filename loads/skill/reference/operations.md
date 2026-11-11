@@ -15,7 +15,7 @@ pip install --upgrade pip && pip install git+https://github.com/eudoxys/loads
 includes the Python modules, this skill's markdown, and the WECC data files
 the code reads (`county_mwh.csv`, the county DG files and the precomputed
 WECC county and node estimates; about 126 MB). To work on `loads` itself,
-or to run its tests, validation and the `Calibrate` recipe (whose data is
+or to run its tests, validation and the `CalibrateEnergyPeak` recipe (whose data is
 repository-only), use a clone:
 
 ```bash
@@ -105,7 +105,7 @@ ls.configure(cachedir="/data/eudoxys-cache")   # or env LOADS_CACHEDIR
 - Reading `wecc_estimate` takes a few seconds even for all 407 counties
   (65 MB compressed; about 150 MB as a frame, about 400 MB peak while
   parsing).
-- `Calibrate(search=True)` solves 88 (two regions) programs per month; for
+- `CalibrateEnergyPeak(search=True)` solves 88 (two regions) programs per month; for
   all 407 WECC counties a month takes minutes.
 - Sampling cost scales with `samples`.
 - A full WECC sweep (≈400 counties) takes hours. Run it in the background,

@@ -17,10 +17,11 @@ Update this file in the same PR that adds, moves, or deletes a file.
 - Add a sector or data source: copy `loads/industry.py` (flat shape) or `loads/residential.py` (stock + scaling); wire it into `loads/total.py`; export in `loads/__init__.py`; add a test in `loads/_test/`; add rows here
 - Change an output column: module docstring example, `loads/__init__.py` "Load data" section, `README.md`, `DESIGN.md` contracts table
 - Add a CLI option or dataset: `loads/cli.py` (`_getdata`, parser), the class's annotated `__init__` argument (see `makeargs` in `CLAUDE.md`), `loads/__init__.py` Syntax section
-- Change calibration: `loads/calibrate.py`; fast tests `loads/_test/test_calibrate_synthetic.py`; August 2020 test `loads/_test/test_calibrate.py`; re-run `loads/_validate/validate_calibrate*.py` and update `loads/_validate/README.md`
+- Change calibration: `loads/calibrate.py` (`Calibrate`, `CalibrateConfig`) and one module per method (`loads/_calibrate_energy.py`, `_calibrate_energypeak.py`, `_calibrate_peaks.py`, `_calibrate_hourly.py`); fast tests `loads/_test/test_calibrate_config.py`, `test_calibrate_panel.py`, `test_calibrate_energy.py`, `test_calibrate_synthetic.py`, `test_calibrate_peaks.py`, `test_calibrate_hourly.py`; August 2020 test `loads/_test/test_calibrate.py`; re-run `loads/_validate/validate_calibrate*.py` and update `loads/_validate/README.md`; review EIA-930 calibration with `loads/_review/review_calibrated_{nodes,counties}_marimo.py`; update the skill (`loads/skill/SKILL.md`, `reference/api.md`, `reference/footguns.md`) and `loads/_test/test_skill_loads_api.py`
 - Change estimator defaults (harmonics, holdout): `loads/estimator.py`; sweep with `loads/_explore/explore_estimator.py`; results in `loads/_explore/explore_estimator_clusters.csv`; review holdout folds for one county with `loads/_review/review_estimator_folds_marimo.py`
 - Re-cluster counties: `loads/_explore/explore_clusters_marimo.py` writes `loads/clusters.csv`
 - Regenerate WECC outputs: `loads/wecc/wecc_estimate.py` → `node_estimate.py`; DG scaling `loads/wecc/county_dg_scale.py`; monthly county energy `python3 -m loads.energy` (writes `loads/wecc/county_mwh.csv`, `county_cf.csv`). Hours of work: only when asked
+- Review WECC calibration to EIA-930 BA load: `loads/_review/review_wecc_calibrate_eia930_marimo.py`; county BA factors `loads/wecc/county_ba.py` (+ `county_ba_overrides.csv`); BA targets `loads/_test/data/ba_minmax_target.csv`
 - Fix a test: tests and the module they cover are paired in the tables below; `loads/_test/README.md` says what each downloads
 - Change a behavior the agent skill documents: update `loads/skill/SKILL.md` and `loads/skill/reference/` (usually `api.md`, `footguns.md`) and `loads/_test/test_skill_loads_api.py` in the same PR
 - Update docs: docstrings, then `make docs` (output `docs/` is not committed)
@@ -46,7 +47,12 @@ Update this file in the same PR that adds, moves, or deletes a file.
 | `loads/total.py` | `Total`: 2018 sector sum, TSGAM fit/predict/sample | core model; cache `T_elec_1h_training.csv.gz` v2 |
 | `loads/estimator.py` | `Estimator`, `EstimatorConfig`: TSGAM by `"County ST"` | tested by `_test/test_estimator.py` |
 | `loads/energy.py` | `Energy`: periodic county energy (MWh); `__main__` writes `wecc/county_mwh.csv`, `county_cf.csv` | tested by `_test/test_energy.py` (stubbed `Total`) |
-| `loads/calibrate.py` | `Calibrate`: convex net-load shaping to state energy + regional peaks (cvxpy) | tested by `_test/test_calibrate*.py` |
+| `loads/calibrate.py` | `Calibrate`: calibrates a standard `loads` frame (e.g., `Total`, `Estimator`) with the method its `CalibrateConfig` data chooses, same columns out; `CalibrateTotal`/`CalibrateNet`: the same for panels of county (`County ST`) or geohash total or net loads, DG from the config; re-exports the classes below and `CalibrationError` | tested by `_test/test_calibrate_config.py`, `_test/test_calibrate_panel.py` |
+| `loads/_calibrate_error.py` | `CalibrationError` | private |
+| `loads/_calibrate_energy.py` | `CalibrateEnergy`: proportional scale of each unit to period or monthly net energy, DG fixed (from the skill's `scale_to_energy`/`scale_monthly`) | private; tested by `_test/test_calibrate_energy.py` |
+| `loads/_calibrate_energypeak.py` | `CalibrateEnergyPeak`: convex net-load shaping to state energy + regional peaks (cvxpy) | private; tested by `_test/test_calibrate_synthetic.py`, `_test/test_calibrate.py` |
+| `loads/_calibrate_peaks.py` | `CalibratePeaks`: per-interval affine map of load percentiles to observed peaks/troughs (no solver) | private; tested by `_test/test_calibrate_peaks.py` |
+| `loads/_calibrate_hourly.py` | `CalibrateHourly`: proportional disaggregation of hourly (EIA-930) BA demand to counties, `.allocate` to nodes | private; tested by `_test/test_calibrate_hourly.py`; validated by `_validate/validate_calibrate_hourly.py` |
 | `loads/cluster.py` | `Cluster`: SVD + k-means of county loads → medoids | used by `_explore/explore_clusters*.py` |
 | `loads/normalize.py` | `Normalize`: imported (e.g. AMI) data → hourly `elec_*_MW` with optional groups and weather | tested by `_test/test_normalize.py` |
 | `loads/aggregate.py` | `Aggregator`, `aggregate()`: counties → WECC240 nodes | reads `eudoxys/wecc240` over the network; see issue #15 |
@@ -65,7 +71,7 @@ helpers. Conventions in `CLAUDE.md` ("Agent skill").
 | `loads/skill/__init__.py` | `loads.skill` docs and re-exports | |
 | `loads/skill/__main__.py`, `loads/skill/cli.py` | `python3 -m loads.skill` (JSON on stdout) | tested by `_test/test_skill_locations_export.py`, `test_skill_wecc.py` |
 | `loads/skill/fetch.py` | explicit `Total` modes, `county_loads`, `batch`, `configure` | tested by `_test/test_skill_fetch_offline.py` (stubbed `Total`) |
-| `loads/skill/calibrate.py` | proportional scaling, `fit_energy_peak`, `shape_to_targets` (`Calibrate` front end) | tested by `_test/test_skill_summarize_calibrate_aggregate.py` |
+| `loads/skill/calibrate.py` | proportional scaling, `fit_energy_peak`, `shape_to_targets` (`CalibrateEnergyPeak` front end) | tested by `_test/test_skill_summarize_calibrate_aggregate.py` |
 | `loads/skill/wecc.py` | readers for `loads/wecc/` estimates and DG | tested by `_test/test_skill_wecc.py` |
 | `loads/skill/validate.py` | contract checks | tested by `_test/test_skill_validate.py` |
 | `loads/skill/aggregate.py` | county → node allocation (`nearest_nodes`, `allocate`) | offline |
@@ -88,15 +94,20 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/wecc/node_estimate.py` | WECC240 node loads from the county estimate cache | writes `node_estimate*.csv*` |
 | `loads/wecc/node_estimate.csv.gz` | node hourly load (uncalibrated) | generated; 21 MB, don't read |
 | `loads/wecc/node_estimate_cf.csv` | county → node contribution factors | generated by `node_estimate.py` |
+| `loads/wecc/node_total.csv.gz` | WECC240 node calibrated total (gross) load 2018–2022 (MW), US counties only | saved from `_review/review_wecc_calibrate_eia930_marimo.py` (peak 1.0, trough 0.0); read by `_review/review_node_total_marimo.py` and `_validate/validate_calibrate_peaks_marimo.py`; 21 MB, don't read |
+| `loads/wecc/ba_net.csv.gz` | calibrated net load of each of the 28 US WECC BAs 2018–2022 (MW) | saved from `_review/review_wecc_calibrate_eia930_marimo.py` (peak 1.0, trough 0.0); read by `_validate/validate_calibrate_peaks_marimo.py`; tested by `_test/test_county_ba.py`; 6 MB |
 | `loads/wecc/county_dg_scale.py` | scales county PV to EIA small-scale solar | writes `county_dg_scaled.csv.gz`, `county_dg_scaling.csv` |
-| `loads/wecc/county_dg_scaled.csv.gz` | county PV scaled by state/year (MW, positive) | generated; 22 MB, use `head`; read by calibration test/validation |
+| `loads/wecc/county_dg_scaled.csv.gz` | county PV scaled by state/year (MW, positive) | generated; 22 MB, use `head`; not used by tests, validation or review (they use `county_dg.csv.gz`); read by `loads.skill` (`scaled=True`) |
 | `loads/wecc/county_dg_scaling.csv` | state × year PV scale factors | generated by `county_dg_scale.py` |
 | `loads/wecc/eia_smallscale_pv.csv` | EIA EPA Table 3.21 small-scale PV GWh by state, 2018–2022 | curated input to `county_dg_scale.py` |
 | `loads/wecc/county_dg.csv` | county rooftop PV (MW, positive) | generated from `dgen.csv.gz` by the former nodal `dgen.compile()` (removed in PR #43); read by `county_dg_scale.py`; 82 MB, don't read |
-| `loads/wecc/county_dg.csv.gz` | compressed copy of `county_dg.csv` | hourly shapes for `DG(profile="dgen")`; read by `wecc_estimate.py`; 18 MB, don't read |
+| `loads/wecc/county_dg.csv.gz` | compressed copy of `county_dg.csv` | hourly shapes for `DG(profile="dgen")`; read by `wecc_estimate.py` and `_review/review_wecc_calibrate_eia930_marimo.py`; unscaled DG of the calibration tests, validations, review and exploration notebooks; 18 MB, don't read |
 | `loads/wecc/dgen.csv.gz` | NREL dGen nodal DG | source of `county_dg.csv`; no longer read by package code; 13 MB, don't read |
 | `loads/wecc/county_mwh.csv` | monthly EIA 861M retail MWh allocated to counties | generated by `python3 -m loads.energy` |
 | `loads/wecc/county_cf.csv` | county share of state monthly energy | generated by `python3 -m loads.energy` |
+| `loads/wecc/county_ba.py` | county → EIA-930 balancing authority factors from EIA-861 2018 utility sales and service territories, plus overrides | writes `county_ba.csv`; `--source DIR` reads local EIA-861 workbooks, else downloads from EIA |
+| `loads/wecc/county_ba.csv` | WECC county BA participation factors (`county_st`, `ba`, `factor`, `method`) | generated by `county_ba.py`; tested by `_test/test_county_ba.py` |
+| `loads/wecc/county_ba_overrides.csv` | curated county BA factors, with basis, replacing the fit where it is wrong | curated input to `county_ba.py` |
 
 ## Reference data
 
@@ -111,8 +122,15 @@ Maintenance scripts and their curated or generated data. Run from the folder
 |---|---|---|
 | `loads/_test/README.md` | how to run tests, what they download | |
 | `loads/_test/conftest.py` | cache location from `LOADS_CACHEDIR` | |
-| `loads/_test/test_calibrate_synthetic.py` | `Calibrate` on a small synthetic system | fast, offline |
-| `loads/_test/test_calibrate.py` | `Calibrate` on all WECC counties, August 2020 | network; skipped unless the cache holds the inputs |
+| `loads/_test/test_county_ba.py` | `wecc/county_ba.csv` factors, overrides, `ba_minmax_target.csv`, and the `county_ba.py` fit | fast, offline |
+| `loads/_test/test_calibrate_config.py` | `CalibrateConfig` method selection and options; `Calibrate` on a synthetic `Total`-like frame with each method | fast, offline |
+| `loads/_test/test_calibrate_panel.py` | `CalibrateTotal`/`CalibrateNet` on synthetic county and geohash panels with each method, DG of either sign and scale | fast, offline |
+| `loads/_test/test_calibrate_energy.py` | `CalibrateEnergy` on synthetic counties, period and monthly targets, DG | fast, offline |
+| `loads/_test/test_calibrate_peaks.py` | `CalibratePeaks` on synthetic hourly load and daily peaks/troughs, `basis`/`columns` options | fast, offline |
+| `loads/_test/test_calibrate_synthetic.py` | `CalibrateEnergyPeak` on a small synthetic system | fast, offline |
+| `loads/_test/test_calibrate_hourly.py` | `CalibrateHourly` on a small synthetic system | fast, offline (EIA-930 download stubbed) |
+| `loads/_test/test_validate_calibrate_hourly.py` | the checks of `_validate/validate_calibrate_hourly.py` pass on a synthetic system and fail when it is perturbed | fast, offline |
+| `loads/_test/test_calibrate.py` | `CalibrateEnergyPeak` on all WECC counties, August 2020 | network; skipped unless the cache holds the inputs |
 | `loads/_test/test_archive.py` | classes download cache files from the cache archive instead of rebuilding | `Residential`/`Commercial` tests fast, offline (`file://` archive); others `network` (real archive, Alameda CA, about 25 MB) |
 | `loads/_test/test_energy.py` | `Energy` with a stubbed `Total` | fast, offline |
 | `loads/_test/test_estimator.py` | `Estimator` holdout and year handling | network (weather, stock data) |
@@ -122,12 +140,15 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/_test/ami.csv.gz` | anonymized hourly AMI meter data for `test_normalize.py` | curated; 44 MB gzip, don't open |
 | `loads/_test/make_data.py` | builds `ami.csv.gz` from a raw AMI export (anonymizes ids) | needs the raw file; not a test |
 | `loads/_test/data/README.md` | provenance of test data | |
-| `loads/_test/data/*_target.csv` | monthly state energy and CAISO/WECC peak targets | curated |
+| `loads/_test/data/*_target.csv` | monthly state energy, CAISO/WECC peak and EIA-930 BA min/max (`ba_minmax_target.csv`) targets | curated |
 | `loads/_test/data/state_groups.csv` | county CAISO/WECC membership (0–1) | curated |
 | `loads/_test/data/WECC_CAISO_hourly_load_2018-2022.csv` | cleaned EIA-930 WECC and CAISO hourly load (source of `peak_target.csv`) | curated; 2.6 MB, use `head` |
+| `loads/_test/data/WECC_BA_hourly_load_2018-2022.csv` | cleaned EIA-930 hourly load of the 28 US WECC BAs (source of `ba_minmax_target.csv`; reference of `_validate/validate_calibrate_peaks_marimo.py`) | curated; 7.3 MB, use `head` |
 | `loads/_validate/README.md` | validation question, inputs, procedure, results | update numbers when the model changes |
 | `loads/_validate/validate_calibrate.py` | builds 2020 inputs and calibration in the cache | hours on an empty cache |
 | `loads/_validate/validate_calibrate_marimo.py` | calibrated 2020 CAISO load vs reported | `marimo run` |
+| `loads/_validate/validate_calibrate_peaks_marimo.py` | calibrated net load vs EIA-930 demand for WECC (`wecc/node_total.csv.gz` − node DG) or a BA (`wecc/ba_net.csv.gz` vs `_test/data/WECC_BA_hourly_load_2018-2022.csv`): MAPE, MAE, RMSE, R², energy error | `marimo run` |
+| `loads/_validate/validate_calibrate_hourly.py` | `CalibrateHourly` on the 2018–2022 WECC estimate vs EIA-930 and `wecc240` node loads | about a minute |
 | `loads/_validate/validate_estimator_marimo.py` | estimator holdout/harmonics by county | `marimo run` |
 | `loads/_explore/README.md` | what each exploration produced | |
 | `loads/_explore/explore_clusters.py` | medoids for k=2–10 on every `Total` column | writes `explore_clusters.csv` |
@@ -142,6 +163,10 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/_review/review_commercial_marimo.py` | review `Commercial` | marimo |
 | `loads/_review/review_wecc_estimate_marimo.py` | view `wecc/wecc_estimate.csv.gz` | marimo |
 | `loads/_review/review_node_estimate_marimo.py` | view `wecc/node_estimate.csv.gz` | marimo |
+| `loads/_review/review_node_total_marimo.py` | view `wecc/node_total.csv.gz` by year, month, node | marimo |
+| `loads/_review/review_wecc_calibrate_eia930_marimo.py` | WECC county net load calibrated per BA to EIA-930 monthly min/max with `CalibratePeaks`; combined county table by year, month, state/BA, county; download buttons for 2018–2022 `county_total.csv.gz`, `county_net.csv.gz`, WECC240 node `node_total.csv.gz` (via `wecc/node_estimate_cf.csv`) and `ba_net.csv.gz` | `marimo run`; reads `wecc/wecc_estimate.csv.gz`, `wecc/county_dg.csv.gz` (unscaled DG), `wecc/county_ba.csv`, `_test/data/ba_minmax_target.csv` |
+| `loads/_review/review_calibrated_nodes_marimo.py` | WECC240 node loads from `CalibrateHourly` (EIA-930 BA demand), optional year/month window | `marimo run`; inputs from `_validate/validate_calibrate_hourly.py` |
+| `loads/_review/review_calibrated_counties_marimo.py` | `CalibrateHourly` county loads by state vs the estimate: scale/offset, energy/peak, MAPE/MAE/RMSE/R², optional year/month | `marimo run`; inputs from `_validate/validate_calibrate_hourly.py` |
 | `loads/_review/review_estimator_folds_marimo.py` | `Estimator` holdout fold results (`fold=True`) for any state and county | `marimo run`; fits `N` models, needs NSRDB credentials |
 
 ## Examples

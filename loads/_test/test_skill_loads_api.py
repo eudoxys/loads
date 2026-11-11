@@ -64,7 +64,7 @@ def test_sector_models_keyword_only_after_county():
         assert "year" not in p  # 2018 only
 
 
-# --- Calibrate -------------------------------------------------------------------
+# --- CalibrateEnergyPeak -----------------------------------------------------------
 
 def _panel(months=("2020-07",), units=("Alameda CA", "Kern CA", "Washoe NV")):
     idx = pd.DatetimeIndex([], tz="UTC")
@@ -84,22 +84,22 @@ def _panel(months=("2020-07",), units=("Alameda CA", "Kern CA", "Washoe NV")):
 
 
 def test_calibrate_signature():
-    p = params(loads.Calibrate.__init__)
+    p = params(loads.CalibrateEnergyPeak.__init__)
     for name in ("energy", "peak"):
         assert p[name].kind is inspect.Parameter.KEYWORD_ONLY
         assert p[name].default is inspect.Parameter.empty  # both required
     assert {"dg", "states", "regions", "search", "progress"} <= set(p)
     from loads.calibrate import CalibrationError  # noqa: F401
     import loads.calibrate as cal
-    assert not hasattr(cal, "fit_load") and not hasattr(loads.Calibrate, "load")
+    assert not hasattr(cal, "fit_load") and not hasattr(loads.CalibrateEnergyPeak, "load")
 
 
 def test_calibrate_dg_must_be_positive_output():
     from loads.calibrate import CalibrationError
     X, D, energy, peak = _panel()
     with pytest.raises(CalibrationError, match="nonnegative"):
-        loads.Calibrate(X, energy=energy, peak=peak, dg=-D)  # elec_dg_MW convention is rejected
-    out = loads.Calibrate(X, energy=energy, peak=peak, dg=D)
+        loads.CalibrateEnergyPeak(X, energy=energy, peak=peak, dg=-D)  # elec_dg_MW convention is rejected
+    out = loads.CalibrateEnergyPeak(X, energy=energy, peak=peak, dg=D)
     assert out.shape == X.shape and np.allclose(out.net, out - D)
 
 
@@ -108,19 +108,24 @@ def test_calibrate_rejects_nan_edges():
     X, D, energy, peak = _panel()
     X.iloc[:3] = np.nan  # Total's lag window
     with pytest.raises(CalibrationError, match="missing"):
-        loads.Calibrate(X, energy=energy, peak=peak, dg=D)
+        loads.CalibrateEnergyPeak(X, energy=energy, peak=peak, dg=D)
 
 
 def test_calibrate_without_peak_regions_raises():
-    # footguns.md: energy-only calibration (peak={}) fails building the region table
+    # footguns.md #13: CalibrateEnergyPeak does no energy-only shaping (peak={}) ...
     X, D, energy, _ = _panel()
     with pytest.raises(KeyError):
-        loads.Calibrate(X, energy=energy, peak={}, dg=D)
+        loads.CalibrateEnergyPeak(X, energy=energy, peak={}, dg=D)
+    # ... CalibrateEnergy does, per unit, with DG fixed and either sign
+    targets = {u: 1.1 * float((X[u] - D[u]).sum()) for u in X.columns}
+    out = loads.CalibrateEnergy(X, targets, dg=-D)
+    assert np.allclose(out.net.sum(), pd.Series(targets))
+    assert np.allclose(out / X, out.scale)  # proportional: shape kept
 
 
 def test_calibrate_is_affine_per_utc_month():
     X, D, energy, peak = _panel(months=("2020-07", "2020-08"))
-    out = loads.Calibrate(X, energy=energy, peak=peak, dg=D)  # same targets for both months
+    out = loads.CalibrateEnergyPeak(X, energy=energy, peak=peak, dg=D)  # same targets for both months
     assert len(out.summary) == 2  # one block per UTC calendar month
     par = out.parameters.reset_index()
     for (block, unit), row in out.parameters.iterrows():
@@ -129,9 +134,206 @@ def test_calibrate_is_affine_per_utc_month():
     assert par.offset_MW.abs().max() > 0  # an offset, not a proportional rescale
 
 
+# --- CalibratePeaks ----------------------------------------------------------------
+
+def test_calibrate_peaks_signature():
+    p = params(loads.CalibratePeaks.__init__)
+    assert list(p)[:3] == ["self", "load", "peaks"]
+    assert p["peak"].kind is inspect.Parameter.KEYWORD_ONLY and p["peak"].default == 1.0
+    assert p["trough"].kind is inspect.Parameter.KEYWORD_ONLY and p["trough"].default == 0.0
+    for name in ("basis", "columns"):
+        assert p[name].kind is inspect.Parameter.KEYWORD_ONLY and p[name].default is None
+
+
+def _peaks_case():
+    X, _, _, _ = _panel()
+    X = X.add_suffix("_MW")  # the default basis and columns are the _MW columns
+    days = pd.date_range("2020-07-01", periods=31, freq="D", tz="UTC", name="timestamp")
+    daily = X.sum(axis=1).resample("D")
+    peaks = pd.DataFrame({"max": daily.max().values * 1.2, "min": daily.min().values * 0.8}, index=days)
+    return X, peaks
+
+
+def test_calibrate_peaks_percentiles_leave_hours_above_peak():
+    # footguns.md #34: percentiles, not extremes; matched on the column sum
+    X, peaks = _peaks_case()
+    out = loads.CalibratePeaks(X, peaks, peak=0.9, trough=0.1)
+    assert out.calibrated.all()
+    assert (out.parameters.fraction_above <= 0.1).all() and (out.parameters.fraction_above > 0).any()
+    total = out.sum(axis=1).resample("D").max().values
+    assert (total > peaks["max"].values).any()
+    exact = loads.CalibratePeaks(X, peaks).sum(axis=1).resample("D")
+    assert np.allclose(exact.max().values, peaks["max"].values)
+    assert np.allclose(exact.min().values, peaks["min"].values)
+
+
+def test_calibrate_peaks_basis_and_columns():
+    # api.md: percentiles of the basis sum; only `columns` change, offset shared by mean / basis mean
+    X, peaks = _peaks_case()
+    parts = list(X.columns)
+    X["Total"] = X.sum(axis=1)
+    out = loads.CalibratePeaks(X, peaks, basis="Total", columns=parts + ["Total"])
+    assert np.allclose(out[parts].sum(axis=1), out["Total"])
+    assert np.allclose(out["Total"].resample("D").max().values, peaks["max"].values)
+    one = loads.CalibratePeaks(X, peaks, basis="Total", columns="Kern CA_MW")
+    assert np.allclose(one.drop(columns="Kern CA_MW"), X.drop(columns="Kern CA_MW"))
+
+
+def test_calibrate_peaks_default_is_mw_columns():
+    # api.md / footguns.md #34: defaults are the _MW columns; none raises
+    from loads.calibrate import CalibrationError
+    X, peaks = _peaks_case()
+    X["temperature_degF"] = 70.0
+    out = loads.CalibratePeaks(X, peaks)
+    assert out.basis == out.calibrated_columns == [c for c in X if c.endswith("_MW")]
+    assert (out["temperature_degF"] == 70.0).all()
+    with pytest.raises(CalibrationError, match="_MW"):
+        loads.CalibratePeaks(X[["temperature_degF"]], peaks)
+
+
+def test_calibrate_peaks_ba_net_basis_keeps_dg_fixed():
+    # footguns.md #34 / workflows.md: BA demand is net load; NSRDB/dGen DG is not calibrated
+    X, peaks = _peaks_case()
+    h = np.arange(len(X))
+    X = pd.DataFrame({"elec_total_MW": X.sum(axis=1)})
+    X["elec_dg_MW"] = -50 * np.clip(np.sin(2 * np.pi * ((h - 14) % 24) / 24), 0, None)
+    X["elec_net_MW"] = X["elec_total_MW"] - np.abs(X["elec_dg_MW"])
+    out = loads.CalibratePeaks(X, peaks, basis="elec_net_MW", columns="elec_net_MW")
+    assert np.allclose(out["elec_dg_MW"], X["elec_dg_MW"])
+    assert np.allclose(out["elec_net_MW"].resample("D").max().values, peaks["max"].values)
+    both = loads.CalibratePeaks(X, peaks, basis="elec_net_MW", columns=["elec_total_MW", "elec_net_MW"])
+    assert not np.allclose(both["elec_total_MW"] - np.abs(both["elec_dg_MW"]), both["elec_net_MW"])
+
+
+def test_calibrate_peaks_outside_intervals_unchanged():
+    X, peaks = _peaks_case()
+    out = loads.CalibratePeaks(X, peaks.iloc[:10])
+    assert out.calibrated.sum() == 10 * 24
+    assert np.allclose(out[~out.calibrated], X[~out.calibrated])
+
+
 def test_cast_module_removed():
     with pytest.raises(ModuleNotFoundError):
         __import__("loads.cast")
+
+
+# --- Calibrate / CalibrateConfig ---------------------------------------------------
+
+def _total_frame(months=("2020-07",)):
+    X, D, _, _ = _panel(months=months, units=("Alameda CA", "Kern CA"))
+    frame = pd.DataFrame({"elec_residential_MW": X["Alameda CA"], "elec_commercial_MW": X["Kern CA"]})
+    frame["elec_total_MW"] = frame.sum(axis=1)
+    frame["elec_dg_MW"] = -D.sum(axis=1)
+    frame["elec_net_MW"] = frame["elec_total_MW"] + frame["elec_dg_MW"]
+    frame["temperature_degF"] = 70.0
+    return frame
+
+
+def test_calibrate_signatures():
+    # api.md: Calibrate(data, config); CalibrateConfig(*, energy, peak, peaks, demand, basis, **options)
+    p = params(loads.Calibrate.__init__)
+    assert list(p)[1:] == ["data", "config"]
+    p = params(loads.CalibrateConfig.__init__)
+    assert [n for n in p if p[n].kind is inspect.Parameter.KEYWORD_ONLY] == \
+        ["energy", "peak", "peaks", "demand", "dg", "factors", "basis"]
+    assert p["options"].kind is inspect.Parameter.VAR_KEYWORD
+    p = params(loads.CalibrateEnergy.__init__)
+    assert list(p)[1:3] == ["load", "energy"] and p["dg"].kind is inspect.Parameter.KEYWORD_ONLY
+    p = params(loads.CalibrateHourly.__init__)
+    assert list(p)[1:4] == ["load", "factors", "demand"]
+    assert {"dg", "missing", "refresh"} <= set(p)
+    import loads.calibrate as cal
+    assert not hasattr(cal, "CalibrateForm930")
+
+
+def test_calibrate_config_chooses_method():
+    # footguns.md #35, api.md table
+    from loads.calibrate import CalibrationError
+    frame = _total_frame()
+    peaks = frame["elec_net_MW"].resample("D").agg(["max", "min"])
+    assert loads.CalibrateConfig(energy=1.0).method is loads.CalibrateEnergy
+    assert loads.CalibrateConfig(energy=1.0, peak=2.0).method is loads.CalibrateEnergyPeak
+    assert loads.CalibrateConfig(peaks=peaks, peak=0.95).method is loads.CalibratePeaks
+    assert loads.CalibrateConfig(demand=frame["elec_net_MW"]).method is loads.CalibrateHourly
+    for data in ({}, {"peak": 1.0}, {"energy": 1.0, "demand": frame["elec_net_MW"]},
+                 {"energy": 1.0, "peaks": peaks}):
+        with pytest.raises(CalibrationError):
+            loads.CalibrateConfig(**data)
+    with pytest.raises(CalibrationError, match="not an option"):
+        loads.CalibrateConfig(energy=1.0, search=True)
+    config = loads.CalibrateConfig(energy=1.0, peak=2.0, search=True)
+    assert config.shape_weight == 1.0
+    config.shape_weight = 2.0
+    assert config.options == {"search": True, "shape_weight": 2.0}
+    assert "CalibrateEnergyPeak" in repr(config)
+
+
+def test_calibrate_keeps_columns_and_dg():
+    # api.md: same columns; net matched; DG and weather unchanged; total and sectors rebuilt
+    frame = _total_frame()
+    target = 1.1 * frame["elec_net_MW"].sum()
+    out = loads.Calibrate(frame, loads.CalibrateConfig(energy=target))
+    assert list(out.columns) == list(frame.columns) and out.basis == "elec_net_MW"
+    assert np.isclose(out["elec_net_MW"].sum(), target)
+    assert np.allclose(out["elec_dg_MW"], frame["elec_dg_MW"])
+    assert (out["temperature_degF"] == 70.0).all()
+    assert np.allclose(out[["elec_residential_MW", "elec_commercial_MW"]].sum(axis=1), out["elec_total_MW"])
+    assert np.allclose(out["elec_net_MW"], out["elec_total_MW"] - np.abs(out["elec_dg_MW"]))
+
+
+def test_calibrate_peaks_through_calibrate_rebuilds_total():
+    # footguns.md #34: Calibrate matches elec_net_MW with fixed DG and rebuilds the rest
+    frame = _total_frame()
+    daily = frame["elec_net_MW"].resample("D")
+    peaks = pd.DataFrame({"max": daily.max() * 1.2, "min": daily.min() * 0.8})
+    out = loads.Calibrate(frame, loads.CalibrateConfig(peaks=peaks))
+    assert np.allclose(out["elec_net_MW"].resample("D").max(), peaks["max"])
+    assert np.allclose(out["elec_total_MW"], out["elec_net_MW"] + np.abs(frame["elec_dg_MW"]))
+
+
+def test_calibrate_number_targets_and_missing_demand():
+    # footguns.md #35: a number is refused for CalibrateEnergyPeak across months;
+    # missing demand is NaN unless missing="keep"; NaN edges are rejected
+    from loads.calibrate import CalibrationError
+    frame = _total_frame(months=("2020-07", "2020-08"))
+    with pytest.raises(CalibrationError, match="every month"):
+        loads.Calibrate(frame, loads.CalibrateConfig(energy=1.0e6, peak=1.0e3))
+    demand = frame["elec_net_MW"] * 1.1
+    demand.iloc[0] = np.nan
+    assert loads.Calibrate(frame, loads.CalibrateConfig(demand=demand))["elec_net_MW"].isna().sum() == 1
+    keep = loads.Calibrate(frame, loads.CalibrateConfig(demand=demand, missing="keep"))
+    assert not keep["elec_net_MW"].isna().any()
+    edges = frame.copy()
+    edges.iloc[:2, edges.columns.get_loc("elec_net_MW")] = np.nan
+    with pytest.raises(CalibrationError, match="lag-window"):
+        loads.Calibrate(edges, loads.CalibrateConfig(energy=1.0e6))
+
+
+def test_calibrate_panels():
+    # api.md CalibrateTotal/CalibrateNet; footguns.md #36, #37
+    from loads.calibrate import CalibrationError
+    X, D, _, _ = _panel(units=("Alameda CA", "Kern CA", "Washoe NV"))
+    net = X - D
+    targets = {u: 1.05 * float(net[u].sum()) for u in X.columns}
+    for dg in (D, -D, 1.5 * D):  # either sign, any scale: held fixed
+        out = loads.CalibrateNet(X - dg.abs(), loads.CalibrateConfig(energy=targets, dg=dg))
+        assert np.allclose(out.sum(), pd.Series(targets)) and np.allclose(out.total - out, dg.abs())
+    tot = loads.CalibrateTotal(X, loads.CalibrateConfig(demand=1.1 * net.sum(axis=1), dg=D))
+    assert np.allclose(tot.net.sum(axis=1), 1.1 * net.sum(axis=1))
+    no_dg = loads.CalibrateTotal(X, loads.CalibrateConfig(demand=1.1 * net.sum(axis=1)))
+    assert np.allclose(no_dg.sum(axis=1), 1.1 * net.sum(axis=1))  # without dg the total matches
+    with pytest.raises(CalibrationError, match="County ST"):
+        loads.CalibrateTotal(X.rename(columns={"Kern CA": "Kern"}), loads.CalibrateConfig(energy=targets))
+    nodes = X.set_axis(["9q9p1x", "9q5ctr", "9r4e2u"], axis=1)
+    with pytest.raises(CalibrationError, match="states"):
+        loads.CalibrateTotal(nodes, loads.CalibrateConfig(energy={"CA": 1.0}, peak={"ALL": 1.0}))
+    daily = net.sum(axis=1).resample("D")
+    peaks = pd.DataFrame({"max": daily.max() * 1.1, "min": daily.min() * 0.9})
+    out = loads.CalibrateNet(net, loads.CalibrateConfig(peaks=peaks, dg=D))
+    assert np.allclose(out.sum(axis=1).resample("D").max(), peaks["max"])  # the panel sum
+    frame = pd.DataFrame({"elec_total_MW": X["Alameda CA"]})
+    with pytest.raises(CalibrationError, match="config.dg"):
+        loads.Calibrate(frame, loads.CalibrateConfig(energy=1.0, dg=D))
 
 
 # --- Estimator, Energy, DG ---------------------------------------------------------

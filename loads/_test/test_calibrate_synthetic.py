@@ -1,7 +1,7 @@
 """Calibration tests on a small synthetic system
 
 These tests need no data downloads or cache and run in seconds. They check
-the formulation of `loads.calibrate.Calibrate` on twelve synthetic
+the formulation of `loads.calibrate.CalibrateEnergyPeak` on twelve synthetic
 "County ST" units in three states, with a CAISO-like region nested in a
 WECC-like region and two monthly blocks.
 """
@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from loads.calibrate import Calibrate, CalibrationError
+from loads.calibrate import CalibrateEnergyPeak, CalibrationError
 
 STATES = {"CA":5,"NV":3,"AZ":4}
 MONTHS = ["2020-07","2020-08"]
@@ -43,9 +43,9 @@ def system() -> dict:
 
 
 @pytest.fixture(scope="module")
-def searched(system) -> Calibrate:
+def searched(system) -> CalibrateEnergyPeak:
     """Calibration with the default weight search over both months"""
-    return Calibrate(system["load"],
+    return CalibrateEnergyPeak(system["load"],
         dg=system["dg"],
         energy=system["energy"],
         peak=system["peak"],
@@ -56,7 +56,7 @@ def searched(system) -> Calibrate:
 
 def test_shape(searched,system):
     """The result is the shaped load with the input's index and columns"""
-    assert isinstance(searched,Calibrate)
+    assert isinstance(searched,CalibrateEnergyPeak)
     assert searched.shape == system["load"].shape
     assert (searched.index == system["load"].index).all()
     assert list(searched.columns) == list(system["load"].columns)
@@ -76,8 +76,8 @@ def test_targets(searched):
     """Peaks reach their ceilings and state energies meet the tolerance"""
     regions = searched.regions
     assert (regions.shaped_MW <= regions.target_MW * (1 + 1e-6)).all()
-    assert (regions.shaped_MW >= regions.target_MW * (1 - Calibrate.PEAK_SHORTFALL_TOL)).all()
-    assert (searched.states.shaped_error.abs() <= Calibrate.STATE_ENERGY_TOL).all()
+    assert (regions.shaped_MW >= regions.target_MW * (1 - CalibrateEnergyPeak.PEAK_SHORTFALL_TOL)).all()
+    assert (searched.states.shaped_error.abs() <= CalibrateEnergyPeak.STATE_ENERGY_TOL).all()
     assert (regions.dual_active_hours >= 1).all()
     ceilings = searched.constraints.xs("WECC ceiling",level="constraint")
     assert (ceilings.active >= 1).all() and (ceilings.dual_sum > 0).all()
@@ -94,13 +94,13 @@ def test_affine(searched,system):
         expected = system["load"].values[rows] * parameters.scale.values + parameters.offset_MW.values
         assert np.allclose(searched.values[rows],expected)
         assert (parameters.scale >= -1e-9).all()
-    assert searched.values.min() >= Calibrate.NONNEGATIVE_TOL
+    assert searched.values.min() >= CalibrateEnergyPeak.NONNEGATIVE_TOL
 
 
 def test_fixed_weights(system):
     """Fixed weights solve one candidate; a zero drive leaves the peaks below target"""
     august = system["load"].index.month == 8
-    result = Calibrate(system["load"][august],
+    result = CalibrateEnergyPeak(system["load"][august],
         dg=system["dg"][august],
         energy=system["energy"].iloc[1],
         peak=system["peak"].iloc[1].to_dict(),
@@ -119,7 +119,7 @@ def test_fixed_weights(system):
 def test_safeguards(system):
     """Tight unit safeguards bind and are respected"""
     august = system["load"].index.month == 8
-    result = Calibrate(system["load"][august],
+    result = CalibrateEnergyPeak(system["load"][august],
         dg=system["dg"][august],
         energy=system["energy"].iloc[1],
         peak=system["peak"].iloc[1],
@@ -142,7 +142,7 @@ def test_zero_unit(system):
     dg = system["dg"][august].copy()
     dg["Z0 NV"] = 0.0
     regions = pd.concat([system["regions"],pd.DataFrame({"CAISO":[0.0],"WECC":[1.0]},index=["Z0 NV"])])
-    result = Calibrate(load,dg=dg,energy=system["energy"].iloc[1],peak=system["peak"].iloc[1],
+    result = CalibrateEnergyPeak(load,dg=dg,energy=system["energy"].iloc[1],peak=system["peak"].iloc[1],
         regions=regions,energy_weight=100.0)
     zero = result.parameters.droplevel(0).loc["Z0 NV"]
     assert not zero.active
@@ -157,15 +157,15 @@ def test_invalid_inputs(system):
     energy = system["energy"].iloc[1]
     peak = system["peak"].iloc[1]
     with pytest.raises(CalibrationError):
-        Calibrate(-load,energy=energy,peak=peak)
+        CalibrateEnergyPeak(-load,energy=energy,peak=peak)
     with pytest.raises(CalibrationError):
-        Calibrate(load,dg=-system["dg"][august],energy=energy,peak=peak)
+        CalibrateEnergyPeak(load,dg=-system["dg"][august],energy=energy,peak=peak)
     with pytest.raises(CalibrationError):
-        Calibrate(load,energy=energy.drop("NV"),peak=peak)
+        CalibrateEnergyPeak(load,energy=energy.drop("NV"),peak=peak)
     with pytest.raises(CalibrationError):
-        Calibrate(load,energy=system["energy"].iloc[:1],peak=system["peak"].iloc[:1])
+        CalibrateEnergyPeak(load,energy=system["energy"].iloc[:1],peak=system["peak"].iloc[:1])
     with pytest.raises(CalibrationError):
-        Calibrate(load,energy=energy,peak=peak,peak_multiple=0.5)
+        CalibrateEnergyPeak(load,energy=energy,peak=peak,peak_multiple=0.5)
 
 
 def test_progress(system):
@@ -173,7 +173,7 @@ def test_progress(system):
     calls = []
     august = system["load"].index.month == 8
     grid = [(100.0,{"CAISO":0.1,"WECC":0.3}),(1000.0,{"CAISO":0.3,"WECC":0.3})]
-    Calibrate(system["load"],dg=system["dg"],energy=system["energy"],peak=system["peak"],
+    CalibrateEnergyPeak(system["load"],dg=system["dg"],energy=system["energy"],peak=system["peak"],
         regions=system["regions"],search=grid,
         progress=lambda done,total,info:calls.append((done,total,info["step"],info["candidate"])))
     assert [x[0] for x in calls] == list(range(1,7))
@@ -181,7 +181,7 @@ def test_progress(system):
     assert [x[2] for x in calls] == ["candidate","candidate","final"]*2
     assert [x[3] for x in calls[:2]] == [1,2]
     calls.clear()
-    Calibrate(system["load"][august],dg=system["dg"][august],energy=system["energy"],
+    CalibrateEnergyPeak(system["load"][august],dg=system["dg"][august],energy=system["energy"],
         peak=system["peak"],regions=system["regions"],
         progress=lambda done,total,info:calls.append((done,total,info["step"])))
     assert calls == [(1,1,"final")]
@@ -189,5 +189,5 @@ def test_progress(system):
     def stop(done,total,info):
         raise KeyboardInterrupt
     with pytest.raises(KeyboardInterrupt):
-        Calibrate(system["load"][august],dg=system["dg"][august],energy=system["energy"],
+        CalibrateEnergyPeak(system["load"][august],dg=system["dg"][august],energy=system["energy"],
             peak=system["peak"],regions=system["regions"],search=True,progress=stop)

@@ -51,7 +51,7 @@ file.
 ## Calibration
 
 The marimo notebook `explore_calibrate_marimo.py` explores the sensitivity of
-the August 2020 WECC calibration (`loads.calibrate.Calibrate`) to its
+the August 2020 WECC calibration (`loads.calibrate.CalibrateEnergyPeak`) to its
 objective weights. It shows the trade-off between load-shape deformation,
 state-energy error, and peak attainment across the predeclared 88-point
 weight grid, marks the candidate chosen by the selection rule, and re-solves

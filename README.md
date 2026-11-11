@@ -158,7 +158,34 @@ which adds the `elec_dg_MW` (never positive) and `elec_net_MW` columns. The
 same DG is available on its own with `loads.dgen.DG("CA","Alameda",date_range)`,
 and `loads.dgen.DG.merge` adds it to any hourly load data frame.
 
-See https://www.eudoxys.com/loads for the `Estimator`, `Calibrate`, `Cluster`,
+To calibrate a load to observed or published data, give the data to a
+`CalibrateConfig`; the data chooses the calibration (`energy` →
+`CalibrateEnergy`, `energy` and `peak` → `CalibrateEnergyPeak`, `peaks` →
+`CalibratePeaks`, hourly `demand` → `CalibrateHourly`). `Calibrate` returns
+the frame with the same columns, the net load matching the data and the DG
+unchanged:
+
+    from loads.calibrate import Calibrate, CalibrateConfig
+    total = Total("CA","Alameda",date_range=date_range,samples=0,dg=True).dropna()  # lag-window edges are NaN
+    result = Calibrate(total,CalibrateConfig(energy=monthly_mwh))  # Series by month start
+    result = Calibrate(total,CalibrateConfig(peaks=daily,peak=0.95,trough=0.05))  # columns max, min
+    result = Calibrate(total,CalibrateConfig(demand=ba_demand))  # hourly MW, e.g., EIA-930
+
+For a panel of county (`"County ST"`) or node (geohash) loads, use
+`CalibrateTotal` (total loads) or `CalibrateNet` (net loads) with the same
+configuration; give the panel's DG as `dg` to hold it fixed and match the
+data net of it, e.g., to split EIA-930 demand among counties:
+
+    from loads.calibrate import CalibrateNet
+    config = CalibrateConfig(demand=ba_demand,factors=county_ba,dg=county_dg)  # county_ba: wecc/county_ba.csv
+    result = CalibrateNet(county_net,config)  # result.total is net plus DG
+
+A configuration's options are those of the chosen class (e.g., `search=True`
+for `CalibrateEnergyPeak`) and can be changed after it is constructed. The
+classes can also be used directly on a panel of county or node loads (one
+column per unit), e.g., to split the EIA-930 demand of each balancing
+authority among the counties it serves with `CalibrateHourly`. See
+https://www.eudoxys.com/loads for the `Estimator`, `Calibrate`, `Cluster`,
 and `Aggregator` tools.
 
 # Agent skill

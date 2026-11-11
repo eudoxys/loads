@@ -60,7 +60,7 @@ def test_scale_monthly(total2018):
     out, f = scale_monthly(total2018, "elec_total_MW", target)
     assert np.allclose(out["elec_total_MW"].resample("MS").sum().to_numpy(), target.to_numpy())
     assert np.allclose(f.to_numpy(), np.linspace(0.9, 1.2, 12))
-    assert np.allclose(out["elec_net_MW"], out["elec_total_MW"] + out["elec_dg_MW"])
+    assert np.allclose(out["elec_net_MW"], out["elec_total_MW"] - np.abs(out["elec_dg_MW"]))
 
 
 def test_fit_energy_peak_keeps_peak(total2018):
