@@ -52,6 +52,7 @@ reversed decision in place and note the date.
 | 12d | Calibration to EIA-930 BA demand (`CalibrateHourly`) is a proportional disaggregation, not an optimization: each balancing authority's hourly demand is split among the units it serves in proportion to their estimated load times their BA participation factor (method of `eudoxys/wecc240` PR #2). Every BA hour with demand is matched exactly; BAs without demand keep the estimate; missing demand hours are `NaN` by default. Factors are inputs, not built by the class. EIA-930 demand is net of DG, so the result is net load and may be negative: with `dg`, the BA's gross demand (demand + the DG of its units) is split in proportion to the units' gross load and each unit's fixed DG is subtracted (as in decision 12, DG is never scaled). Without `dg` the load must be nonnegative (the `wecc240` method clips net load at zero); revised 2026-11-09. (`CalibrateForm930` before 2026-11-11.) |
 | 12e | Energy-only calibration (`CalibrateEnergy`) is the proportional rescale of the `loads` agent skill (`scale_to_energy`, `scale_monthly`): each unit's gross load is multiplied by one positive factor per block (the whole period, or each UTC calendar month) so its net energy (gross − fixed DG) equals the target. The shape and load factor are unchanged. Added 2026-11-11. |
 | 12f | `Calibrate(data,config)` calibrates one standard `loads` frame (e.g., `Total`, `Estimator`) and returns a frame with the same index and columns. The data in its `CalibrateConfig` chooses the class: `demand` → `CalibrateHourly`, `peaks` → `CalibratePeaks`, `energy` and `peak` → `CalibrateEnergyPeak`, `energy` → `CalibrateEnergy`; any other combination raises `CalibrationError`. Options are the chosen class's keyword arguments that `Calibrate` doesn't set; they are given when the configuration is constructed and are mutable attributes afterwards. The basis (default `elec_net_MW`, else `elec_total_MW`) is matched with `elec_dg_MW` fixed; the calibrated gross load replaces `elec_total_MW`, the other `elec_..._MW` columns are scaled hour by hour by calibrated/uncalibrated gross load, and `elec_net_MW = elec_total_MW − |elec_dg_MW|`. Each calibration class lives in its own private module (`_calibrate_energy.py`, `_calibrate_energypeak.py`, `_calibrate_peaks.py`, `_calibrate_hourly.py`) and is re-exported by `loads.calibrate`. Added 2026-11-11. |
+| 12g | `CalibrateTotal(data,config)` and `CalibrateNet(data,config)` calibrate a panel whose columns are counties (`"County ST"`, checked against `fips`) or nodes (geohashes) with the same method selection as `Calibrate`. The DG to consider is `CalibrateConfig.dg` (panel, either sign, magnitude used); it is held fixed and the targets are net of it, and the classes don't care whether it is scaled (e.g., `county_dg.csv.gz` or `county_dg_scaled.csv.gz`). `CalibrateTotal` returns total (gross) load, `CalibrateNet` net load (total − DG, may be negative); both carry the other as `.net`/`.total`. Panel targets may couple units: `CalibrateEnergyPeak` takes the `states` and `regions` options (required `states` for geohash columns), `CalibratePeaks` matches the panel sum, and `CalibrateHourly` takes `CalibrateConfig.factors` for demand by BA. `Calibrate` rejects `dg`, `factors`, `states` and `regions`. Added 2026-11-11. |
 | 13 | Counties are clustered by SVD + k-means on `elec_total_MW`; k = 6 (`loads/clusters.csv`). A cluster's medoid stands in for its members when per-county tuning is too costly. |
 | 14 | Estimator harmonics for each medoid are the most parsimonious within 1% of the best found in the sweep (`_explore/explore_estimator_clusters.csv`); the WECC estimate uses the MAPE row. |
 | 15 | The WECC county estimate keeps 2018 actual sector loads and rescales each month of 2018–2022 so its energy equals the EIA 861M retail sales allocated to the county plus the county's DG (gross load). |
@@ -99,7 +100,8 @@ loads/
   total.py           Total(state,county,*,Y,X,dg,date_range,samples,percentile,holdout,refresh)
   estimator.py       Estimator(county_st,years=None,*,config=EstimatorConfig())
   energy.py          Energy(state,counties,year,month=None,*,groupby="1MS",...)
-  calibrate.py       Calibrate(data,config); CalibrateConfig(*,energy=None,peak=None,peaks=None,demand=None,basis=None,**options)
+  calibrate.py       Calibrate(data,config); CalibrateTotal(data,config); CalibrateNet(data,config)
+                     CalibrateConfig(*,energy=None,peak=None,peaks=None,demand=None,dg=None,factors=None,basis=None,**options)
   _calibrate_energy.py      CalibrateEnergy(load,energy,*,dg=None)
   _calibrate_energypeak.py  CalibrateEnergyPeak(load,*,energy,peak,dg=None,states=None,regions=None,search=False,...)
   _calibrate_peaks.py       CalibratePeaks(load,peaks,*,peak=1.0,trough=0.0,basis=None,columns=None)
@@ -138,6 +140,7 @@ accessor takes `refresh:bool=False`.
 | `Estimator` | `timestamp` (`years`) | weather, `enduse`; with `years=None` also `status` (`T`/`H`), `actual`, `prediction` |
 | `Energy` | period start | one column per county, MWh |
 | `Calibrate` | as `data` | `data` with calibrated `_MW` columns; `.config`, `.method`, `.calibration`, `.uncalibrated`, `.basis` |
+| `CalibrateTotal`, `CalibrateNet` | as `data` (county or geohash columns) | calibrated total or net load (MW); `.total`, `.net`, `.dg`, `.config`, `.method`, `.calibration`, `.uncalibrated`, `.counties`, `.geohashes` |
 | `CalibrateEnergy` | as `load` | scaled gross load (MW); `.parameters`, `.scale`, `.net` |
 | `CalibrateEnergyPeak` | as `load` | shaped load (MW); `.parameters`, `.summary`, `.states`, `.constraints` |
 | `CalibratePeaks` | as `load` | calibrated load (MW); `.parameters`, `.uncalibrated`, `.calibrated`, `.basis`, `.calibrated_columns` |
@@ -177,8 +180,9 @@ and `Y`, not the sector breakdown.
    EIA-861M small-scale PV to the county by load share, shape it hourly,
    and add it (negative) to total load; `dg=False` (default) adds none.
 4. **Calibration (optional).** `Calibrate` calibrates one county's frame
-   with the method its data supports (decision 12f). For a panel of
-   counties, solve decision 12 month by month. State energy is soft (reported, not forced); regional
+   with the method its data supports (decision 12f), and `CalibrateTotal`/
+   `CalibrateNet` a panel of counties or nodes (12g). For a panel of
+   counties, decision 12 is solved month by month. State energy is soft (reported, not forced); regional
    peaks are hard ceilings. Alternatively, `CalibrateHourly` splits each
    balancing authority's hourly EIA-930 demand among its counties in
    proportion to their estimated gross load, with their rooftop PV fixed, so

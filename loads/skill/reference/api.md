@@ -7,7 +7,8 @@ frame contains. Read [footguns.md](footguns.md) for the traps each entry
 mentions.
 
 Public exports (`from loads import ...`): `Aggregator`, `Agriculture`,
-`Calibrate`, `CalibrateConfig`, `CalibrationError`, `CalibrateEnergy`,
+`Calibrate`, `CalibrateTotal`, `CalibrateNet`, `CalibrateConfig`,
+`CalibrationError`, `CalibrateEnergy`,
 `CalibrateEnergyPeak`, `CalibratePeaks`, `CalibrateHourly`, `COMstock`, `Cluster`, `Commercial`, `DG`, `Energy`,
 `Estimator`, `Floorarea`, `Industry`, `Normalize`, `RESstock`,
 `Residential`, `Total`, `Transportation`, `Units`, `main` (CLI). `aggregate()` lives in
@@ -238,7 +239,8 @@ model output.
 ## Calibrate and CalibrateConfig
 
 ```python
-CalibrateConfig(*, energy=None, peak=None, peaks=None, demand=None, basis=None, **options)
+CalibrateConfig(*, energy=None, peak=None, peaks=None, demand=None, dg=None, factors=None,
+                basis=None, **options)
 Calibrate(data: pd.DataFrame, config: CalibrateConfig)
 ```
 
@@ -282,8 +284,41 @@ class default); an option the method doesn't have raises
   column `load`, e.g. `.calibration.parameters`), `uncalibrated` (input),
   `basis`.
 
-For panels of counties or nodes with coupled regional targets, call the
-classes below directly.
+`Calibrate` raises `CalibrationError` when the config has `dg` or
+`factors` (it reads DG from the frame) or the panel options `states` and
+`regions`.
+
+## CalibrateTotal and CalibrateNet
+
+```python
+CalibrateTotal(data: pd.DataFrame, config: CalibrateConfig)
+CalibrateNet(data: pd.DataFrame, config: CalibrateConfig)
+```
+
+The same method selection and options as `Calibrate`, for a **panel**: one
+column per county (`"County ST"`, checked against `fips`) or node (a
+geohash); any other column name raises `CalibrationError`.
+`CalibrateTotal` takes and returns total (gross) load, `CalibrateNet` net
+load; each also has the other as `.total` / `.net`.
+
+- `config.dg`: the panel's DG (columns a subset of `data`'s, one sign,
+  magnitude used), held fixed; the targets are then net of it. Any DG
+  works, scaled (`county_dg_scaled.csv.gz`) or not (`county_dg.csv.gz`);
+  the classes don't care. Without `dg`, `CalibrateTotal` matches the totals
+  themselves and `CalibrateNet` calibrates the net load directly (which
+  must then be ≥ 0 for every method but `CalibratePeaks`).
+- Targets for a panel are those of the chosen class: `energy` by unit
+  (`CalibrateEnergy`) or by state with `peak` by region
+  (`CalibrateEnergyPeak`, with options `states`, required for geohash
+  columns, and `regions`); `peaks` of the panel **sum**; `demand` as one
+  series for all units, or by BA with `config.factors` (e.g.
+  `wecc/county_ba.csv`; a multi-column demand without factors raises).
+- `basis` is refused (every column is calibrated); NaN raises.
+- Attributes: `config`, `method`, `calibration`, `uncalibrated`, `dg`
+  (magnitude or `None`), `total`, `net`, `counties`, `geohashes`.
+
+For coupled targets with more control (e.g. `CalibrateHourly.allocate`),
+call the classes below directly.
 
 ## CalibrateEnergy
 

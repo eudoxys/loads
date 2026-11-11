@@ -16,9 +16,25 @@ by a `CalibrateConfig`, and the data given chooses the calibration:
 
 Any other combination (none of them, `peak` without `energy`, or data for
 more than one calibration, e.g., `energy` and `demand`) raises
-`CalibrationError`. Each class can also be used directly on a panel of
-loads (one column per county or node), which is how regional targets that
-couple many units are matched (see the sections below).
+`CalibrationError`.
+
+`CalibrateTotal` and `CalibrateNet` apply the same calibrations to a panel
+of loads with one column per county (`"County ST"`) or network node
+(geohash): `CalibrateTotal` to total (gross) loads and `CalibrateNet` to
+net loads. The DG of the panel, when it is to be considered, is the `dg` of
+the `CalibrateConfig`; it is held fixed and the targets are net of it,
+whichever DG it is (e.g., scaled to EIA small-scale solar or not). A panel
+can carry targets that couple its units: state energy and regional peaks
+(`CalibrateEnergyPeak`, with the `states` and `regions` options), the peaks
+and troughs of the panel sum (`CalibratePeaks`), or the demand of the
+balancing authorities that serve it (`CalibrateHourly`, with `factors`):
+
+    from loads.calibrate import CalibrateNet, CalibrateConfig
+    config = CalibrateConfig(demand=ba_demand,factors=county_ba,dg=county_dg)
+    result = CalibrateNet(county_net,config)  # calibrated net load, same columns
+    result.total                              # net plus DG
+
+Each calibration class can also be used directly.
 
 Examples
 --------
@@ -358,6 +374,8 @@ from loads._calibrate_hourly import CalibrateHourly
 
 __all__ = [
     "Calibrate",
+    "CalibrateTotal",
+    "CalibrateNet",
     "CalibrateConfig",
     "CalibrationError",
     "CalibrateEnergy",
@@ -373,11 +391,16 @@ _UNIT = "load"
 
 _FIXED = {
     CalibrateEnergy: {"dg"},
-    CalibrateEnergyPeak: {"energy","peak","dg","states","regions"},
+    CalibrateEnergyPeak: {"energy","peak","dg"},
     CalibratePeaks: {"peak","basis","columns"},
     CalibrateHourly: {"dg","refresh"},
     }
-"""@private Keyword arguments `Calibrate` sets itself (not options)"""
+"""@private Keyword arguments the front ends set themselves (not options)"""
+
+_PANEL_ONLY = {
+    CalibrateEnergyPeak: {"states","regions"},
+    }
+"""@private Options only `CalibrateTotal` and `CalibrateNet` use (`Calibrate` sets them)"""
 
 
 class CalibrateConfig:
@@ -394,8 +417,13 @@ class CalibrateConfig:
     Any other combination raises `CalibrationError`, both when the
     configuration is constructed and when it is used.
 
+    Two more data attributes don't choose the method: `dg`, the distributed
+    generation that `CalibrateTotal` and `CalibrateNet` hold fixed, and
+    `factors`, which assigns the units of a panel to the columns of
+    `demand`; `factors` requires `demand`.
+
     Options are the keyword arguments of the chosen class that are not data
-    (see `option_names`); `Calibrate` sets the others (e.g., `dg`). They
+    (see `option_names`); the front ends set the others (e.g., `dg`). They
     are given as keyword arguments when the configuration is constructed
     and are attributes afterwards, so they can be read and changed:
 
@@ -411,12 +439,17 @@ class CalibrateConfig:
     DATA = ("energy","peak","peaks","demand")
     """Names of the data attributes (their combination chooses the method)"""
 
+    INPUTS = ("dg","factors")
+    """Names of the data attributes that don't choose the method"""
+
     def __init__(self,
         *,
         energy:float|pd.Series|pd.DataFrame|None=None,
         peak:float|pd.Series|pd.DataFrame|None=None,
         peaks:pd.DataFrame|None=None,
         demand:pd.Series|pd.DataFrame|None=None,
+        dg:pd.DataFrame|None=None,
+        factors:pd.DataFrame|None=None,
         basis:str|None=None,
         **options,
         ):
@@ -425,22 +458,39 @@ class CalibrateConfig:
         Arguments
         ---------
 
-          - `energy`: energy target (MWh): a number for the whole period of
-            the data, or a series (or one-column frame) indexed by month
-            start with the energy of each calendar month (UTC); net of DG
-            when the basis is a net load
+          - `energy`: energy target (MWh), net of DG when DG is considered.
+            For `Calibrate`, a number for the whole period of the data, or a
+            series (or one-column frame) indexed by month start with the
+            energy of each calendar month (UTC). For a panel
+            (`CalibrateTotal`, `CalibrateNet`), the targets of the chosen
+            class: by unit (dict or series for the whole period, frame
+            indexed by month start for each month) for `CalibrateEnergy`,
+            or by state for `CalibrateEnergyPeak`
 
-          - `peak`: peak target (MW) for `CalibrateEnergyPeak`, a number or
-            a series indexed by month start; when `peaks` is given, the
-            percentile of the load mapped to each observed peak (an option
-            of `CalibratePeaks`)
+          - `peak`: peak target (MW) for `CalibrateEnergyPeak`: for
+            `Calibrate`, a number or a series indexed by month start; for a
+            panel, by region (dict, series, or frame indexed by month
+            start); when `peaks` is given, instead the percentile of the
+            load mapped to each observed peak (an option of
+            `CalibratePeaks`)
 
           - `peaks`: observed peak and trough (MW) of each interval, columns
-            `max` and `min` indexed by interval start
+            `max` and `min` indexed by interval start; for a panel, of the
+            sum of its units
 
-          - `demand`: hourly demand (MW), a series (or one-column frame)
-            indexed by timestamp, e.g., a balancing authority's EIA-930
-            demand
+          - `demand`: hourly demand (MW) indexed by timestamp, e.g., EIA-930
+            balancing authority demand: a series (or one-column frame), or,
+            for a panel with `factors`, one column per balancing authority
+
+          - `dg`: distributed generation (MW) of the units of a panel, one
+            column per unit (missing columns have none), all values of one
+            sign (either convention; its magnitude is used); used by
+            `CalibrateTotal` and `CalibrateNet` only, which hold it fixed
+            and treat the targets as net of it. Any DG series may be given,
+            scaled (e.g., `wecc/county_dg_scaled.csv.gz`) or not.
+
+          - `factors`: participation factors of the units of a panel in the
+            columns of `demand` (see `CalibrateHourly`); requires `demand`
 
           - `basis`: the column whose values are matched to the data
             (default `elec_net_MW` when present, otherwise `elec_total_MW`,
@@ -460,15 +510,17 @@ class CalibrateConfig:
         self.peak = peak
         self.peaks = peaks
         self.demand = demand
+        self.dg = dg
+        self.factors = factors
         self.basis = basis
         method = self.method
         for name,value in options.items():
             if name in _FIXED[method] and name not in self.option_names():
-                raise CalibrationError(f"{name!r} is set by Calibrate and is not an option of {method.__name__}")
+                raise CalibrationError(f"{name!r} is set by the front end and is not an option of {method.__name__}")
             setattr(self,name,value)
 
     def __setattr__(self,name,value):
-        if name in self.DATA or name == "basis" or name.startswith("_"):
+        if name in self.DATA or name in self.INPUTS or name == "basis" or name.startswith("_"):
             object.__setattr__(self,name,value)
             return
         names = self.option_names()
@@ -500,7 +552,7 @@ class CalibrateConfig:
             object.__delattr__(self,name)
 
     def __repr__(self):
-        given = [x for x in self.DATA if getattr(self,x) is not None]
+        given = [x for x in self.DATA + self.INPUTS if getattr(self,x) is not None]
         options = ",".join(f"{k}={v!r}" for k,v in self._options.items())
         try:
             method = self.method.__name__
@@ -520,6 +572,8 @@ class CalibrateConfig:
           - `CalibrationError`: the data supports no calibration
         """
         given = {x for x in self.DATA if getattr(self,x) is not None}
+        if self.factors is not None and "demand" not in given:
+            raise CalibrationError("factors assign units to the columns of demand; give demand too")
         if "demand" in given:
             if given != {"demand"}:
                 raise CalibrationError(f"demand selects CalibrateHourly, which doesn't use {sorted(given-{'demand'})}")
@@ -670,6 +724,15 @@ class Calibrate(pd.DataFrame):
             raise CalibrationError("data must be a DataFrame indexed by timestamp")
         method = config.method
         options = config.options
+        if config.dg is not None:
+            raise CalibrationError("Calibrate holds the frame's {prefix}_dg_MW column fixed; "
+                "config.dg is for the panels of CalibrateTotal and CalibrateNet")
+        if config.factors is not None:
+            raise CalibrationError("Calibrate calibrates a single frame; "
+                "config.factors is for the panels of CalibrateTotal and CalibrateNet")
+        panel = sorted(set(options) & _PANEL_ONLY.get(method,set()))
+        if panel:
+            raise CalibrationError(f"{panel} are options of CalibrateTotal and CalibrateNet, not of Calibrate")
 
         # basis, gross load and DG
         basis = config.basis
@@ -779,3 +842,320 @@ class Calibrate(pd.DataFrame):
     def _constructor(self):
         # derived frames are plain data frames
         return pd.DataFrame
+
+
+_GEOHASH = re.compile(r"[0-9bcdefghjkmnpqrstuvwxyz]{1,12}")
+"""@private A geohash: 1 to 12 characters of the geohash base-32 alphabet"""
+
+
+def _panel_units(columns) -> tuple[list[str],list[str]]:
+    """@private Split panel columns into `"County ST"` names and geohashes
+
+    Raises `CalibrationError` for a column that is neither.
+    """
+    from fips import Counties # pylint: disable=import-outside-toplevel
+    known = {f"{county} {state}" for state,county in Counties()[["ST","COUNTY"]].values}
+    counties,geohashes,invalid = [],[],[]
+    for name in columns:
+        if name in known:
+            counties.append(name)
+        elif _GEOHASH.fullmatch(name):
+            geohashes.append(name)
+        else:
+            invalid.append(name)
+    if invalid:
+        raise CalibrationError(f"panel columns must be 'County ST' names or geohashes: {invalid[:5]}")
+    return counties,geohashes
+
+
+class _CalibratePanel(pd.DataFrame):
+    """@private Common implementation of `CalibrateTotal` and `CalibrateNet`"""
+
+    _metadata = ["config","method","calibration","uncalibrated","dg","total","net","counties","geohashes"]
+
+    _NET = False
+    """Whether the panel holds net loads (otherwise total loads)"""
+
+    def __init__(self,
+        data:pd.DataFrame,
+        config:CalibrateConfig,
+        ):
+        # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+        name = type(self).__name__
+        if not isinstance(config,CalibrateConfig):
+            raise CalibrationError("config must be a CalibrateConfig")
+        if not isinstance(data,pd.DataFrame) or not isinstance(data.index,pd.DatetimeIndex):
+            raise CalibrationError("data must be a DataFrame indexed by timestamp")
+        method = config.method
+        options = config.options
+        if config.basis is not None:
+            raise CalibrationError(f"basis selects a column of a Calibrate frame; every column of a {name} panel is calibrated")
+
+        X = data.copy()
+        X.columns = [str(x) for x in X.columns]
+        if X.columns.duplicated().any():
+            raise CalibrationError("data has duplicate columns")
+        try:
+            X = X.astype(float)
+        except (TypeError,ValueError) as err:
+            raise CalibrationError("data must be numeric") from err
+        if not np.isfinite(X.values).all():
+            raise CalibrationError("data contains missing or infinite values (fill or drop the lag-window edges first)")
+        counties,geohashes = _panel_units(list(X.columns))
+
+        # fixed DG (magnitude), aligned with the panel
+        if config.dg is None:
+            D = None
+        else:
+            D = pd.DataFrame(config.dg).copy()
+            D.columns = [str(x) for x in D.columns]
+            try:
+                D = D.astype(float)
+            except (TypeError,ValueError) as err:
+                raise CalibrationError("dg must be numeric") from err
+            present = set(D.columns)
+            if not present <= set(X.columns):
+                raise CalibrationError(f"dg has columns not in data: {sorted(present-set(X.columns))[:5]}")
+            D = D.reindex(index=X.index,columns=X.columns)
+            D[[x for x in X.columns if x not in present]] = 0.0
+            if not np.isfinite(D.values).all():
+                raise CalibrationError("dg contains missing or infinite values (or is misaligned with data)")
+            if (D.values > 0).any() and (D.values < 0).any():
+                raise CalibrationError("dg values must all have the same sign")
+            D = D.abs()
+        gross = X + D if self._NET and D is not None else X
+
+        # calibrate the gross load (the DG is fixed)
+        if method is CalibrateEnergy:
+            calibration = CalibrateEnergy(gross,config.energy,dg=D,**options)
+            total = pd.DataFrame(calibration)
+        elif method is CalibrateEnergyPeak:
+            if geohashes and options.get("states") is None:
+                raise CalibrationError("geohash columns have no state; give the states option "
+                    "(units x states membership summing to one per unit)")
+            calibration = CalibrateEnergyPeak(gross,energy=config.energy,peak=config.peak,dg=D,**options)
+            total = pd.DataFrame(calibration)
+        elif method is CalibratePeaks:
+            units = list(X.columns)
+            base = gross - D if D is not None else gross
+            calibration = CalibratePeaks(base,config.peaks,basis=units,columns=units,**options)
+            total = pd.DataFrame(calibration) + (D if D is not None else 0.0)
+        else:
+            demand = config.demand
+            factors = config.factors
+            if factors is None:
+                if isinstance(demand,pd.DataFrame) and demand.shape[1] > 1:
+                    raise CalibrationError("demand by balancing authority (a frame by balancing authority) "
+                        "needs factors assigning the units to its columns")
+                demand = _single(demand,"demand",monthly=False)
+                if not isinstance(demand,pd.Series):
+                    raise CalibrationError("demand must be an hourly series indexed by timestamp "
+                        "(or a frame by balancing authority with factors)")
+                factors = pd.DataFrame(1.0,index=X.columns,columns=["demand"])
+                demand = demand.to_frame("demand")
+            elif not isinstance(demand,pd.DataFrame):
+                raise CalibrationError("with factors, demand must be a frame with one column per balancing authority")
+            calibration = CalibrateHourly(gross,factors,demand,dg=D,**options)
+            total = pd.DataFrame(calibration.gross)
+
+        net = total - D if D is not None else total
+        super().__init__(net if self._NET else total)
+        self.config = config
+        self.method = method
+        self.calibration = calibration
+        self.uncalibrated = data
+        self.dg = D
+        self.total = total
+        self.net = net
+        self.counties = counties
+        self.geohashes = geohashes
+
+    @property
+    def _constructor(self):
+        # derived frames are plain data frames
+        return pd.DataFrame
+
+
+class CalibrateTotal(_CalibratePanel):
+    r"""Calibrated panel of total loads
+
+    The data frame has the index and columns of the uncalibrated panel, one
+    column per county (`"County ST"`, e.g., `"Alameda CA"`) or network node
+    (a geohash, e.g., `"9q9p1"`), and contains the calibrated total (gross)
+    load in MW. The data and options in the `CalibrateConfig` choose and
+    configure the calibration as for `Calibrate`, applied to the whole panel:
+
+      - `energy` → `CalibrateEnergy` (targets by unit)
+      - `energy` and `peak` → `CalibrateEnergyPeak` (targets by state and
+        region; the `states` and `regions` options give the memberships,
+        and `states` is required when a column is a geohash)
+      - `peaks` → `CalibratePeaks` (peaks and troughs of the panel sum)
+      - `demand` → `CalibrateHourly` (one series shared by all units, or
+        one column per balancing authority with `factors`)
+
+    When the configuration has `dg`, the targets are net of it and only the
+    total load is calibrated; the DG is held fixed whatever it is (e.g.,
+    scaled to EIA small-scale solar or not), and its magnitude is used.
+    Without `dg`, the targets apply to the total load itself.
+
+    Calibration results are available as attributes:
+
+      - `config`, `method`, `calibration` (the result of the calibration
+        class, with its own attributes), `uncalibrated` (the input panel)
+
+      - `dg`: the DG used (MW, nonnegative, as the panel), or `None`
+
+      - `total`: the calibrated total load (the data frame itself)
+
+      - `net`: the calibrated net load, total minus DG (MW)
+
+      - `counties`, `geohashes`: the columns of each kind
+
+    Examples
+    --------
+
+    Split a balancing authority's hourly demand, which is net of rooftop
+    PV, between two counties, holding their PV fixed:
+
+        import pandas as pd
+        from loads.calibrate import CalibrateTotal, CalibrateConfig
+        index = pd.date_range("2020-08-01 18:00",periods=3,freq="1h",tz="UTC",name="timestamp")
+        total = pd.DataFrame({"Alameda CA":[1500.0,1400.0,1450.0],"Contra Costa CA":[1000.0,950.0,980.0]},index=index)
+        pv = pd.DataFrame({"Alameda CA":[200.0,100.0,0.0],"Contra Costa CA":[150.0,80.0,0.0]},index=index)
+        demand = pd.Series([2400.0,2300.0,2500.0],index=index)  # net of PV
+        result = CalibrateTotal(total,CalibrateConfig(demand=demand,dg=pv))
+
+    gives
+
+        >>> result.round(1)
+                                   Alameda CA  Contra Costa CA
+        timestamp
+        2020-08-01 18:00:00+00:00      1650.0           1100.0
+        2020-08-01 19:00:00+00:00      1477.4           1002.6
+        2020-08-01 20:00:00+00:00      1491.8           1008.2
+        >>> result.net.sum(axis=1)
+        timestamp
+        2020-08-01 18:00:00+00:00    2400.0
+        2020-08-01 19:00:00+00:00    2300.0
+        2020-08-01 20:00:00+00:00    2500.0
+
+    The demand net of PV is matched every hour; the total load of each
+    county is the calibrated share of the gross demand (demand plus PV).
+
+    Caveats
+    -------
+
+      - Coupled targets are matched by the panel as a whole; how they are
+        shared among units is decided by the chosen class.
+
+      - The panel and DG must have no missing values (fill or drop the
+        lag-window edges of `Total` predictions first).
+    """
+
+    _NET = False
+
+    def __init__(self,
+        data:pd.DataFrame,
+        config:CalibrateConfig,
+        ):
+        r"""Construct a calibrated panel of total loads
+
+        Arguments
+        ---------
+
+          - `data`: hourly total (gross) load (MW, nonnegative), one column
+            per county (`"County ST"`) or geohash, indexed by timestamp
+
+          - `config`: calibration data, options and DG
+
+        Raises
+        ------
+
+          - `CalibrationError`: invalid data or columns, or a configuration
+            that supports no calibration
+        """
+        super().__init__(data,config)
+
+
+class CalibrateNet(_CalibratePanel):
+    r"""Calibrated panel of net loads
+
+    The data frame has the index and columns of the uncalibrated panel, one
+    column per county (`"County ST"`) or network node (a geohash), and
+    contains the calibrated net load in MW. The calibrations are those of
+    `CalibrateTotal`, and the targets are net loads.
+
+    When the configuration has `dg`, the total load is the net load plus
+    the DG, the total load is calibrated so that the net load matches the
+    targets, and the DG is held fixed whatever it is (scaled or not); the
+    net load may then be negative where the DG exceeds the calibrated total
+    load. Without `dg`, the net load itself is calibrated (it must then be
+    nonnegative for `CalibrateEnergy`, `CalibrateEnergyPeak` and
+    `CalibrateHourly`).
+
+    Calibration results are available as attributes:
+
+      - `config`, `method`, `calibration`, `uncalibrated` (the input panel)
+
+      - `dg`: the DG used (MW, nonnegative, as the panel), or `None`
+
+      - `net`: the calibrated net load (the data frame itself)
+
+      - `total`: the calibrated total load, net plus DG (MW)
+
+      - `counties`, `geohashes`: the columns of each kind
+
+    Examples
+    --------
+
+    Match each county's 2020 net energy, holding its PV fixed:
+
+        from loads.calibrate import CalibrateNet
+        net = total - pv
+        energy = {"Alameda CA":4000.0,"Contra Costa CA":2600.0}   # MWh over the three hours
+        result = CalibrateNet(net,CalibrateConfig(energy=energy,dg=pv))
+
+    (with `total` and `pv` as in `CalibrateTotal`) gives
+
+        >>> result.round(1)
+                                   Alameda CA  Contra Costa CA
+        timestamp
+        2020-08-01 18:00:00+00:00      1282.8            815.9
+        2020-08-01 19:00:00+00:00      1283.9            837.6
+        2020-08-01 20:00:00+00:00      1433.3            946.6
+        >>> result.sum()
+        Alameda CA         4000.0
+        Contra Costa CA    2600.0
+        >>> result.calibration.parameters[["scale"]].round(4)
+                                                    scale
+        block                     unit
+        2020-08-01 18:00:00+00:00 Alameda CA       0.9885
+                                  Contra Costa CA  0.9659
+
+    Each county's total load (net plus PV) is scaled by one factor so its
+    net energy matches; the PV is unchanged.
+    """
+
+    _NET = True
+
+    def __init__(self,
+        data:pd.DataFrame,
+        config:CalibrateConfig,
+        ):
+        r"""Construct a calibrated panel of net loads
+
+        Arguments
+        ---------
+
+          - `data`: hourly net load (MW), one column per county
+            (`"County ST"`) or geohash, indexed by timestamp
+
+          - `config`: calibration data, options and DG
+
+        Raises
+        ------
+
+          - `CalibrationError`: invalid data or columns, or a configuration
+            that supports no calibration
+        """
+        super().__init__(data,config)

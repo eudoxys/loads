@@ -323,11 +323,23 @@ the same in one call.
   boundaries. Hours outside the intervals are unchanged
   (`cal.calibrated`).
 
-### Hourly BA demand split among counties (`CalibrateHourly`)
+### Hourly BA demand split among counties (`CalibrateNet`, `CalibrateHourly`)
 
 When a BA's hourly demand (EIA-930) must be shared among the counties it
 serves, calibrate the county panel at once (calibrating counties one by one
-would give each the whole BA):
+would give each the whole BA). With `CalibrateNet` (or `CalibrateTotal` for
+a total-load panel) the DG goes in the config:
+
+```python
+import pandas as pd
+from loads.calibrate import CalibrateNet, CalibrateConfig
+factors = pd.read_csv("loads/wecc/county_ba.csv")        # county_st,ba,factor,method
+config = CalibrateConfig(demand=demand, factors=factors, dg=dg)  # demand: MW by BA code
+net = CalibrateNet(gross - dg, config)                  # net panel in, net panel out
+net.total                                               # calibrated gross load
+```
+
+Or call `CalibrateHourly` directly, e.g. to allocate to nodes:
 
 ```python
 import pandas as pd

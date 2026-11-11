@@ -115,8 +115,8 @@ def test_option_errors():
     """Options the chosen calibration doesn't have raise CalibrationError"""
     with pytest.raises(CalibrationError,match="not an option"):
         CalibrateConfig(energy=1.0,search=True)
-    with pytest.raises(CalibrationError,match="set by Calibrate"):
-        CalibrateConfig(energy=1.0,dg=None)
+    with pytest.raises(CalibrationError,match="set by the front end"):
+        CalibrateConfig(demand=pd.Series(dtype=float),refresh=True)
     config = CalibrateConfig(energy=1.0)
     with pytest.raises(CalibrationError,match="not an option"):
         config.trough = 0.1

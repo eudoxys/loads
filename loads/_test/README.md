@@ -33,7 +33,11 @@ calibration, and that `loads.calibrate.Calibrate` returns a synthetic
 basis matches the data, the DG and weather are unchanged, the sectors sum to
 the total and the net load is the total less the DG. `test_calibrate_energy.py`
 checks `CalibrateEnergy` on synthetic counties with whole-period and monthly
-energy targets, with and without DG. Both are offline and run in seconds.
+energy targets, with and without DG. `test_calibrate_panel.py` checks
+`CalibrateTotal` and `CalibrateNet` on synthetic county and geohash panels
+with each method, including coupled targets (state energy and regional
+peak, panel peaks, demand by balancing authority with factors) and DG of
+either sign and scale. All three are offline and run in seconds.
 
 `test_calibrate.py` calibrates August 2020 county loads for all 407 WECC
 counties to the state energy and CAISO/WECC peak targets in `data/`

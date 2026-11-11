@@ -171,6 +171,15 @@ unchanged:
     result = Calibrate(total,CalibrateConfig(peaks=daily,peak=0.95,trough=0.05))  # columns max, min
     result = Calibrate(total,CalibrateConfig(demand=ba_demand))  # hourly MW, e.g., EIA-930
 
+For a panel of county (`"County ST"`) or node (geohash) loads, use
+`CalibrateTotal` (total loads) or `CalibrateNet` (net loads) with the same
+configuration; give the panel's DG as `dg` to hold it fixed and match the
+data net of it, e.g., to split EIA-930 demand among counties:
+
+    from loads.calibrate import CalibrateNet
+    config = CalibrateConfig(demand=ba_demand,factors=county_ba,dg=county_dg)  # county_ba: wecc/county_ba.csv
+    result = CalibrateNet(county_net,config)  # result.total is net plus DG
+
 A configuration's options are those of the chosen class (e.g., `search=True`
 for `CalibrateEnergyPeak`) and can be changed after it is constructed. The
 classes can also be used directly on a panel of county or node loads (one

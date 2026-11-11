@@ -273,6 +273,18 @@ the tracking issues above or open a new one.
 36. **`Calibrate` returns one frame, not a panel.** It calibrates a single
     `loads` frame (unit `load` in `.calibration`). For coupled targets over
     many counties (state energy, regional peaks, BAs serving several
-    counties) call `CalibrateEnergyPeak` or `CalibrateHourly` on the panel
-    directly; calibrating counties one by one with their BA's demand would
-    give each county the whole BA.
+    counties) use `CalibrateTotal` or `CalibrateNet` on the panel (or the
+    classes directly); calibrating counties one by one with their BA's
+    demand would give each county the whole BA. `Calibrate` refuses
+    `config.dg`, `config.factors` and the `states`/`regions` options
+    **[tested]**.
+
+37. **Panel DG comes from the config, and decides what "net" means.**
+    `CalibrateTotal`/`CalibrateNet` hold `config.dg` fixed and match the
+    targets net of it; without it they match the panel's own values, so
+    EIA-930 demand against a total panel without `dg` overstates load by
+    the rooftop PV. Either sign and any DG (scaled or not) is accepted, so
+    say which DG you passed **[tested]**. Columns must be `"County ST"`
+    names known to `fips` or geohashes (a typo raises), geohash panels need
+    the `states` option for `CalibrateEnergyPeak`, and `peaks` are matched
+    on the panel **sum** **[tested]**.

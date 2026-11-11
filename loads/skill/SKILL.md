@@ -178,7 +178,9 @@ Read [workflows.md](reference/workflows.md) for complete recipes:
   shaping to state energy and regional peaks; `shape_to_targets`), `peaks`
   → `CalibratePeaks` (percentiles to interval peaks and troughs, no
   solver), hourly `demand` → `CalibrateHourly` (EIA-930 BA demand split
-  among counties); plus an affine energy + peak fit of one series
+  among counties); `CalibrateTotal`/`CalibrateNet` do the same for a
+  panel of county or geohash total or net loads, with the panel's DG in
+  the config; plus an affine energy + peak fit of one series
   (`fit_energy_peak`);
 - uncertainty bands and peak distributions from sample ensembles;
 - hold-out skill testing (`Estimator(county_st)`, cross-validated with
@@ -210,7 +212,8 @@ These fail silently or late. The full list with source references is in
   `energy`, or `energy` with `demand`). With the default basis
   `elec_net_MW` the net load matches and `elec_dg_MW` stays fixed; drop
   `Total`'s NaN lag-window edges first. With `peaks`, `peak` means the
-  percentile, not a MW target. See
+  percentile, not a MW target. Panels use `CalibrateTotal`/`CalibrateNet`
+  with `dg=` in the config (scaled or unscaled DG alike). See
   [api.md](reference/api.md#calibrate-and-calibrateconfig).
 - **`CalibrateEnergyPeak` shapes, it does not rescale.** It fits a scale and an
   offset per unit per UTC month to *net-load* state energy and regional

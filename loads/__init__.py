@@ -110,8 +110,9 @@ How the estimate is produced
 
   - Calibration to observed or published data is a separate step.
     `loads.calibrate.Calibrate` calibrates a standard `loads` frame (e.g.,
-    a `Total` or `Estimator` result) with the calibration chosen by the data
-    in its `loads.calibrate.CalibrateConfig`: `CalibrateEnergy` scales loads
+    a `Total` or `Estimator` result), and `CalibrateTotal` and
+    `CalibrateNet` a panel of county or node total or net loads, with the
+    calibration chosen by the data in a `loads.calibrate.CalibrateConfig`: `CalibrateEnergy` scales loads
     proportionally to energy targets; `CalibrateEnergyPeak` shapes a panel
     of county (or node) loads so that it honors monthly state energy targets
     and regional peak ceilings; `CalibratePeaks` maps percentiles of a load
@@ -268,7 +269,7 @@ flowchart TB
         FIT --> SAMPLE --> NET
     end
 
-    CAL(["calibrate.py · Calibrate + CalibrateConfig<br/>CalibrateEnergy · energy<br/>CalibrateEnergyPeak · state energy & regional peaks<br/>CalibratePeaks · interval peaks & troughs<br/>CalibrateHourly · hourly BA demand (EIA-930)"])
+    CAL(["calibrate.py · Calibrate, CalibrateTotal, CalibrateNet + CalibrateConfig<br/>CalibrateEnergy · energy<br/>CalibrateEnergyPeak · state energy & regional peaks<br/>CalibratePeaks · interval peaks & troughs<br/>CalibrateHourly · hourly BA demand (EIA-930)"])
     NET --> CAL
 
     RESID --> FIT
@@ -462,7 +463,7 @@ Package information
 
 from loads.aggregate import Aggregator
 from loads.agriculture import Agriculture
-from loads.calibrate import Calibrate, CalibrateConfig, CalibrationError
+from loads.calibrate import Calibrate, CalibrateTotal, CalibrateNet, CalibrateConfig, CalibrationError
 from loads.calibrate import CalibrateEnergy, CalibrateEnergyPeak, CalibratePeaks, CalibrateHourly
 from loads.cli import main
 from loads.cluster import Cluster

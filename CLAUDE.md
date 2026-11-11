@@ -38,7 +38,9 @@ work in `__init__` and ends with `super().__init__(data)`. `Units` subclasses
 `float` with `__new__`. Keep this pattern when adding a source.
 
 **Calibration layout.** `loads.calibrate` holds `Calibrate` (calibrates one
-standard `loads` frame and returns the same columns) and `CalibrateConfig`
+standard `loads` frame and returns the same columns), `CalibrateTotal` and
+`CalibrateNet` (panels of county or geohash total or net loads, DG taken
+from the config, DESIGN 12g) and `CalibrateConfig`
 (the data and options; the data given chooses the method, DESIGN decision
 12f). Each method is a class in its own private module, re-exported by
 `loads.calibrate` and `loads`: `CalibrateEnergy` (`_calibrate_energy.py`),
@@ -46,7 +48,7 @@ standard `loads` frame and returns the same columns) and `CalibrateConfig`
 (`_calibrate_peaks.py`), `CalibrateHourly` (`_calibrate_hourly.py`);
 `CalibrationError` is in `_calibrate_error.py`. A new method needs its own
 module, a row in `CalibrateConfig.method`, an entry in `_FIXED` (the
-arguments `Calibrate` sets), and a branch in `Calibrate.__init__`. pdoc
+arguments `Calibrate` sets), and branches in `Calibrate.__init__` and `_CalibratePanel.__init__`. pdoc
 documents the classes through `loads.calibrate`, so the methodology lives
 in its module docstring.
 

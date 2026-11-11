@@ -235,7 +235,7 @@ def test_calibrate_signatures():
     assert list(p)[1:] == ["data", "config"]
     p = params(loads.CalibrateConfig.__init__)
     assert [n for n in p if p[n].kind is inspect.Parameter.KEYWORD_ONLY] == \
-        ["energy", "peak", "peaks", "demand", "basis"]
+        ["energy", "peak", "peaks", "demand", "dg", "factors", "basis"]
     assert p["options"].kind is inspect.Parameter.VAR_KEYWORD
     p = params(loads.CalibrateEnergy.__init__)
     assert list(p)[1:3] == ["load", "energy"] and p["dg"].kind is inspect.Parameter.KEYWORD_ONLY
@@ -307,6 +307,33 @@ def test_calibrate_number_targets_and_missing_demand():
     edges.iloc[:2, edges.columns.get_loc("elec_net_MW")] = np.nan
     with pytest.raises(CalibrationError, match="lag-window"):
         loads.Calibrate(edges, loads.CalibrateConfig(energy=1.0e6))
+
+
+def test_calibrate_panels():
+    # api.md CalibrateTotal/CalibrateNet; footguns.md #36, #37
+    from loads.calibrate import CalibrationError
+    X, D, _, _ = _panel(units=("Alameda CA", "Kern CA", "Washoe NV"))
+    net = X - D
+    targets = {u: 1.05 * float(net[u].sum()) for u in X.columns}
+    for dg in (D, -D, 1.5 * D):  # either sign, any scale: held fixed
+        out = loads.CalibrateNet(X - dg.abs(), loads.CalibrateConfig(energy=targets, dg=dg))
+        assert np.allclose(out.sum(), pd.Series(targets)) and np.allclose(out.total - out, dg.abs())
+    tot = loads.CalibrateTotal(X, loads.CalibrateConfig(demand=1.1 * net.sum(axis=1), dg=D))
+    assert np.allclose(tot.net.sum(axis=1), 1.1 * net.sum(axis=1))
+    no_dg = loads.CalibrateTotal(X, loads.CalibrateConfig(demand=1.1 * net.sum(axis=1)))
+    assert np.allclose(no_dg.sum(axis=1), 1.1 * net.sum(axis=1))  # without dg the total matches
+    with pytest.raises(CalibrationError, match="County ST"):
+        loads.CalibrateTotal(X.rename(columns={"Kern CA": "Kern"}), loads.CalibrateConfig(energy=targets))
+    nodes = X.set_axis(["9q9p1x", "9q5ctr", "9r4e2u"], axis=1)
+    with pytest.raises(CalibrationError, match="states"):
+        loads.CalibrateTotal(nodes, loads.CalibrateConfig(energy={"CA": 1.0}, peak={"ALL": 1.0}))
+    daily = net.sum(axis=1).resample("D")
+    peaks = pd.DataFrame({"max": daily.max() * 1.1, "min": daily.min() * 0.9})
+    out = loads.CalibrateNet(net, loads.CalibrateConfig(peaks=peaks, dg=D))
+    assert np.allclose(out.sum(axis=1).resample("D").max(), peaks["max"])  # the panel sum
+    frame = pd.DataFrame({"elec_total_MW": X["Alameda CA"]})
+    with pytest.raises(CalibrationError, match="config.dg"):
+        loads.Calibrate(frame, loads.CalibrateConfig(energy=1.0, dg=D))
 
 
 # --- Estimator, Energy, DG ---------------------------------------------------------
