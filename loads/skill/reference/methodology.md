@@ -40,7 +40,9 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
    (temperature and humidity by default); AR off by default. It is solved
    as a convex problem (CVXPY, SCS by default).
 6. **Prediction.** Applying the fitted model to another year's weather
-   gives the expected load. There is no sampling.
+   gives the expected load; `EstimatorConfig.samples` instead draws AR
+   sample paths (autocorrelated when `ar` is on), optionally reduced to a
+   percentile per hour, seeded by `random_state`.
 7. **Distributed generation.** `loads.dgen.DG` allocates the state's
    EIA-861M small-scale solar to the county by energy share and shapes it
    hourly; `DG.merge` adds it as `elec_dg_MW ≤ 0` and sets net load.
@@ -72,7 +74,7 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
   agricultural load do not depend on weather;
 - `DG.merge`: DG never positive, net = total + DG;
 - inputs and sector loads are cached (`refresh=True` to rebuild);
-  estimates are deterministic.
+  estimates are deterministic, samples too for a given `random_state`.
 
 ## Not promised
 
@@ -95,8 +97,8 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
 
 - **Expected vs realized.** Predictions are conditional means given
   weather; they are smoother than real load. Peaks from predictions are
-  biased low relative to realized peaks; there is no sampling to correct
-  for that. Say so when peaks feed planning decisions.
+  biased low relative to realized peaks. For peak planning use AR sample
+  ensembles (`EstimatorConfig(ar=True, samples=n, percentile=None)`).
 - **Weather drives differences between years**, not economics. Year-on-year
   changes in predicted load reflect weather plus whatever growth enters
   through scaling inputs.

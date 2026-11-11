@@ -129,10 +129,11 @@ Apply growth yourself (e.g. scale a predicted residential series by
 ```python
 Estimator(county_st: str, years: list[int] = None, *, config: EstimatorConfig = None)
 EstimatorConfig(verbose=False, debug=False, log=True, ar=False,
-                solver="OSQP", harmonics=(3, 3, 8),
+                solver="SCS", harmonics=(3, 3, 8),
                 sectors=["residential","commercial","industrial","agricultural"],
                 enduse="elec_total_MW", weather=["temperature_degF","humidity_pc"],
-                keep_actuals=True, holdout="5w", fold=0)
+                keep_actuals=True, holdout="5w", fold=0,
+                samples=None, percentile=96, random_state=42)
 ```
 
 `outlier_regularizer` (default `None`) is a class attribute of
@@ -166,7 +167,17 @@ The prediction API (`DESIGN.md` decision 20), one string location
 - `sectors=["residential"]` skips the national commercial, industrial and
   agricultural downloads (what the package's own tests do).
 
-Estimates are deterministic: there is no sampling mode. Add DG with
+- Sampling (`years` required, else `EstimatorError`): `samples=None`/`0`
+  predicts; `samples=1` puts one AR sample in `enduse`; `samples>1` puts
+  the `percentile` (default 96) of that many samples in `enduse`, or with
+  `percentile=None` every sample in `sample_0..sample_{n-1}` instead of
+  `enduse` **[tested]**. Without `ar` the samples are the prediction plus
+  independent Laplace noise (scale 0.1 in log space), not autocorrelated
+  paths. `random_state` (default 42) seeds the model and the samples, so
+  reruns return the same samples; `None` draws new ones **[tested]**. With
+  `keep_actuals`, 2018 rows hold the actual data in every sample column.
+
+Without `samples` estimates are deterministic. Add DG with
 `DG.merge(estimate, state, county)`.
 `loads/wecc/wecc_estimate.csv.gz` is built from `Estimator` with per-medoid
 harmonics (see [workflows.md](workflows.md)).

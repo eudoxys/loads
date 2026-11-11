@@ -18,6 +18,21 @@ is included in the model.
 When `EstimatorConfig.keep_actuals` is `True`, then the reference data is kept
 instead of predicted data for the reference year. This is the default.
 
+When `EstimatorConfig.samples` is a positive integer, the target years are
+sampled from the TSGAM model instead of predicted (the method `loads.total.Total`
+used before `DESIGN.md` decision 20):
+- `samples=1` puts one sample in the `EstimatorConfig.enduse` column.
+- `samples>1` puts the `EstimatorConfig.percentile` of that many samples in
+  the `EstimatorConfig.enduse` column or, when `percentile=None`, every
+  sample in the columns `sample_0`, `sample_1`, etc. instead.
+Samples are temporally correlated when `EstimatorConfig.ar` is enabled;
+without it, TSGAM only adds independent Laplace noise (scale 0.1, in log
+space when `EstimatorConfig.log` is `True`) to the prediction. Samples are
+repeatable for a given `EstimatorConfig.random_state` (default `42`); use
+`random_state=None` to draw new samples on every run. Sampling is only
+available when `years` is given. With `keep_actuals`, the reference year
+holds the reference data in every sample column.
+
 If no years are specified, then holdout data is withheld from training and an
 additional column `status` is created with the following values to
 indicate whether data is used for training or holdout testing.
@@ -125,6 +140,12 @@ holdout errors averaged over the folds
     from loads.estimator import Estimator, EstimatorConfig
     df = Estimator("Alameda CA",config=EstimatorConfig(fold=True))
     df.attrs["folds"].loc["mean"]
+
+The following gets the 95th percentile of 100 autoregressive samples of the
+2025 total load
+
+    from loads.estimator import Estimator, EstimatorConfig
+    Estimator("Alameda CA",[2025],config=EstimatorConfig(ar=True,samples=100,percentile=95))
 
 Caveats
 -------
@@ -274,6 +295,18 @@ class EstimatorConfig(NamedTuple):
     the holdout frequency, `0 < k < N` to shift the holdout by `k` intervals,
     or `True` to run the holdout test on all `N` folds)"""
 
+    samples:int|None = None
+    """Number of AR samples to draw (`None` or `0` for the prediction, `1`
+    for one sample, `>1` for the `percentile` of that many samples)"""
+
+    percentile:float|None = 96
+    """Percentile of the samples when `samples > 1` (`None` returns every
+    sample in the columns `sample_0`, `sample_1`, etc.)"""
+
+    random_state:int|None = 42
+    """Random seed of the TSGAM model and its samples (`None` for a
+    different set of samples on every run)"""
+
 def _verbose(*args,**kwargs):
     """Verbose output"""
     if VERBOSE:
@@ -407,7 +440,9 @@ class Estimator(pd.DataFrame):
         -------
         The data frame contains the `EstimatorConfig.weather` columns and the
         `EstimatorConfig.enduse` column for every hour of the requested years
-        or, when `years` is `None`, the 2018 weather columns with the
+        (or the `sample_0`, `sample_1`, etc. columns instead of `enduse` when
+        `EstimatorConfig.samples > 1` and `EstimatorConfig.percentile` is
+        `None`) or, when `years` is `None`, the 2018 weather columns with the
         `actual`, `prediction`, and `status` columns (and the `fold` column
         and `attrs["folds"]` summary when `EstimatorConfig.fold` is `True`).
         """
@@ -419,6 +454,7 @@ class Estimator(pd.DataFrame):
 
         if config is None:
             config = EstimatorConfig()
+        samples = self._check_samples(config,years)
 
         # make TSGAM configuration from config
         _config = self._estimator_config(config)
@@ -529,10 +565,17 @@ class Estimator(pd.DataFrame):
             X = pd.concat(X)
 
             # generate outputs
-            Y = pd.DataFrame(
-                data={config.enduse: backward(estimator(X))},
-                index=X.index
-                ).sort_index()
+            if samples == 0: # prediction
+                outputs = {config.enduse: backward(estimator(X))}
+            else: # AR samples
+                draws = backward(model.sample(X,n_samples=samples))
+                if samples == 1: # one sample does not use percentile
+                    outputs = {config.enduse: draws[0]}
+                elif config.percentile is None: # all samples
+                    outputs = {f"sample_{n}": draw for n,draw in enumerate(draws)}
+                else: # percentile of samples
+                    outputs = {config.enduse: np.percentile(draws,config.percentile,axis=0)}
+            Y = pd.DataFrame(data=outputs,index=X.index).sort_index()
 
             # remove unwanted years
             unwanted = X[~X.index.year.isin(years)].index
@@ -541,7 +584,8 @@ class Estimator(pd.DataFrame):
 
             # replace with actuals
             if REFERENCE_YEAR in years and config.keep_actuals:
-                Y.loc[reference.index,config.enduse] = backward(reference[config.enduse])
+                for column in Y.columns:
+                    Y.loc[reference.index,column] = backward(reference[config.enduse])
 
             # compile final dataframe
             data = pd.concat([X,Y],axis=1)
@@ -549,6 +593,34 @@ class Estimator(pd.DataFrame):
         # construct dataframe
         super().__init__(data)
         self.attrs.update(attrs)
+
+    @classmethod
+    def _check_samples(cls,
+        config:EstimatorConfig,
+        years:list[int]|None,
+        ) -> int:
+        """Check the sampling configuration
+
+        Arguments
+        ---------
+        - `config`: top-level estimator configuration
+        - `years`: target years (`None` for holdout test)
+
+        Returns
+        -------
+        - `int`: number of samples to draw (`0` for the prediction)
+        """
+        samples = config.samples
+        if samples is None:
+            return 0
+        if isinstance(samples,bool) or not isinstance(samples,(int,np.integer)) or samples < 0:
+            raise EstimatorError(f"{samples=} must be None or a non-negative integer")
+        if samples > 0 and years is None:
+            raise EstimatorError(f"{samples=} requires target years (sampling is not supported by the holdout test)")
+        percentile = config.percentile
+        if samples > 1 and percentile is not None and not 0 <= percentile <= 100:
+            raise EstimatorError(f"{percentile=} must be between 0 and 100 or None")
+        return int(samples)
 
     @classmethod
     def _estimator_config(cls,
@@ -602,7 +674,7 @@ class Estimator(pd.DataFrame):
             ar_config=ar_config,
             outlier_config=outlier_config,
             solver_config=solver_config,
-            random_state=42,
+            random_state=config.random_state,
             debug=config.debug,
         )
 

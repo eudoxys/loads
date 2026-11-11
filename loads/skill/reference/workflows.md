@@ -235,18 +235,26 @@ shaped_net = out.net                                 # L - D_output, MW
 
 ## 6. Uncertainty and peaks
 
-`loads` has no sampling (`DESIGN.md` decision 20 removed the `Total` AR
-sampler). `Estimator` gives the expected load given weather, which is
-smoother than real load, so its peaks are biased low. For a sense of
-weather-driven spread, estimate several weather years and compare:
+Predictions are the expected load given weather, smoother than real load,
+so their peaks are biased low. `Estimator` can draw AR sample paths
+instead (needs network and NSRDB; `ls.series` does not expose sampling):
 
 ```python
-years = ls.series(c, [2018, 2019, 2020, 2021, 2022], keep_actuals=False)
-by_year = years["elec_total_MW"].groupby(years.index.year)
-print(by_year.max(), by_year.sum())       # peak MW and energy MWh per weather year
+from loads.estimator import Estimator, EstimatorConfig
+
+cfg = EstimatorConfig(ar=True, samples=200, percentile=None, random_state=None)
+paths = Estimator("Alameda CA", [2021], config=cfg)
+S = paths.filter(like="sample_")                 # one column per sample path
+peaks = S.max()                                  # distribution of annual peak MW
+band = S.quantile([0.1, 0.5, 0.9], axis=1).T     # hourly P10/P50/P90
+print(peaks.describe(), band.head())
 ```
 
-Say that this is weather-year spread, not model uncertainty.
+Use `ar=True` (without it samples are independent noise), report the sample
+count and seed, and take peak statistics per path, not from a percentile
+series (footguns #6, #7). For weather-driven spread instead, estimate
+several weather years and compare
+(`ls.series(c, [2018, 2019, 2020, 2021, 2022], keep_actuals=False)`).
 
 ## 7. Measure model skill for a county
 

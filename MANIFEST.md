@@ -115,7 +115,7 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/_test/test_calibrate.py` | `Calibrate` on all WECC counties, August 2020 | network; skipped unless the cache holds the inputs |
 | `loads/_test/test_archive.py` | classes download cache files from the cache archive instead of rebuilding | `Residential`/`Commercial` tests fast, offline (`file://` archive); others `network` (real archive, Alameda CA, about 25 MB) |
 | `loads/_test/test_energy.py` | `Energy` with a stubbed `Estimator` | fast, offline |
-| `loads/_test/test_estimator.py` | `Estimator` holdout and year handling | network (weather, stock data) |
+| `loads/_test/test_estimator.py` | `Estimator` holdout, year handling and sampling | sampling and fold tests offline; the rest network (weather, stock data) |
 | `loads/_test/test_skill_*.py` | `loads.skill` tests; `test_skill_loads_api.py` pins documented `loads` behavior | offline except `test_skill_network.py` (`LOADS_TEST_SKILL=1`) |
 | `loads/_test/skill_synthetic.py` | synthetic county frames for the skill tests | |
 | `loads/_test/test_normalize.py` | `Normalize` sources, groupings, hourly sums, weather merge | `test_nogroups` is `network` (NSRDB weather) |

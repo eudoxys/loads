@@ -57,7 +57,7 @@ reversed decision in place and note the date.
 | 17 | Sibling packages are dependencies through `git+` URLs in `requirements.txt`; dependencies are dynamic in `pyproject.toml`. Python is pinned to 3.12. |
 | 18 | Tests have two tiers: fast offline tests always run; networked tests are marked `network`, use Alameda CA or a single month, and are skipped when they would need a full WECC build that is not in the cache. |
 | 19 | The agent skill for users of the package (`SKILL.md`, `reference/`) and its helpers ship inside the package as the `loads.skill` subpackage (the one exception to the flat layout, because a skill is a folder), so the skill always describes the installed version. `import loads` does not import it. `loads/_test/test_skill_loads_api.py` pins, offline, every `loads` behavior the skill documents; a change that breaks one updates the skill in the same PR. |
-| 20 | `Total` only sums the sectors: `Total(state,county,*,fuel="elec",refresh=False)` returns the 2018 `{fuel}_{sector}_MW` columns and `{fuel}_total_MW`, their sum, and nothing more (no weather, DG, net load, prediction or sampling). `Estimator` is the supported prediction API; DG is added to either with `DG.merge`. AR sampling is dropped with the `Total` TSGAM. Resolves open question 2 (2026-11-11). |
+| 20 | `Total` only sums the sectors: `Total(state,county,*,fuel="elec",refresh=False)` returns the 2018 `{fuel}_{sector}_MW` columns and `{fuel}_total_MW`, their sum, and nothing more (no weather, DG, net load, prediction or sampling). `Estimator` is the supported prediction API; DG is added to either with `DG.merge`. Resolves open question 2 (2026-11-11). Edited 2026-11-11: AR sampling, removed with the `Total` TSGAM, moved to `Estimator` (`EstimatorConfig.samples`, `percentile`, `random_state`; seeded by default). |
 
 ## Conventions inherited
 
@@ -236,7 +236,8 @@ they bear on the version 1 contract.
 - **`Total`.** No `year` argument by design (decision 20); CLI `-Y` only
   reaches `weather` (#26). The prediction issues of #32 (bridged
   non-contiguous `date_range`, unseeded sampling) left with the `Total`
-  TSGAM. `Estimator` estimates start with NaN hours (weather lags).
+  TSGAM: `Estimator` fills gaps between years and seeds its samples
+  (`EstimatorConfig.random_state=42`). `Estimator` estimates start with NaN hours (weather lags).
 - **`DG`.** Months are taken in UTC (EIA's are local, well under 1% of
   monthly energy); `profile="weather"` ignores panel orientation and
   temperature; `profile="dgen"` covers 2018–2022 only. The EIA-861M rewrite

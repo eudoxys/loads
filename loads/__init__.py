@@ -90,7 +90,8 @@ They are expected to satisfy the following:
 
   5. **Repeatability.** Sector loads and the downloaded inputs are cached
      locally after the first run unless `refresh=True` is given. Estimates
-     are deterministic.
+     are deterministic, and so are samples (`EstimatorConfig.samples`) for
+     a given `EstimatorConfig.random_state`.
 
 How the estimate is produced
 ----------------------------

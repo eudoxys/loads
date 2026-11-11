@@ -140,7 +140,11 @@ Facts that follow from the source:
 - The first 3 hours of the first estimated year are NaN (weather lags).
   `edges="fill"` (default) copies the first valid hour, `"pad"` also
   estimates the previous year and trims it, `"nan"` keeps them.
-- Estimates are deterministic; there is no sampling or percentile mode.
+- Estimates are deterministic. `EstimatorConfig(samples=n, percentile=p)`
+  draws AR samples instead (one sample, the `p`th percentile of `n`, or all
+  `n` as `sample_0..`); turn on `ar=True` or samples are only independent
+  noise. Samples repeat for a given `random_state` (default 42). Not
+  exposed by `ls.series`: call `Estimator` directly.
 - Neither `Total` nor `Estimator` is calibrated to EIA or any other
   reported total, in any year. Calibration is a separate step (below).
 

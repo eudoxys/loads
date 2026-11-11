@@ -158,6 +158,12 @@ Estimate the total load of Alameda County CA for 2020 from 2020 weather.
     from loads import Estimator
     print(Estimator("Alameda CA",[2020]))
 
+To get the 95th percentile of 100 autoregressive samples instead of the
+prediction use
+
+    from loads.estimator import EstimatorConfig
+    print(Estimator("Alameda CA",[2020],config=EstimatorConfig(ar=True,samples=100,percentile=95)))
+
 Distributed generation (DG) is not included. To add the county's hourly 2020
 DG, i.e., EIA-861M small-scale solar allocated to the county by load share
 and shaped by weather (see `loads.dgen`), and the resulting net load use
