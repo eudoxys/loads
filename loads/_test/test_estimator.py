@@ -149,12 +149,11 @@ def test_sampling_needs_years(offline):
 	with pytest.raises(EstimatorError,match="years"):
 		Estimator("Alameda CA",None,config=EstimatorConfig(**SAMPLE,samples=10))
 
-def test_ar_default(offline):
-	assert EstimatorConfig().ar is True
-	config = Estimator._estimator_config(EstimatorConfig())
-	assert config.ar_config is not None and list(config.ar_config.lags) == [1,2,3,4]
+def test_ar_lags(offline):
+	assert EstimatorConfig().ar is False
+	assert Estimator._estimator_config(EstimatorConfig()).ar_config is None
+	assert list(Estimator._estimator_config(EstimatorConfig(ar=True)).ar_config.lags) == list(range(1,10))
 	assert list(Estimator._estimator_config(EstimatorConfig(ar=3)).ar_config.lags) == [1,2,3]
-	assert Estimator._estimator_config(EstimatorConfig(ar=False)).ar_config is None
-	settings = {x:y for x,y in SAMPLE.items() if x != "ar"} # default ar
+	settings = {**SAMPLE,"ar":True} # lags 1 to 9
 	df = Estimator("Alameda CA",[2018],config=EstimatorConfig(**settings,samples=1))
 	assert df["elec_total_MW"].notna().sum() > 700

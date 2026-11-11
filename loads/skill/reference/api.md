@@ -128,7 +128,7 @@ Apply growth yourself (e.g. scale a predicted residential series by
 
 ```python
 Estimator(county_st: str, years: list[int] = None, *, config: EstimatorConfig = None)
-EstimatorConfig(verbose=False, debug=False, log=True, ar=True,
+EstimatorConfig(verbose=False, debug=False, log=True, ar=False,
                 solver="SCS", harmonics=(3, 3, 8),
                 sectors=["residential","commercial","industrial","agricultural"],
                 enduse="elec_total_MW", weather=["temperature_degF","humidity_pc"],
@@ -161,8 +161,8 @@ The prediction API (`DESIGN.md` decision 20), one string location
   from min to max then dropping the unrequested ones. 2018 rows are the
   actual training data when `keep_actuals`.
 - Fits in log space by default (`log=True`), so it cannot represent zero
-  or negative loads (no DG/net). AR on by default (`ar=True`: lags 1–4;
-  an integer `n`: lags 1–`n`; `False`: off).
+  or negative loads (no DG/net). AR off by default (`ar=True`: lags 1–9,
+  as `Total` had; an integer `n`: lags 1–`n`).
 - Years without NSRDB weather raise `EstimatorError`.
 - The first hours of each prediction are NaN (exogenous lags).
 - `sectors=["residential"]` skips the national commercial, industrial and
@@ -172,7 +172,7 @@ The prediction API (`DESIGN.md` decision 20), one string location
   predicts; `samples=1` puts one AR sample in `enduse`; `samples>1` puts
   the `percentile` (default 96) of that many samples in `enduse`, or with
   `percentile=None` every sample in `sample_0..sample_{n-1}` instead of
-  `enduse` **[tested]**. With `ar=False` the samples are the prediction plus
+  `enduse` **[tested]**. Without `ar` (the default) the samples are the prediction plus
   independent Laplace noise (scale 0.1 in log space), not autocorrelated
   paths. `random_state` (default 42) seeds the model and the samples, so
   reruns return the same samples; `None` draws new ones **[tested]**. With

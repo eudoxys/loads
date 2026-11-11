@@ -94,7 +94,7 @@ def test_estimator_constants_match_schema():
     p = params(est.Estimator.__init__)
     assert list(p) == ["self", "county_st", "years", "config"]
     # api.md sampling options (tested in test_estimator.py)
-    assert (cfg.samples, cfg.percentile, cfg.random_state, cfg.ar, cfg.solver) == (None, 96, 42, True, "SCS")
+    assert (cfg.samples, cfg.percentile, cfg.random_state, cfg.ar, cfg.solver) == (None, 96, 42, False, "SCS")
 
 
 def test_total_positional_year_raises():

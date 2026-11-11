@@ -54,10 +54,10 @@ the tracking issues above or open a new one.
    per path.
 
 7. **Samples without `ar` are just noise, and seeded ones repeat.** With
-   `ar=False`, TSGAM adds independent Laplace noise to the prediction
-   instead of autocorrelated AR paths, and the default `random_state=42`
-   returns the same samples every run. → keep the default `ar=True`; vary
-   `random_state` (or `None`) for independent ensembles. (`loads.aggregate.
+   the default `ar=False`, TSGAM adds independent Laplace noise to the
+   prediction instead of autocorrelated AR paths, and the default
+   `random_state=42` returns the same samples every run. → `ar=True` (lags
+   1–9); vary `random_state` (or `None`) for independent ensembles. (`loads.aggregate.
    aggregate` sums predictions, not samples.)
 
 8. **Lag-window NaN.** The first 3 hours of the first estimated year are
