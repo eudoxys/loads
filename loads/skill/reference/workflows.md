@@ -242,7 +242,7 @@ instead (needs network and NSRDB; `ls.series` does not expose sampling):
 ```python
 from loads.estimator import Estimator, EstimatorConfig
 
-cfg = EstimatorConfig(ar=True, samples=200, percentile=None, random_state=None)
+cfg = EstimatorConfig(samples=200, percentile=None, random_state=None)
 paths = Estimator("Alameda CA", [2021], config=cfg)
 S = paths.filter(like="sample_")                 # one column per sample path
 peaks = S.max()                                  # distribution of annual peak MW
@@ -250,7 +250,7 @@ band = S.quantile([0.1, 0.5, 0.9], axis=1).T     # hourly P10/P50/P90
 print(peaks.describe(), band.head())
 ```
 
-Use `ar=True` (without it samples are independent noise), report the sample
+Keep the default `ar=True` (without it samples are independent noise), report the sample
 count and seed, and take peak statistics per path, not from a percentile
 series (footguns #6, #7). For weather-driven spread instead, estimate
 several weather years and compare

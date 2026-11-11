@@ -25,8 +25,8 @@ used before `DESIGN.md` decision 20):
 - `samples>1` puts the `EstimatorConfig.percentile` of that many samples in
   the `EstimatorConfig.enduse` column or, when `percentile=None`, every
   sample in the columns `sample_0`, `sample_1`, etc. instead.
-Samples are temporally correlated when `EstimatorConfig.ar` is enabled;
-without it, TSGAM only adds independent Laplace noise (scale 0.1, in log
+Samples are temporally correlated when `EstimatorConfig.ar` is enabled (the
+default); without it, TSGAM only adds independent Laplace noise (scale 0.1, in log
 space when `EstimatorConfig.log` is `True`) to the prediction. Samples are
 repeatable for a given `EstimatorConfig.random_state` (default `42`); use
 `random_state=None` to draw new samples on every run. Sampling is only
@@ -145,7 +145,7 @@ The following gets the 95th percentile of 100 autoregressive samples of the
 2025 total load
 
     from loads.estimator import Estimator, EstimatorConfig
-    Estimator("Alameda CA",[2025],config=EstimatorConfig(ar=True,samples=100,percentile=95))
+    Estimator("Alameda CA",[2025],config=EstimatorConfig(samples=100,percentile=95))
 
 Caveats
 -------
@@ -261,9 +261,10 @@ class EstimatorConfig(NamedTuple):
     log:bool = True
     """Enable use of log values"""
 
-    ar:bool|int = False
-    """Enable autoregression model (`True` uses lags 1 to 4, an integer `n`
-    uses lags 1 to `n`)"""
+    ar:bool|int = True
+    """Enable autoregression model (`True`, the default as in `loads.total.Total`
+    before `DESIGN.md` decision 20, uses lags 1 to 4, an integer `n` uses lags
+    1 to `n`, and `False` or `0` disables it)"""
 
     outlier_regularizer = None
     """Outlier regularizer, use `None` to disable outlier model component"""
@@ -651,7 +652,8 @@ class Estimator(pd.DataFrame):
 
         # autoregression configuration
         ar_config = TsgamArConfig(
-            lags=list(range(1,config.ar+1)) if isinstance(config.ar,int) else [1,2,3,4],
+            # bool is a subclass of int, so check for True first
+            lags=[1,2,3,4] if config.ar is True else list(range(1,int(config.ar)+1)),
             l1_constraint=0.97
         ) if config.ar else None
 

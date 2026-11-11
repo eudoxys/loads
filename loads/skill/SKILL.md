@@ -142,9 +142,10 @@ Facts that follow from the source:
   estimates the previous year and trims it, `"nan"` keeps them.
 - Estimates are deterministic. `EstimatorConfig(samples=n, percentile=p)`
   draws AR samples instead (one sample, the `p`th percentile of `n`, or all
-  `n` as `sample_0..`); turn on `ar=True` or samples are only independent
-  noise. Samples repeat for a given `random_state` (default 42). Not
-  exposed by `ls.series`: call `Estimator` directly.
+  `n` as `sample_0..`); AR is on by default (`ar=True`), and with
+  `ar=False` samples are only independent noise. Samples repeat for a
+  given `random_state` (default 42). Not exposed by `ls.series`: call
+  `Estimator` directly.
 - Neither `Total` nor `Estimator` is calibrated to EIA or any other
   reported total, in any year. Calibration is a separate step (below).
 

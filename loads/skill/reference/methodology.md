@@ -37,7 +37,8 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
    fits, on its log, a time-series generalized additive model
    (`tsgam_estimator`): Fourier terms for yearly/weekly/daily periodicity
    and spline responses to lagged county-centroid NSRDB weather
-   (temperature and humidity by default); AR off by default. It is solved
+   (temperature and humidity by default) and an AR residual model (lags
+   1–4 by default). It is solved
    as a convex problem (CVXPY, SCS by default).
 6. **Prediction.** Applying the fitted model to another year's weather
    gives the expected load; `EstimatorConfig.samples` instead draws AR
@@ -98,7 +99,7 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
 - **Expected vs realized.** Predictions are conditional means given
   weather; they are smoother than real load. Peaks from predictions are
   biased low relative to realized peaks. For peak planning use AR sample
-  ensembles (`EstimatorConfig(ar=True, samples=n, percentile=None)`).
+  ensembles (`EstimatorConfig(samples=n, percentile=None)`).
 - **Weather drives differences between years**, not economics. Year-on-year
   changes in predicted load reflect weather plus whatever growth enters
   through scaling inputs.

@@ -162,7 +162,7 @@ To get the 95th percentile of 100 autoregressive samples instead of the
 prediction use
 
     from loads.estimator import EstimatorConfig
-    print(Estimator("Alameda CA",[2020],config=EstimatorConfig(ar=True,samples=100,percentile=95)))
+    print(Estimator("Alameda CA",[2020],config=EstimatorConfig(samples=100,percentile=95)))
 
 Distributed generation (DG) is not included. To add the county's hourly 2020
 DG, i.e., EIA-861M small-scale solar allocated to the county by load share
