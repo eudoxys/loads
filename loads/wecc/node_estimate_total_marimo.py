@@ -84,9 +84,9 @@ def _(data, mo, nodes):
 @app.cell
 def _(mo, nodes, state_ui):
     # node selection (only when a state is selected)
-    _nodes = nodes[nodes["state"]==state_ui.value].sort_values(["name"])
-    node_ui = mo.ui.dropdown(
-        options={f"{x} ({y})" if isinstance(y,str) else x:x for x,y in _nodes["name"].items()},
+    _nodes = nodes[nodes["state"]==state_ui.value]["name"]
+    _options = {f"{x} ({y})" if isinstance(y,str) else x:x for x,y in _nodes.items()}
+    node_ui = mo.ui.dropdown(options=dict(sorted(_options.items())),
         value=None,allow_select_none=True,label="Node:",disabled=state_ui.value is None)
     return (node_ui,)
 
