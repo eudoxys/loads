@@ -27,7 +27,7 @@ as follows:
 ```mermaid
 flowchart LR
     clusters.csv -->|medoid| harmonics
-    explore_estimator_clusters.csv -->|MAPE best| harmonics
+    HARMONICS[PES GM 2027 Table II] --> harmonics
     harmonics --> Estimator
     Weather[NSRDB weather 2018-2022] --> Estimator
     Sectors[2018 sector loads] --> Estimator
@@ -35,9 +35,9 @@ flowchart LR
 ```
 
 The hourly load is obtained from `loads.estimator.Estimator` for the years
-2018 through 2022 using the TSGAM harmonics that minimize the MAPE for the
-county's cluster medoid (see `loads/clusters.csv` and
-`loads/_explore/explore_estimator_clusters.csv`). The 2018 reference year
+2018 through 2022 using the parsimonious TSGAM harmonics of the county's
+cluster medoid (see `loads/clusters.csv`) given in Table II of the IEEE PES
+GM 2027 paper (see `HARMONICS` and References). The 2018 reference year
 data is kept as the actual sector loads. Unlike `wecc_estimate.py`, the
 estimate is not rescaled to match the county's monthly energy.
 
@@ -47,8 +47,9 @@ abbreviation, sorted by state and then by county name. Values are in MW
 rounded to 4 decimals.
 
 County estimates are cached so an interrupted run resumes where it left off.
-The cache (`Estimate_2018-2022.csv.gz`) is the same one `wecc_estimate.py`
-uses, so running either script warms it for the other.
+The cache file (`Estimate_pesgm2027_2018-2022.csv.gz`) is separate from the
+one `wecc_estimate.py` and `node_estimate.py` use, because the harmonics
+differ.
 
 Caveats
 -------
@@ -60,6 +61,14 @@ Caveats
 2. The estimates are not calibrated to EIA energy, so county totals can
    differ substantially from the retail sales and DG in `county_mwh.csv`
    and `county_dg.csv.gz`.
+
+3. Only the harmonics are taken from the paper. The other TSGAM settings
+   are the `loads.estimator.EstimatorConfig` defaults.
+
+References
+----------
+- Harmonics: `data/results/medoid_table.csv` (Table `tab:medoids`) in
+  https://github.com/dchassin/load_estimator_pesgm_2027
 
 See also
 --------
@@ -79,8 +88,20 @@ OUTPUT = "wecc_total_estimate.csv.gz"
 PRECISION = 4
 """Number of decimals in output values"""
 
-CACHE_NAME = "Estimate_2018-2022.csv.gz"
-"""Cache file name for each county's estimate (see `wecc_estimate.CACHE_NAME`)"""
+CACHE_NAME = "Estimate_pesgm2027_2018-2022.csv.gz"
+"""Cache file name for each county's estimate"""
+
+HARMONICS = {
+    "Lincoln OR": [4,2,3],
+    "Spokane WA": [4,5,7],
+    "Multnomah OR": [2,5,5],
+    "San Luis Obispo CA": [4,5,8],
+    "Maricopa AZ": [4,3,7],
+    "Solano CA": [5,2,7],
+    }
+"""Parsimonious TSGAM `[yearly,weekly,daily]` harmonics of each cluster
+medoid, from Table II of the IEEE PES GM 2027 paper
+(`data/results/medoid_table.csv` in `dchassin/load_estimator_pesgm_2027`)"""
 
 # python modules
 import os
@@ -129,23 +150,16 @@ def get_counties() -> list[tuple[str,str]]:
     counties = Counties(use_index=["RO"],selection="WECC",set_index=["ST","COUNTY"])
     return sorted(set(counties.index))
 
-def get_harmonics(metric:str="mape") -> dict[str,list[int]]:
+def get_harmonics() -> dict[str,list[int]]:
     """Get the TSGAM harmonics for each county from its cluster medoid
-
-    Arguments
-    ---------
-    - `metric`: error metric used to select the medoid harmonics (`mae`,
-      `rmse`, or `mape`)
 
     Returns
     -------
     - `dict[str,list[int]]`: `[yearly,weekly,daily]` harmonics by `"County ST"`
+      (see `HARMONICS`)
     """
     clusters = pd.read_csv(os.path.join(PACKAGE,"clusters.csv"),index_col="county_st")
-    best = pd.read_csv(os.path.join(PACKAGE,"_explore","explore_estimator_clusters.csv"))
-    best = best[best.metric==metric].set_index("county")
-    return {county_st:[int(best.loc[medoid,x]) for x in ["yearly","weekly","daily"]]
-        for county_st,medoid in clusters.medoid.items()}
+    return {county_st:list(HARMONICS[medoid]) for county_st,medoid in clusters.medoid.items()}
 
 def estimate_county(
         state:str,
