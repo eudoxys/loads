@@ -22,14 +22,14 @@ Options
   estimates (default the `cache` package default)
 - `-i FILE`, `--input FILE`: read the county loads from `FILE`, a CSV with
   hourly UTC timestamps and `COUNTY ST` columns (e.g.
-  `examples/county_total.csv.gz`), instead of the county estimate cache
+  `wecc_total_estimate.csv.gz`), instead of the county estimate cache
 - `-o FILE`, `--output FILE`: output file name (default
   `node_estimate.csv.gz` in this folder)
 
-`node_estimate_total.csv.gz` is generated from the calibrated county totals
-of `examples/county_total.py` with
+`node_estimate_total.csv.gz` is generated from the uncalibrated county
+estimates of `wecc_total_estimate.py` with
 
-    python3 node_estimate.py -i ../../examples/county_total.csv.gz -o node_estimate_total.csv.gz
+    python3 node_estimate.py -i wecc_total_estimate.csv.gz -o node_estimate_total.csv.gz
 
 Description
 -----------
@@ -106,7 +106,7 @@ Caveats
 See also
 --------
 - `wecc_estimate.py`
-- `examples/county_total.py`
+- `wecc_total_estimate.py`
 - `wecc240.data.wecc240_data.read_county_node_map`
 """
 
