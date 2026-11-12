@@ -35,7 +35,7 @@ concurrency:
 jobs:
 
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # ubuntu-latest (26.04) has no python 3.12 builds yet
     timeout-minutes: 30 # hard stop on a hung download or solver
 
     env:
@@ -49,7 +49,7 @@ jobs:
     - name: Setup python
       uses: actions/setup-python@v5
       with:
-        python-version: 3.12.9
+        python-version: "3.12" # must satisfy requires-python
         cache: pip
         cache-dependency-path: requirements.txt
 
