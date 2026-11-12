@@ -11,7 +11,7 @@ repository. The county-to-node allocation used is saved in
 Usage
 -----
 
-    python3 node_estimate.py [--wecc240 FOLDER] [--cachedir FOLDER] [--output FILE]
+    python3 node_estimate.py [--wecc240 FOLDER] [--cachedir FOLDER] [--input FILE] [--output FILE]
 
 Options
 -------
@@ -20,8 +20,16 @@ Options
   GitHub)
 - `-C FOLDER`, `--cachedir FOLDER`: `cache` folder holding the county
   estimates (default the `cache` package default)
+- `-i FILE`, `--input FILE`: read the county loads from `FILE`, a CSV with
+  hourly UTC timestamps and `COUNTY ST` columns (e.g.
+  `examples/county_total.csv.gz`), instead of the county estimate cache
 - `-o FILE`, `--output FILE`: output file name (default
   `node_estimate.csv.gz` in this folder)
+
+`node_estimate_total.csv.gz` is generated from the calibrated county totals
+of `examples/county_total.py` with
+
+    python3 node_estimate.py -i ../../examples/county_total.csv.gz -o node_estimate_total.csv.gz
 
 Description
 -----------
@@ -90,9 +98,15 @@ Caveats
 6. Counties assigned to a foreign node by the nearest-node map (e.g.,
    Boundary ID to `c2u6xt`) add their load to that node's foreign load.
 
+7. With `--input`, counties that are not in the input file are allocated no
+   load (a warning lists them), and hours in which the input has no value
+   for any county are left empty in the output, including the foreign
+   nodes.
+
 See also
 --------
 - `wecc_estimate.py`
+- `examples/county_total.py`
 - `wecc240.data.wecc240_data.read_county_node_map`
 """
 
@@ -214,6 +228,26 @@ def get_county_estimate(county_st:list[str]) -> pd.DataFrame:
     result.index.name = "timestamp"
     return result
 
+def read_county_load(file:str,county_st:list[str]) -> pd.DataFrame:
+    """Read the county loads from a file
+
+    Arguments
+    ---------
+    - `file`: CSV file with hourly UTC timestamps and `"County ST"` columns
+    - `county_st`: list of `"County ST"` names to read
+
+    Returns
+    -------
+    - `pd.DataFrame`: hourly load in MW of the counties found in `file`
+    """
+    data = pd.read_csv(file,index_col=[0],parse_dates=[0])
+    data.index = pd.DatetimeIndex(data.index).tz_convert("UTC")
+    data.index.name = "timestamp"
+    missing = [x for x in county_st if x not in data.columns]
+    if missing:
+        print(f"WARNING: no load in {file} for {', '.join(missing)}",file=sys.stderr)
+    return data[[x for x in county_st if x in data.columns]]
+
 def get_foreign_load(
         index:pd.DatetimeIndex,
         folder:str=None,
@@ -266,6 +300,7 @@ def main(
         wecc240:str=None,
         cachedir:str=None,
         output:str=None,
+        county:str=None,
         ) -> int:
     """Generate the WECC240 node load estimate
 
@@ -274,6 +309,8 @@ def main(
     - `wecc240`: `wecc240` package folder (see `get_cf()`)
     - `cachedir`: `cache` folder holding the county estimates
     - `output`: output file name (default `OUTPUT` in this folder)
+    - `county`: county load file to use instead of the cache (see
+      `read_county_load()`)
 
     Returns
     -------
@@ -284,12 +321,16 @@ def main(
         Cache.CACHEDIR = cachedir
 
     cf = get_cf(wecc240)
-    try:
-        county = get_county_estimate(sorted(set(cf["county_st"]),
-            key=lambda x:(x.split()[-1],x)))
-    except FileNotFoundError as err:
-        print(f"ERROR: {err.args[0]}",file=sys.stderr)
-        return 1
+    names = sorted(set(cf["county_st"]),key=lambda x:(x.split()[-1],x))
+    from_file = county is not None
+    if from_file:
+        county = read_county_load(county,names)
+    else:
+        try:
+            county = get_county_estimate(names)
+        except FileNotFoundError as err:
+            print(f"ERROR: {err.args[0]}",file=sys.stderr)
+            return 1
 
     node = aggregate(county,cf)
     error = (node.sum(axis=1) - county.fillna(0.0).sum(axis=1)).abs().max()
@@ -301,6 +342,8 @@ def main(
     foreign = get_foreign_load(node.index,wecc240)
     node = node.add(foreign,fill_value=0.0)
     node = node[sorted(node.columns)]
+    if from_file:
+        node.loc[county.isna().all(axis=1)] = float("nan")
 
     cf.round({"cf":CF_PRECISION}).to_csv(os.path.join(os.path.dirname(output),CF_OUTPUT),
         index=False,header=True)
@@ -318,5 +361,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.strip().split("\n\n",maxsplit=1)[0])
     parser.add_argument("-w","--wecc240",default=None,help="wecc240 package folder")
     parser.add_argument("-C","--cachedir",default=None,help="cache folder")
+    parser.add_argument("-i","--input",dest="county",default=None,
+        help="county load file (default the county estimate cache)")
     parser.add_argument("-o","--output",default=None,help=f"output file (default {OUTPUT})")
     sys.exit(main(**vars(parser.parse_args())))
