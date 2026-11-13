@@ -351,7 +351,82 @@ matches its targets by construction; `loads/_test/test_calibrate_energy.py`
 and `loads/_test/test_calibrate_config.py` check the energy match, the
 fixed DG and the rebuilt total, sector and net columns on synthetic data.
 The `wecc_estimate.csv.gz` monthly rescale (DESIGN decision 15) is the same
-proportional calibration applied to every WECC county.
+proportional calibration applied to every WECC county, which is why
+`CalibrateEnergy` leaves that estimate unchanged in the comparison below.
+
+## Comparison of the four calibration methods
+
+`validate_calibrate_methods.py` calibrates the 2018–2022 WECC county
+estimate (`loads/wecc/wecc_estimate.csv.gz`) and the WECC240 node load
+allocated from it (`loads/wecc/node_estimate_cf.csv`, the 113 nodes that
+receive US county load) with each method `CalibrateConfig` can choose,
+using `CalibrateTotal` with the unscaled rooftop PV
+(`loads/wecc/county_dg.csv.gz`) held fixed:
+
+	python validate_calibrate_methods.py
+
+Each method is fitted to its own data: county EIA-861M monthly energy
+(`wecc/county_mwh.csv`) for `CalibrateEnergy`; state monthly energy and
+CAISO/WECC monthly peaks (`_test/data/energy_target.csv`,
+`peak_target.csv`, `state_groups.csv`) for `CalibrateEnergyPeak`, with a
+reduced 8-candidate weight search; each US WECC BA's monthly EIA-930
+maximum and minimum (`_test/data/ba_minmax_target.csv`), calibrating the
+BA's share of the units, for `CalibratePeaks`; and each BA's hourly
+EIA-930 demand for `CalibrateHourly` (`missing="keep"`). Node memberships
+(state, CAISO, BA) are the county memberships weighted by net energy.
+
+Every result is compared with the uncalibrated estimate (hourly gross load
+of every unit, pooled; MAPE over hours with positive load), with the state
+energy targets (monthly net energy, 60 months × 13 states) and with the
+peak targets (monthly CAISO and WECC net peaks, 60 months × 2 regions).
+MAPE, MAE, RMSE and R² are over the pooled observations, with the
+reference as $y$.
+
+**WECC counties (407)**
+
+| Method | Fitted to | Est. MAPE (%) | Est. MAE (MW) | Est. RMSE (MW) | Est. R² | Energy MAPE (%) | Energy MAE (GWh) | Energy RMSE (GWh) | Energy R² | Peak MAPE (%) | Peak MAE (MW) | Peak RMSE (MW) | Peak R² |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Estimate (uncalibrated) | — | 0.0 | 0 | 0 | 1.000 | 17.4 | 891 | 1,906 | 0.872 | 18.3 | 8,065 | 9,111 | 0.945 |
+| `CalibrateEnergy` | unit energy | 0.000 | 0.0 | 0.0 | 1.000 | 17.4 | 891 | 1,906 | 0.872 | 18.3 | 8,065 | 9,111 | 0.945 |
+| `CalibrateEnergyPeak` | state energy, regional peaks | 72.8 | 52 | 128 | 0.962 | 0.004 | 0.7 | 2.2 | 1.000 | 0.000 | 0.0 | 0.0 | 1.000 |
+| `CalibratePeaks` | BA monthly max/min | 20.8 | 36 | 120 | 0.967 | 11.9 | 395 | 737 | 0.981 | 2.3 | 1,470 | 1,916 | 0.998 |
+| `CalibrateHourly` | BA hourly demand | 23.6 | 40 | 147 | 0.951 | 12.5 | 412 | 717 | 0.982 | 1.7 | 721 | 925 | 0.999 |
+
+**WECC240 nodes (113)**
+
+| Method | Fitted to | Est. MAPE (%) | Est. MAE (MW) | Est. RMSE (MW) | Est. R² | Energy MAPE (%) | Energy MAE (GWh) | Energy RMSE (GWh) | Energy R² | Peak MAPE (%) | Peak MAE (MW) | Peak RMSE (MW) | Peak R² |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Estimate (uncalibrated) | — | 0.0 | 0 | 0 | 1.000 | 17.1 | 891 | 1,905 | 0.872 | 18.5 | 8,150 | 9,221 | 0.943 |
+| `CalibrateEnergy` | unit energy | 0.000 | 0.0 | 0.0 | 1.000 | 17.1 | 891 | 1,905 | 0.872 | 18.5 | 8,150 | 9,221 | 0.943 |
+| `CalibrateEnergyPeak` | state energy, regional peaks | 49.9 | 193 | 298 | 0.910 | 0.009 | 0.7 | 2.4 | 1.000 | 0.000 | 0.0 | 0.0 | 1.000 |
+| `CalibratePeaks` | BA monthly max/min | 18.9 | 127 | 228 | 0.947 | 11.9 | 392 | 734 | 0.981 | 2.5 | 1,578 | 2,000 | 0.997 |
+| `CalibrateHourly` | BA hourly demand | 20.5 | 142 | 267 | 0.928 | 12.6 | 409 | 717 | 0.982 | 1.8 | 803 | 1,003 | 0.999 |
+
+- **`CalibrateEnergy` changes nothing.** The estimate is already scaled so
+  each county's monthly net energy equals its EIA-861M allocation (DESIGN
+  decision 15; largest difference 0.0015%), so the method is an identity
+  on both panels.
+- **The two energy references disagree.** The county allocations in
+  `county_mwh.csv` sum to about 326 TWh/y for California and 8.6 TWh/y for
+  Wyoming, while `energy_target.csv` has about 250 and 16 TWh/y. The
+  estimate's 17% state energy MAPE is this difference, not hourly shape.
+- **`CalibrateEnergyPeak` meets its targets by distorting the shape.** It
+  matches state energy (0.004% MAPE) and attains the CAISO and WECC
+  ceilings exactly, but to move California down and Wyoming and Nevada up
+  by 20–90% it changes the median county by 66% (MAPE vs the estimate;
+  Esmeralda, Lincoln, Lander and Nye NV reach the 200% relative-RMS cap),
+  and the nodes by 50%. On nodes, May 2018 and June 2019 fell back from
+  the selection tolerances (logged) but still met the targets.
+- **`CalibratePeaks` and `CalibrateHourly` are close to each other.** Both
+  change the estimate by about 20% (MAPE) with R² 0.93–0.97, bring the state
+  energy error from 17% to 12% and the regional peak error from 18% to
+  about 2% without being fitted to either; `CalibrateHourly` is closer on
+  peaks, `CalibratePeaks` closer to the estimate's shape. Their remaining
+  energy error is again mostly the state energy reference (EIA-930 demand
+  includes losses and is assigned to states through BA factors).
+- Node statistics differ from county ones mostly through aggregation:
+  errors in MW are larger per unit (fewer, larger units) and relative
+  errors smaller.
 
 ## Comparison to existing models
 
