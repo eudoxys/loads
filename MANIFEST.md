@@ -9,8 +9,8 @@ Update this file in the same PR that adds, moves, or deletes a file.
 1. `CLAUDE.md` — conventions, known rough edges, working rules
 2. `DESIGN.md` — design, numbered decisions, planned work for version 1
 3. `loads/__init__.py` — package docs (spec, "What is not promised", columns, data-flow diagram)
-4. `loads/total.py` — `Total`, the core sector-sum + TSGAM model
-5. `loads/estimator.py` — `Estimator`, the newer TSGAM front end used by the WECC estimate
+4. `loads/total.py` — `Total`, the 2018 sector sum (nothing more)
+5. `loads/estimator.py` — `Estimator`, the prediction API (TSGAM), also used by the WECC estimate
 
 ## Task index
 
@@ -41,11 +41,11 @@ Update this file in the same PR that adds, moves, or deletes a file.
 | `loads/industry.py` | `Industry`: NREL county industrial energy, flat shape | 2019 data |
 | `loads/agriculture.py` | `Agriculture`: NREL county agricultural energy, flat shape | 2019 data |
 | `loads/transportation.py` | `Transportation`: stub | raises `NotImplementedError`; `Total` uses 0 |
-| `loads/dgen.py` | `DG` hourly county DG from EIA-861M small-scale PV, `DG.merge`, `SmallScaleSolar`; `compile()` writes a wide county file | downloads EIA via `eia.Form861m`; reads `wecc/county_mwh.csv` and, for `profile="dgen"`, `wecc/county_dg.csv.gz`; used by `Total(dg=True)` |
+| `loads/dgen.py` | `DG` hourly county DG from EIA-861M small-scale PV, `DG.merge`, `SmallScaleSolar`; `compile()` writes a wide county file | downloads EIA via `eia.Form861m`; reads `wecc/county_mwh.csv` and, for `profile="dgen"`, `wecc/county_dg.csv.gz`; used by `DG.merge` and CLI `-G` |
 | `loads/_solar_estimator.py` | `SolarEstimator` (private) | not used by `DG` default path |
-| `loads/total.py` | `Total`: 2018 sector sum, TSGAM fit/predict/sample | core model; cache `T_elec_1h_training.csv.gz` v2 |
+| `loads/total.py` | `Total`: 2018 sector loads and their sum, nothing more | cache `T_{fuel}_1h_sectors.csv.gz` v3 |
 | `loads/estimator.py` | `Estimator`, `EstimatorConfig`: TSGAM by `"County ST"` | tested by `_test/test_estimator.py` |
-| `loads/energy.py` | `Energy`: periodic county energy (MWh); `__main__` writes `wecc/county_mwh.csv`, `county_cf.csv` | tested by `_test/test_energy.py` (stubbed `Total`) |
+| `loads/energy.py` | `Energy`: periodic county energy (MWh); `__main__` writes `wecc/county_mwh.csv`, `county_cf.csv` | sums `Estimator` estimates; tested by `_test/test_energy.py` (stubbed `Estimator`) |
 | `loads/calibrate.py` | `Calibrate`: convex net-load shaping to state energy + regional peaks (cvxpy) | tested by `_test/test_calibrate*.py` |
 | `loads/cluster.py` | `Cluster`: SVD + k-means of county loads → medoids | used by `_explore/explore_clusters*.py` |
 | `loads/normalize.py` | `Normalize`: imported (e.g. AMI) data → hourly `elec_*_MW` with optional groups and weather | tested by `_test/test_normalize.py` |
@@ -64,7 +64,7 @@ helpers. Conventions in `CLAUDE.md` ("Agent skill").
 | `loads/skill/reference/*.md` | data model, verified API, methodology, workflows, footguns, operations | must match the code; guarded by `_test/test_skill_loads_api.py` |
 | `loads/skill/__init__.py` | `loads.skill` docs and re-exports | |
 | `loads/skill/__main__.py`, `loads/skill/cli.py` | `python3 -m loads.skill` (JSON on stdout) | tested by `_test/test_skill_locations_export.py`, `test_skill_wecc.py` |
-| `loads/skill/fetch.py` | explicit `Total` modes, `county_loads`, `batch`, `configure` | tested by `_test/test_skill_fetch_offline.py` (stubbed `Total`) |
+| `loads/skill/fetch.py` | `training` (`Total`), `series` (`Estimator`), `county_loads`, `batch`, `configure` | tested by `_test/test_skill_fetch_offline.py` (stubbed `Total` and `Estimator`) |
 | `loads/skill/calibrate.py` | proportional scaling, `fit_energy_peak`, `shape_to_targets` (`Calibrate` front end) | tested by `_test/test_skill_summarize_calibrate_aggregate.py` |
 | `loads/skill/wecc.py` | readers for `loads/wecc/` estimates and DG | tested by `_test/test_skill_wecc.py` |
 | `loads/skill/validate.py` | contract checks | tested by `_test/test_skill_validate.py` |
@@ -119,10 +119,10 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/_test/test_calibrate_synthetic.py` | `Calibrate` on a small synthetic system | fast, offline |
 | `loads/_test/test_calibrate.py` | `Calibrate` on all WECC counties, August 2020 | network; skipped unless the cache holds the inputs |
 | `loads/_test/test_archive.py` | classes download cache files from the cache archive instead of rebuilding | `Residential`/`Commercial` tests fast, offline (`file://` archive); others `network` (real archive, Alameda CA, about 25 MB) |
-| `loads/_test/test_energy.py` | `Energy` with a stubbed `Total` | fast, offline |
-| `loads/_test/test_estimator.py` | `Estimator` holdout and year handling | network (weather, stock data) |
+| `loads/_test/test_energy.py` | `Energy` with a stubbed `Estimator` | fast, offline |
+| `loads/_test/test_estimator.py` | `Estimator` holdout, year handling and sampling | sampling and fold tests offline; the rest network (weather, stock data) |
 | `loads/_test/test_skill_*.py` | `loads.skill` tests; `test_skill_loads_api.py` pins documented `loads` behavior | offline except `test_skill_network.py` (`LOADS_TEST_SKILL=1`) |
-| `loads/_test/skill_synthetic.py` | synthetic `Total`-shaped frames for the skill tests | |
+| `loads/_test/skill_synthetic.py` | synthetic county frames for the skill tests | |
 | `loads/_test/test_normalize.py` | `Normalize` sources, groupings, hourly sums, weather merge | `test_nogroups` is `network` (NSRDB weather) |
 | `loads/_test/ami.csv.gz` | anonymized hourly AMI meter data for `test_normalize.py` | curated; 44 MB gzip, don't open |
 | `loads/_test/make_data.py` | builds `ami.csv.gz` from a raw AMI export (anonymizes ids) | needs the raw file; not a test |
@@ -143,7 +143,7 @@ Maintenance scripts and their curated or generated data. Run from the folder
 | `loads/_explore/explore_estimator_clusters.csv` | best parsimonious harmonics per medoid and metric | generated; read by `wecc/wecc_estimate.py` |
 | `loads/_explore/explore_estimator_marimo.py` | review the sweep | `marimo run` |
 | `loads/_explore/explore_calibrate_marimo.py` | calibration weight sensitivity, August 2020 | `marimo run` |
-| `loads/_review/review_loads.py` | review one county's `Total` | marimo |
+| `loads/_review/review_loads.py` | review one county's `Total` or `Estimator` result | marimo |
 | `loads/_review/review_commercial_marimo.py` | review `Commercial` | marimo |
 | `loads/_review/review_wecc_estimate_marimo.py` | view `wecc/wecc_estimate.csv.gz` | marimo |
 | `loads/_review/review_node_estimate_marimo.py` | view `wecc/node_estimate.csv.gz` | marimo |

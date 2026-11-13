@@ -1,10 +1,12 @@
-"""Exercise `loadskill.fetch` against a stand-in for `loads.Total`.
+"""Exercise `loadskill.fetch` against stand-ins for `loads.Total` and `loads.Estimator`.
 
-The stand-in reproduces the output contract read from `loads/total.py`:
-`samples=None` -> training frame (ignores date_range); `0`/`1` -> X columns
-plus Y; `n>1` with `percentile=None` -> X plus `sample_*`; otherwise X plus Y
-at the percentile. Each predicted column has its first 3 / last 3 rows set
-to NaN (lag window). Real-data runs are in tests marked `network`.
+The stand-ins reproduce the output contracts read from `loads/total.py` and
+`loads/estimator.py`: `Total` returns the 2018 sector columns and their sum
+only; `Estimator("County ST",years,config=...)` returns the
+`config.weather` columns and `config.enduse` for every hour of `years`
+(gaps between years filled, then dropped), with the first 3 hours of the
+first year NaN (weather lags) and 2018 kept as actuals when
+`config.keep_actuals`. Real-data runs are in tests marked `network`.
 """
 
 import numpy as np
@@ -12,83 +14,90 @@ import pandas as pd
 import pytest
 
 import loads
-from loads.skill import fetch, validate
+import loads.estimator
+from loads.skill import fetch, schema, validate
 from skill_synthetic import synthetic_total
 
 
 class FakeTotal(pd.DataFrame):
-    EXOGENOUS_VARIABLES = loads.Total.EXOGENOUS_VARIABLES
-    cache = {}
+    SECTORS = loads.Total.SECTORS
+
+    def __init__(self, state, county, *, fuel="elec", refresh=False):
+        super().__init__(synthetic_total(2018)[list(schema.TOTAL_COLUMNS)])
+
+
+class FakeEstimator(pd.DataFrame):
     calls = []
 
-    def __init__(self, state, county, *, Y="elec_total_MW", X=None, date_range=None,
-                 samples=None, percentile=96, refresh=False, **_):
-        FakeTotal.calls.append(dict(Y=Y, samples=samples, percentile=percentile,
-                                    n=None if date_range is None else len(date_range)))
-        ref = synthetic_total(2018)
-        if samples is None:
-            super().__init__(ref)
-            return
-        X = list(X or self.EXOGENOUS_VARIABLES[Y])
-        years = sorted(set(date_range.year))
-        weather = pd.concat([synthetic_total(y, seed=y).loc[:, X] for y in years]).loc[date_range]
-        base = pd.concat([synthetic_total(y, seed=y)[Y] for y in years]).loc[date_range] * 1.02
-        data = weather.copy()
-        if samples > 1 and percentile is None:
-            for n in range(samples):
-                data[f"sample_{n}"] = base + n
-            cols = [c for c in data if c.startswith("sample_")]
-        else:
-            data[Y] = base
-            cols = [Y]
-        data.iloc[:3, [data.columns.get_loc(c) for c in cols]] = np.nan
-        data.iloc[-3:, [data.columns.get_loc(c) for c in cols]] = np.nan
-        super().__init__(data.rename_axis("timestamp"))
-
-    @classmethod
-    def _clear_cache(cls):
-        cls.cache = {}
+    def __init__(self, county_st, years=None, *, config=None):
+        config = config or loads.estimator.EstimatorConfig()
+        FakeEstimator.calls.append(dict(county_st=county_st, years=list(years), sectors=list(config.sectors),
+                                        enduse=config.enduse, weather=list(config.weather),
+                                        keep_actuals=config.keep_actuals))
+        span = range(min(years), max(years) + 1)
+        frames = [synthetic_total(y, seed=y) for y in span]
+        data = pd.concat(frames)
+        columns = {"residential": "elec_residential_MW", "commercial": "elec_commercial_MW",
+                   "industrial": "elec_industrial_MW", "agricultural": "elec_agricultural_MW"}
+        Y = data[[columns[s] for s in config.sectors]].sum(axis=1) * 1.02
+        Y.iloc[:3] = np.nan
+        out = data[list(config.weather)].copy()
+        out[config.enduse] = Y
+        if 2018 in years and config.keep_actuals:
+            ref = synthetic_total(2018)
+            out.loc[ref.index, config.enduse] = ref[[columns[s] for s in config.sectors]].sum(axis=1)
+        super().__init__(out[out.index.year.isin(years)])
 
 
 @pytest.fixture(autouse=True)
-def fake_total(monkeypatch):
-    FakeTotal.calls = []
+def fakes(monkeypatch):
+    FakeEstimator.calls = []
     monkeypatch.setattr(loads, "Total", FakeTotal)
-    yield FakeTotal
+    monkeypatch.setattr(loads.estimator, "Estimator", FakeEstimator)
+    yield FakeEstimator
 
 
-def test_series_modes_and_edges():
+def test_training_is_sector_sum_only():
+    t = fetch.training("Alameda CA")
+    assert list(t.columns) == list(schema.TOTAL_COLUMNS)
+    assert len(t) == 8760
+
+
+def test_series_predict_and_edges():
     p = fetch.series("Alameda CA", 2020)
     assert len(p) == 8784 and p["elec_total_MW"].notna().all()
-    assert p.attrs["loadskill"]["edge_hours_filled"] == 6
-    assert FakeTotal.calls[-1]["samples"] == 0
+    assert list(p.columns) == list(schema.ESTIMATOR_WEATHER) + ["elec_total_MW"]
+    assert p.attrs["loadskill"]["edge_hours_filled"] == 3
+    assert FakeEstimator.calls[-1]["county_st"] == "Alameda CA"
+    assert FakeEstimator.calls[-1]["years"] == [2020]
     n = fetch.series("Alameda CA", 2020, edges="nan")
-    assert n["elec_total_MW"].isna().sum() == 6
-    s = fetch.series("Alameda CA", 2020, mode="samples", samples=3)
-    assert [c for c in s if c.startswith("sample_")] == ["sample_0", "sample_1", "sample_2"]
-    assert FakeTotal.calls[-1]["percentile"] is None
-    q = fetch.series("Alameda CA", 2020, mode="percentile", samples=10, percentile=95)
-    assert FakeTotal.calls[-1] == {"Y": "elec_total_MW", "samples": 10, "percentile": 95, "n": 8784}
-    assert q.attrs["loadskill"]["percentile"] == 95
+    assert n["elec_total_MW"].isna().sum() == 3
+    assert fetch.series("Alameda CA", 2020, mode="training").attrs["loadskill"]["mode"] == "training"
+    with pytest.raises(ValueError, match="mode"):
+        fetch.series("Alameda CA", 2020, mode="samples")
 
 
-def test_series_pad_requests_wider_range():
-    out = fetch.series("Alameda CA", hourly_2019 := pd.date_range(
-        "2019-06-01", "2019-06-30 23:00", freq="1h", tz="UTC"), edges="pad")
-    assert FakeTotal.calls[-1]["n"] == len(hourly_2019) + 6
-    assert len(out) == len(hourly_2019) and out["elec_total_MW"].notna().all()
+def test_series_maps_columns_to_estimator_config():
+    r = fetch.series("Alameda CA", 2020, "elec_residential_MW")
+    assert "elec_residential_MW" in r.columns and "elec_total_MW" not in r.columns
+    assert FakeEstimator.calls[-1]["sectors"] == ["residential"]
+    assert FakeEstimator.calls[-1]["enduse"] == "elec_total_MW"
 
 
-def test_series_rejects_flat_sector_without_X():
+def test_series_pad_estimates_previous_year():
+    june = pd.date_range("2019-06-01", "2019-06-30 23:00", freq="1h", tz="UTC")
+    fetch.series("Alameda CA", june, edges="pad")
+    assert FakeEstimator.calls[-1]["years"] == [2019]  # mid-year start needs no padding
+    out = fetch.series("Alameda CA", 2019, edges="pad")
+    assert FakeEstimator.calls[-1]["years"] == [2018, 2019]
+    assert len(out) == 8760 and out["elec_total_MW"].notna().all()
+
+
+def test_series_rejects_flat_sectors_and_dg():
     with pytest.raises(ValueError, match="flat"):
         fetch.series("Alameda CA", 2020, "elec_industrial_MW")
-    with pytest.raises(ValueError):
-        fetch.series("Alameda CA", 2020, mode="percentile", samples=1)
-
-
-def test_dg_is_clipped():
-    d = fetch.series("Alameda CA", 2020, "elec_dg_MW")
-    assert (d["elec_dg_MW"] <= 0).all()
+    with pytest.raises(ValueError, match="DG"):
+        fetch.series("Alameda CA", 2020, "elec_dg_MW")
 
 
 def test_county_loads_sectors_sum_and_actuals():
@@ -96,17 +105,17 @@ def test_county_loads_sectors_sum_and_actuals():
     rep = validate(df, require_full_years=True)
     assert rep.ok, str(rep)
     assert len(df) == 8760 + 8784
+    assert "elec_dg_MW" not in df and "elec_net_MW" not in df
     assert np.allclose(df.loc["2020", "elec_industrial_MW"], 223.618)
     ref = synthetic_total(2018)
     assert np.allclose(df.loc["2018", "elec_total_MW"], ref["elec_total_MW"])
     assert "hours replaced by 2018 training data" in " ".join(df.attrs["loadskill"]["notes"])
-    # 2018 and 2020 are predicted as separate blocks, never bridged
-    assert sum(1 for c in FakeTotal.calls if c["n"] == 8784) >= 3
 
 
 def test_county_loads_direct():
     df = fetch.county_loads("Alameda CA", 2021, use_training_actuals=False)
-    assert {"elec_total_MW", "elec_dg_MW", "elec_net_MW"} <= set(df)
+    assert {"elec_total_MW", "temperature_degF"} <= set(df)
+    assert FakeEstimator.calls[-1]["keep_actuals"] is False
     assert validate(df).ok
 
 
@@ -131,10 +140,8 @@ def test_county_loads_eia_dg(monkeypatch):
             super().__init__({"elec_dg_MW": -5.0}, index=date_range)
 
     monkeypatch.setattr(loads.dgen, "DG", FakeDG)
-    df = fetch.county_loads("Alameda CA", [2018, 2020], dg_source="eia")
-    assert (df["elec_dg_MW"] == -5.0).all()  # EIA DG kept in 2018 hours, not replaced by stock PV
+    df = fetch.county_loads("Alameda CA", [2018, 2020], dg=True)
+    assert (df["elec_dg_MW"] == -5.0).all()  # EIA DG in every hour, 2018 included
     assert np.allclose(df["elec_net_MW"], df["elec_total_MW"] - 5.0)
-    assert df.attrs["loadskill"]["mode"].endswith("dg_source=eia)")
-    assert not any(c["Y"] == "elec_dg_MW" for c in FakeTotal.calls)  # no TSGAM DG model fitted
-    with pytest.raises(ValueError, match="dg_source"):
-        fetch.county_loads("Alameda CA", 2020, dg_source="dgen")
+    assert df.attrs["loadskill"]["mode"].endswith("dg=eia)")
+    assert validate(df).ok

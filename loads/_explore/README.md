@@ -18,7 +18,7 @@ notebook if desired.
 
 The `explore_clusters.py` script generates `explore_clusters.csv`, which
 contains the medoid of every WECC county for $k$ from 2 to 10 clusters of
-every `loads.total.Total` column.
+every `loads.total.Total` column (the sectors and their sum).
 
 ## Estimator
 

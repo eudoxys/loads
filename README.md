@@ -87,9 +87,9 @@ Outputs
     2018-12-31 22:00:00+00:00,37.711,1.033,-5.342,2.649,36.051,41.393,7.904,0.0,38.068,45.972
     2018-12-31 23:00:00+00:00,38.226,1.382,-3.725,1.664,37.548,41.272,8.399,0.0,30.819,39.218
 
-Without `-D`, the command prints the 2018 county load by sector (see
-`loads.total.Total`). Add `-G` to use the county's EIA-861M distributed
-generation (see `loads.dgen`) in place of the building stock PV.
+Without `-D`, the command prints the 2018 county load by sector and their
+sum (see `loads.total.Total`). Add `-G` to add the county's EIA-861M
+distributed generation and net load (see `loads.dgen`).
 
 ## Python code
 
@@ -138,28 +138,44 @@ Outputs
 
     [8760 rows x 10 columns]
 
-## Load predictions
+## Sector totals
 
-Predict the total load of Alameda County CA for 2020 from 2020 weather.
+Get the 2018 load of Alameda County CA by sector and the sum of the sectors.
 
-    import pandas as pd
     from loads import Total
-    date_range = pd.date_range("2020-01-01 00:00:00+00:00","2020-12-31 23:00:00+00:00",freq="1h")
-    print(Total("CA","Alameda",date_range=date_range,samples=0))
+    print(Total("CA","Alameda"))
 
-Distributed generation (DG) is not included by default. To add the county's
-hourly 2020 DG, i.e., EIA-861M small-scale solar allocated to the county by
-load share and shaped by weather (see `loads.dgen`), and the resulting net
-load use
+which returns 8760 hourly rows with the columns `elec_residential_MW`,
+`elec_commercial_MW`, `elec_industrial_MW`, `elec_agricultural_MW`,
+`elec_transportation_MW` and `elec_total_MW`. `Total` only sums the sectors:
+it has no weather, distributed generation or net load columns and does not
+predict other years.
 
-    print(Total("CA","Alameda",date_range=date_range,samples=0,dg=True))
+## Load estimates
+
+Estimate the total load of Alameda County CA for 2020 from 2020 weather.
+
+    from loads import Estimator
+    print(Estimator("Alameda CA",[2020]))
+
+To get the 95th percentile of 100 autoregressive samples instead of the
+prediction use
+
+    from loads.estimator import EstimatorConfig
+    print(Estimator("Alameda CA",[2020],config=EstimatorConfig(ar=True,samples=100,percentile=95)))
+
+Distributed generation (DG) is not included. To add the county's hourly 2020
+DG, i.e., EIA-861M small-scale solar allocated to the county by load share
+and shaped by weather (see `loads.dgen`), and the resulting net load use
+
+    from loads import DG
+    print(DG.merge(Estimator("Alameda CA",[2020]),"CA","Alameda"))
 
 which adds the `elec_dg_MW` (never positive) and `elec_net_MW` columns. The
-same DG is available on its own with `loads.dgen.DG("CA","Alameda",date_range)`,
-and `loads.dgen.DG.merge` adds it to any hourly load data frame.
+same DG is available on its own with `loads.dgen.DG("CA","Alameda",date_range)`.
 
-See https://www.eudoxys.com/loads for the `Estimator`, `Calibrate`, `Cluster`,
-and `Aggregator` tools.
+See https://www.eudoxys.com/loads for the `Calibrate`, `Cluster`, and
+`Aggregator` tools.
 
 # Agent skill
 
@@ -167,9 +183,9 @@ and `Aggregator` tools.
 (`loads.skill`) for using `loads` inside larger workflows run by a language
 model agent such as Claude Code. [`SKILL.md`](loads/skill/SKILL.md) and
 [`reference/`](loads/skill/reference/) describe how the package works, which
-`Total` mode answers which question, the invariants to check, and the rough
-edges to avoid; the helpers resolve place names, call `Total` in an explicit
-mode, validate results, read the precomputed WECC estimates, calibrate,
+front end answers which question, the invariants to check, and the rough
+edges to avoid; the helpers resolve place names, call `Total` and
+`Estimator`, validate results, read the precomputed WECC estimates, calibrate,
 aggregate counties onto nodes, and export with provenance.
 
 To make the skill available to Claude Code, link the installed skill

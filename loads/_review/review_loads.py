@@ -15,13 +15,12 @@ def _(mo):
 
 
 @app.cell
-def _(county_ui, date_ui, mo, samples_ui, state_ui, training_ui):
+def _(county_ui, date_ui, mo, state_ui, training_ui):
     mo.hstack([
         state_ui, 
         county_ui,
         date_ui,
         training_ui,
-        samples_ui
     ], justify="start")
     return
 
@@ -64,16 +63,9 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    # sampling selection
+    # training (2018 sector loads) or estimate selection
     training_ui = mo.ui.checkbox(label="Training")
     return (training_ui,)
-
-
-@app.cell
-def _(mo, training_ui):
-    # sample count selection
-    samples_ui = mo.ui.slider(label="Samples:",steps=[0,1,100,1000,10000],value=100,disabled=training_ui.value==True,debounce=True,show_value=True)
-    return (samples_ui,)
 
 
 @app.cell
@@ -141,7 +133,17 @@ def _(
 
 
 @app.cell
-def _(Total, county_ui, date_ui, mo, pd, samples_ui, state_ui, training_ui):
+def _(
+    Estimator,
+    Total,
+    Weather,
+    county_ui,
+    date_ui,
+    mo,
+    pd,
+    state_ui,
+    training_ui,
+):
     mo.stop(
         county_ui.value is None,
         mo.md(
@@ -152,13 +154,17 @@ def _(Total, county_ui, date_ui, mo, pd, samples_ui, state_ui, training_ui):
     with mo.status.spinner(
         f"Processing totals for {county_ui.value} {state_ui.value}..."
     ) as _spinner:
-        data = Total(
-            state_ui.value,
-            county_ui.value,
-            samples=None if training_ui.value else samples_ui.value,
-            date_range=pd.date_range(*date_ui.value,freq="1h")[:-1].tz_localize("UTC"),
-            refresh=True,
-        ).round(3)
+        if training_ui.value:
+            # 2018 sector loads with the 2018 weather
+            data = Total(state_ui.value,county_ui.value,refresh=True).join(
+                Weather(state_ui.value,county_ui.value,Total.TRAINING_YEAR)
+                ).round(3)
+        else:
+            _range = pd.date_range(*date_ui.value,freq="1h")[:-1].tz_localize("UTC")
+            data = Estimator(
+                f"{county_ui.value} {state_ui.value}",
+                sorted(set(_range.year)),
+            ).reindex(_range).round(3)
     return (data,)
 
 
@@ -242,8 +248,9 @@ def _():
         from scipy.optimize import curve_fit
         from fips import Counties
         from loads import Total
+        from loads.estimator import Estimator
         from weather import Weather
-    return Counties, Total, mo, pd, plt, px
+    return Counties, Estimator, Total, Weather, mo, pd, plt, px
 
 
 if __name__ == "__main__":

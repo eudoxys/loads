@@ -18,63 +18,38 @@ Public exports (`from loads import ...`): `Aggregator`, `Agriculture`,
 ## Total
 
 ```python
-Total(state: str, county: str, *, Y="elec_total_MW", X=None, dg: bool = False,
-      date_range: pd.DatetimeIndex = None, samples: int = None,
-      percentile: float = 96, holdout=None, refresh: bool = False)
+Total(state: str, county: str, *, fuel: str = "elec", refresh: bool = False)
 ```
 
-The core model: sector sum for 2018 plus a TSGAM (time-series generalized
-additive model, `tsgam_estimator`) fitted per `(state, county, X, Y)` and
-used to predict or sample other periods from weather.
+The 2018 sector loads of a county and their sum, and nothing more
+(`DESIGN.md` decision 20): no weather, no DG, no net load, no prediction or
+sampling. Use [Estimator](#estimator) for other years and [DG](#dg) for
+distributed generation.
 
-- `samples=None` → the 2018 training frame (all sectors, DG, total, net,
-  weather). `date_range`, `X`, `percentile` are ignored. `Y` only selects
-  `elec` vs `nonelec`.
-- `samples=0` → deterministic prediction of `Y` over `date_range`.
-- `samples=1` → one autoregressive sample.
-- `samples>1, percentile=p` → per-hour p-th percentile across samples,
-  returned in column `Y`.
-- `samples>1, percentile=None` → `sample_0 … sample_{n-1}` columns.
-- `date_range` must be a `pd.DatetimeIndex` (asserted) whenever `samples`
-  is not `None`. Weather is fetched for every calendar year it touches.
-- `X` defaults to `Total.EXOGENOUS_VARIABLES[Y]`:
-  temperature + humidity for residential/commercial/total (elec and
-  nonelec), direct + diffuse irradiance for `elec_dg_MW`. Any other `Y`
-  needs `X`.
-- `dg=True` (#43) merges `loads.dgen.DG` (EIA-861M small-scale solar,
-  see [DG](#dg)) with `DG.merge`: `elec_dg_MW` is added, or replaces the
-  building-stock PV in the training frame and the predicted DG when
-  `Y="elec_dg_MW"`, and `elec_net_MW = elec_total_MW + elec_dg_MW` is set
-  whenever `elec_total_MW` is present. So `samples=0, dg=True` returns
-  `X`, `elec_total_MW`, `elec_dg_MW`, `elec_net_MW`; the net inherits the
-  NaN lag-window edges of the total. `dg=True` raises `ValueError` for a
-  `nonelec_` `Y` and for a predicted `Y="elec_net_MW"`. The profile and
-  EIA file come from the class attributes `DG_PROFILE` (`"weather"`) and
-  `DG_SOURCE` (`None` = download). CLI: `loads print ... -G`.
-- `holdout` is accepted and unused (use `Total.test`).
-- Not calibrated to EIA or any reported total, in any year.
-- Output index is converted to UTC and named `timestamp`. The first and
-  last 3 rows of each predicted column are NaN.
+- Columns, in order: `{fuel}_residential_MW`, `{fuel}_commercial_MW`,
+  `{fuel}_industrial_MW`, `{fuel}_agricultural_MW`,
+  `{fuel}_transportation_MW` (always 0) and `{fuel}_total_MW`, their sum
+  **[tested]**. `fuel` is `"elec"` (default) or `"nonelec"`; anything else
+  raises `ValueError`.
+- 8760 hourly rows of 2018, index UTC `timestamp`. There is no `year`
+  argument.
+- Industrial and agricultural are flat unless `Total.INDUSTRY_LOADSHAPE` /
+  `AGRICULTURE_LOADSHAPE` is set; the electric ones use the inventories'
+  `elec_net_MW` (which equals their total: they have no DG).
+- Not calibrated to EIA or any reported total.
+- Cached as `loads/3/{state}/{county}/T_{fuel}_1h_sectors.csv.gz`; built
+  from the cached `Residential`, `Commercial`, `Industry` and `Agriculture`
+  frames, so a county whose sector files are in the `cache` archive needs
+  no other download.
 
-Fetches: NSRDB weather (credentials), ResStock/ComStock (OEDI S3), Census
-housing units, OpenEI floor area, NLR #97 industry/agriculture.
+Fetches: ResStock/ComStock (OEDI S3), Census housing units, OpenEI floor
+area, NLR #97 industry/agriculture. No weather, so no NSRDB credentials.
 
-Class attributes worth knowing: `TRAINING_YEAR = 2018`, `TSGAM_CONFIG`
-(harmonics `[4, 4, 12]` for year/week/day, 7-knot splines, lags −3…+3,
-AR lags 1–9, CLARABEL), `TRANSFORMATIONS` (DG fitted as −DG), `cache`
-(in-memory fitted estimators; set `Total.cache = None` to disable),
-`CACHEDIR`, `INDUSTRY_LOADSHAPE`/`AGRICULTURE_LOADSHAPE` (None = flat).
-
-Class methods:
-
-- `Total.test(state, county, holdout, X=["temperature_degF"],
-  Y="elec_total_MW", n_samples=0, refresh=False)` — fits on 2018 minus
-  `holdout` rows and returns `X`, `Y` (actual), `predict` and optionally
-  `sample[_n]`. Use for skill scores.
-- `Total._clear_cache()` — drop fitted estimators (private but used by
-  upstream sweeps).
-- `Total.makeargs(**kw)` — keeps only kwargs annotated in `__init__`
-  (CLI plumbing; drops `year`).
+Class attributes worth knowing: `TRAINING_YEAR = 2018`, `SECTORS`,
+`FUELS`, `COLUMNS` (electric column descriptions), `CACHEDIR`,
+`INDUSTRY_LOADSHAPE`/`AGRICULTURE_LOADSHAPE` (None = flat).
+`Total.makeargs(**kw)` keeps only kwargs annotated in `__init__` (CLI
+plumbing; drops `year` and `dg`).
 
 ## Residential / Commercial
 
@@ -145,7 +120,7 @@ data to any other `year` at `Floorarea.GROWTH_RATE` (1.75%/yr), forward or
 back. Both rates are class attributes; set them before constructing. The
 sector models do **not** use the growth: `Residential` asks for
 `Units(year=2018)` without `backcast` (so 2020 units) and `Commercial` for
-the 2019 floor area, so `Total` predictions for any year carry no growth.
+the 2019 floor area, so `Estimator` estimates for any year carry no growth.
 Apply growth yourself (e.g. scale a predicted residential series by
 `Units(st, co, 2030) / Units(st, co, 2020)`) and say so.
 
@@ -154,10 +129,11 @@ Apply growth yourself (e.g. scale a predicted residential series by
 ```python
 Estimator(county_st: str, years: list[int] = None, *, config: EstimatorConfig = None)
 EstimatorConfig(verbose=False, debug=False, log=True, ar=False,
-                solver="OSQP", harmonics=(3, 3, 8),
+                solver="SCS", harmonics=(3, 3, 8),
                 sectors=["residential","commercial","industrial","agricultural"],
                 enduse="elec_total_MW", weather=["temperature_degF","humidity_pc"],
-                keep_actuals=True, holdout="5w", fold=0)
+                keep_actuals=True, holdout="5w", fold=0,
+                samples=None, percentile=96, random_state=42)
 ```
 
 `outlier_regularizer` (default `None`) is a class attribute of
@@ -165,7 +141,9 @@ EstimatorConfig(verbose=False, debug=False, log=True, ar=False,
 With the default `None` the TSGAM outlier component is not used.
 `debug=True` adds the fitted model's `decomposition` to `attrs`.
 
-Newer TSGAM front end, one string location (`"Alameda CA"`).
+The prediction API (`DESIGN.md` decision 20), one string location
+(`"Alameda CA"`). It builds its own 2018 sector sum (the same numbers as
+`Total`) and 2018 weather; it does not call `Total`.
 
 - `years=None` → hold-out test on 2018: columns weather, `actual`,
   `prediction`, `status` (`T` train / `H` held out). `holdout` is `"<N>h|d|w|m"`
@@ -183,14 +161,25 @@ Newer TSGAM front end, one string location (`"Alameda CA"`).
   from min to max then dropping the unrequested ones. 2018 rows are the
   actual training data when `keep_actuals`.
 - Fits in log space by default (`log=True`), so it cannot represent zero
-  or negative loads (no DG/net). AR off by default.
+  or negative loads (no DG/net). AR off by default (`ar=True`: lags 1–9,
+  as `Total` had; an integer `n`: lags 1–`n`).
 - Years without NSRDB weather raise `EstimatorError`.
 - The first hours of each prediction are NaN (exogenous lags).
 - `sectors=["residential"]` skips the national commercial, industrial and
   agricultural downloads (what the package's own tests do).
 
-`Total` and `Estimator` use different TSGAM configurations and give
-different predictions. Use one per study and say which.
+- Sampling (`years` required, else `EstimatorError`): `samples=None`/`0`
+  predicts; `samples=1` puts one AR sample in `enduse`; `samples>1` puts
+  the `percentile` (default 96) of that many samples in `enduse`, or with
+  `percentile=None` every sample in `sample_0..sample_{n-1}` instead of
+  `enduse` **[tested]**. Without `ar` (the default) the samples are the prediction plus
+  independent Laplace noise (scale 0.1 in log space), not autocorrelated
+  paths. `random_state` (default 42) seeds the model and the samples, so
+  reruns return the same samples; `None` draws new ones **[tested]**. With
+  `keep_actuals`, 2018 rows hold the actual data in every sample column.
+
+Without `samples` estimates are deterministic. Add DG with
+`DG.merge(estimate, state, county)`.
 `loads/wecc/wecc_estimate.csv.gz` is built from `Estimator` with per-medoid
 harmonics (see [workflows.md](workflows.md)).
 
@@ -301,11 +290,12 @@ Energy(state: str, counties: str | list[str] | None, year: int | tuple | list,
 ```
 
 Periodic MWh per county (`"County ST"` columns) from
-`Total(..., samples=0)` predictions of `elec_total_MW`. Pass `year` as a
+`Estimator("County ST", years)` estimates of `elec_total_MW` (default
+configuration, so 2018 hours are the 2018 sector loads). Pass `year` as a
 2-item list/tuple (`[2018, 2022]`); a bare int fails at `min(year)` when
 building the cache name. The cache name does not include the county list:
 calling it twice for different counties in the same state and period
-returns the first result unless `refresh=True`. A county whose `Total`
+returns the first result unless `refresh=True`. A county whose `Estimator`
 fails is omitted with a warning (its column is absent, not zero);
 `RuntimeError` if every county fails.
 
@@ -360,11 +350,11 @@ aggregate(targets: dict[str, (lat, lon)], dt_range: int | list[int] | DatetimeIn
 ```
 
 `aggregate` maps every **WECC** county to its nearest target and sums
-`Total(..., samples=1)` — a random AR sample, not a prediction — then caches
+`Estimator(..., config=EstimatorConfig(enduse=column))` estimates, then caches
 by year and column only (changing targets needs `refresh=True`). A list of
 years is not handled correctly. `Aggregator.add(target, frame)` takes a
 frame with a column named `target`. Prefer `loads.skill.nearest_nodes` +
-`allocate` on frames you produced in a known mode, or the precomputed
+`allocate` on frames you produced and validated, or the precomputed
 `node_estimate` for WECC240.
 
 ## Cluster
@@ -388,10 +378,11 @@ docs still mention was removed with the deprecated modules (#39).
 
 ```
 loads {print,plot} [-S STATE] [-C COUNTY] [-D DATASET] [-B BUILDING_TYPE]
-      [-Y YEAR] [-o OUTPUT] [-f FORMAT] [-p PRECISION] [-w] [-d]
+      [-Y YEAR] [-G] [-o OUTPUT] [-f FORMAT] [-p PRECISION] [-w] [-d]
 ```
 
 Commands: `print`, `plot` (`viewer`, `test`, `help`, `info` are accepted
-but not functional). `-D total` (default) prints **2018 training data**:
-`-Y` only reaches the `weather` dataset. `plot` draws only `weather` and
+but not functional). `-D total` (default) prints the **2018 sector loads**
+(`Total`): `-Y` only reaches the `weather` dataset. `-G` adds `elec_dg_MW`
+and `elec_net_MW` to the `total` dataset with `DG.merge`. `plot` draws only `weather` and
 `total`. Use `python3 -m loads.skill county|series` for year-aware output.

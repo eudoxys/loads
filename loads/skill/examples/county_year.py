@@ -20,7 +20,7 @@ def main(place: str = "Alameda County, CA", year: int = 2020) -> None:
     if c.ambiguous:
         print(f"WARNING: {c.county_st} names more than one place in fips; loads cannot tell them apart")
 
-    df = ls.county_loads(c, year, sectors=True)        # total = sum of sectors
+    df = ls.county_loads(c, year, sectors=True, dg=True)  # total = sum of sectors; EIA DG, net
     rep = ls.validate(df, require_full_years=True)
     print(rep)
     rep.raise_if_failed()

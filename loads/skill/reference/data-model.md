@@ -20,11 +20,11 @@ to shed the subclass; `loads.skill` does this.
 
 - Name `timestamp`, tz-aware **UTC**, hourly, sorted, unique.
 - 8760 rows for a normal year, 8784 for a leap year.
-- ResStock/ComStock and the `Total` training frame are **2018**
-  (`Total.TRAINING_YEAR`). Industry/agriculture inventories are 2019 but
+- ResStock/ComStock and `Total` are **2018** (`Total.TRAINING_YEAR`). Industry/agriculture inventories are 2019 but
   have no time shape.
-- Predicted/sampled series have NaN in the first 3 and last 3 rows (the
-  `±3 h` exogenous lag window of `Total.TSGAM_CONFIG`).
+- `Estimator` estimates have NaN in the first 3 rows of the first
+  estimated year (the weather lags of `loads.estimator.WEATHER_CONFIG`,
+  `schema.ESTIMATOR_LAGS`).
 - Local time is never applied. `fips` gives each county a standard-time
   offset (`TZOFFSET`) and a DST flag; `loads.Cluster` rolls by `TZOFFSET`.
 
@@ -64,25 +64,26 @@ housing unit (ResStock) or W/sf (ComStock), plus `units` or `floor_area`.
 
 ### `Total` frames
 
-Training frame (`samples=None`), one row per hour of 2018:
+`Total(state, county)`, one row per hour of 2018, these columns in this
+order and nothing else (`schema.TOTAL_COLUMNS`):
 
 | column | meaning |
 |---|---|
-| weather columns | NSRDB 2018 weather for the county centroid |
 | `elec_residential_MW` | `Residential(...)["elec_total_MW"]` |
 | `elec_commercial_MW` | `Commercial(...)["elec_total_MW"]` |
 | `elec_industrial_MW` | `Industry(...)` net, flat |
 | `elec_agricultural_MW` | `Agriculture(...)` net, flat |
 | `elec_transportation_MW` | 0 (not modeled) |
-| `elec_dg_MW` | `-(|res dg| + |com dg|)`, ≤ 0 |
-| `elec_total_MW` | sum of the five sector columns (DG excluded) |
-| `elec_net_MW` | `elec_total_MW + elec_dg_MW` |
+| `elec_total_MW` | sum of the five sector columns |
 
-With `Y="nonelec_..."` the training frame is built with `nonelec_` columns
-instead and has no DG.
+With `fuel="nonelec"` the columns are `nonelec_` instead. `Total` has no
+weather, DG or net load; `DG.merge` adds `elec_dg_MW` and `elec_net_MW`.
 
-Prediction/sample frames contain only the exogenous `X` columns and `Y`
-(or `sample_0..n-1`). See [api.md](api.md#total).
+### `Estimator` frames
+
+`Estimator("County ST", years)` holds the `EstimatorConfig.weather`
+columns and the one `EstimatorConfig.enduse` column. See
+[api.md](api.md#estimator).
 
 ## Invariants
 
@@ -95,9 +96,9 @@ What should hold, and what `ls.validate` checks:
 4. `elec_net_MW = elec_total_MW + elec_dg_MW`;
 5. loads other than DG and net are non-negative.
 
-The training frame satisfies (2)–(4) (the total excludes `_dg_` columns).
-Check rather than assume: frames you assemble yourself (e.g. a predicted
-total with a predicted DG) only satisfy (4) if you compute net from them,
+`Total` satisfies (2), and `DG.merge` output satisfies (3)–(4).
+Check rather than assume: frames you assemble yourself (e.g. an estimated
+total with DG) only satisfy (4) if you compute net from them,
 and calibrated or rescaled frames only if the same factor was applied to
 every part.
 
@@ -105,9 +106,9 @@ every part.
 
 | where | DG sign |
 |---|---|
-| `Total`, `Residential`, `Commercial`, `loads.skill` frames (`elec_dg_MW`) | ≤ 0 (negative load) |
+| `Residential`, `Commercial`, `loads.skill` frames (`elec_dg_MW`) | ≤ 0 (negative load) |
 | `Calibrate(dg=...)`, `Calibrate.net = L − D` | ≥ 0 (generation) |
-| `loads.dgen.DG(...)`, `Total(..., dg=True)` | ≤ 0 |
+| `loads.dgen.DG(...)`, `DG.merge(...)` | ≤ 0 |
 | `loads/wecc/county_dg*.csv.gz`, `loads.dgen.compile()` output | ≥ 0 (generation) |
 | `ls.wecc_dg(convention="load")` (default) | ≤ 0 |
 

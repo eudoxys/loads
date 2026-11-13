@@ -17,10 +17,10 @@ if os.environ.get("LOADS_CACHEDIR"):
 
 @pytest.fixture
 def total2018():
-    """Synthetic 2018 `loads.Total` training frame (offline)"""
+    """Synthetic 2018 county frame (offline, see `skill_synthetic.py`)"""
     return synthetic_total(2018)
 
 @pytest.fixture
 def total2020():
-    """Synthetic 2020 (leap year) `loads.Total`-shaped frame (offline)"""
+    """Synthetic 2020 (leap year) county frame (offline)"""
     return synthetic_total(2020,seed=1)

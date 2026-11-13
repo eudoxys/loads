@@ -25,12 +25,17 @@ def params(fn):
 # --- Total ---------------------------------------------------------------------
 
 def test_total_signature():
+    # DESIGN.md decision 20: Total only sums the sectors
     p = params(loads.Total.__init__)
-    assert list(p)[:3] == ["self", "state", "county"]
-    for name in ("Y", "X", "date_range", "samples", "percentile", "refresh"):
+    assert list(p) == ["self", "state", "county", "fuel", "refresh"]
+    for name in ("fuel", "refresh"):
         assert p[name].kind is inspect.Parameter.KEYWORD_ONLY
+    assert p["fuel"].default == "elec" and p["refresh"].default is False
     assert "year" not in p  # footguns.md #1: no year argument
-    assert p["samples"].default is None and p["percentile"].default == 96
+    for gone in ("Y", "X", "dg", "date_range", "samples", "percentile", "holdout"):
+        assert gone not in p
+    for gone in ("TSGAM_CONFIG", "EXOGENOUS_VARIABLES", "test", "cache"):
+        assert not hasattr(loads.Total, gone)
 
 
 def test_cli_year_is_dropped_for_total():
@@ -40,9 +45,56 @@ def test_cli_year_is_dropped_for_total():
 
 def test_total_constants_match_schema():
     assert loads.Total.TRAINING_YEAR == schema.TRAINING_YEAR
-    assert {k: tuple(v) for k, v in loads.Total.EXOGENOUS_VARIABLES.items()} == schema.PREDICTABLE_TARGETS
-    lags = [l for c in loads.Total.TSGAM_CONFIG.exog_config for l in getattr(c, "lags", [])]
-    assert tuple(sorted(set(lags))) == schema.TSGAM_LAGS
+    assert tuple(loads.Total.SECTORS) == schema.SECTORS
+    assert tuple(loads.Total.COLUMNS) == schema.TOTAL_COLUMNS
+
+
+def test_total_sums_sectors_only(monkeypatch, tmp_path):
+    import loads.total as total
+    from cache import Cache
+
+    idx = pd.date_range("2018-01-01", periods=48, freq="1h", tz="UTC", name="timestamp")
+
+    def stock(value):
+        class Stock(pd.DataFrame):
+            def __init__(self, state, county, *, refresh=False):
+                super().__init__({"elec_total_MW": value, "nonelec_total_MW": value / 2,
+                                  "elec_dg_MW": -1.0}, index=idx)
+        return Stock
+
+    def flat(value):
+        def build(state, county, loadshape, refresh=False):
+            return pd.DataFrame({"elec_net_MW": value * loadshape[0], "nonelec_total_MW": value / 2 * loadshape[0]})
+        return build
+
+    monkeypatch.setattr(Cache, "CACHEDIR", str(tmp_path))
+    monkeypatch.setattr(total, "Residential", stock(10.0))
+    monkeypatch.setattr(total, "Commercial", stock(20.0))
+    monkeypatch.setattr(total, "Industry", flat(3.0))
+    monkeypatch.setattr(total, "Agriculture", flat(1.0))
+    out = loads.Total("CA", "Alameda", refresh=True)
+    assert tuple(out.columns) == schema.TOTAL_COLUMNS  # no weather, DG or net load
+    assert out.index.name == "timestamp" and str(out.index.tz) == "UTC"
+    assert np.allclose(out["elec_total_MW"], 34.0) and (out["elec_transportation_MW"] == 0).all()
+    non = loads.Total("CA", "Alameda", fuel="nonelec", refresh=True)
+    assert list(non.columns) == [c.replace("elec_", "nonelec_") for c in schema.TOTAL_COLUMNS]
+    assert np.allclose(non["nonelec_total_MW"], 17.0)
+    with pytest.raises(ValueError, match="fuel"):
+        loads.Total("CA", "Alameda", fuel="gas")
+
+
+def test_estimator_constants_match_schema():
+    import loads.estimator as est
+    cfg = est.EstimatorConfig()
+    assert tuple(cfg.weather) == schema.ESTIMATOR_WEATHER
+    assert schema.PREDICTABLE_TARGETS["elec_total_MW"] == (tuple(cfg.sectors), cfg.enduse)
+    lags = sorted({l for w in cfg.weather for l in est.WEATHER_CONFIG[w].lags})
+    assert tuple(lags) == schema.ESTIMATOR_LAGS
+    assert est.REFERENCE_YEAR == schema.TRAINING_YEAR
+    p = params(est.Estimator.__init__)
+    assert list(p) == ["self", "county_st", "years", "config"]
+    # api.md sampling options (tested in test_estimator.py)
+    assert (cfg.samples, cfg.percentile, cfg.random_state, cfg.ar, cfg.solver) == (None, 96, 42, False, "SCS")
 
 
 def test_total_positional_year_raises():
@@ -106,7 +158,7 @@ def test_calibrate_dg_must_be_positive_output():
 def test_calibrate_rejects_nan_edges():
     from loads.calibrate import CalibrationError
     X, D, energy, peak = _panel()
-    X.iloc[:3] = np.nan  # Total's lag window
+    X.iloc[:3] = np.nan  # Estimator's lag window
     with pytest.raises(CalibrationError, match="missing"):
         loads.Calibrate(X, energy=energy, peak=peak, dg=D)
 
@@ -256,21 +308,16 @@ def test_dg_outside_county_mwh_is_zero(monkeypatch, tmp_path):
     assert (dg.elec_dg_MW == 0).all()
 
 
-def test_total_dg_option_rules():
-    p = params(loads.Total.__init__)
-    assert p["dg"].default is False
-    assert "dg" in loads.Total.makeargs(state="CA", county="Alameda", dg=True)  # CLI -G reaches Total
-    assert loads.Total.DG_PROFILE == "weather" and loads.Total.DG_SOURCE is None
-    with pytest.raises(ValueError):
-        loads.Total("CA", "Alameda", Y="nonelec_total_MW", dg=True)
-    with pytest.raises(ValueError):
-        loads.Total("CA", "Alameda", Y="elec_net_MW", samples=0, dg=True,
-                    date_range=pd.date_range("2020-01-01", periods=24, freq="1h", tz="UTC"))
+def test_total_has_no_dg_option():
+    # DG is added with DG.merge (CLI -G does this for the total dataset)
+    assert "dg" not in loads.Total.makeargs(state="CA", county="Alameda", dg=True)
+    import loads.cli as cli
+    assert "DG.merge(data,args.state,args.county)" in inspect.getsource(cli._getdata)
 
 
 def test_growth_not_wired_into_sector_models():
     # #19: Units/Floorarea grow outside their data years, but the sector models
-    # still ask for the 2018/2019 base, so Total predictions carry no growth
+    # still ask for the 2018/2019 base, so Estimator predictions carry no growth
     import loads.residential as res
     import loads.commercial as com
     assert "year=2018)" in inspect.getsource(res.Residential.__init__)

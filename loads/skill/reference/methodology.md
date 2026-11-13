@@ -12,8 +12,10 @@ ResStock 2018 (5 types) ─┐ × Census housing units ────────�
 ComStock 2018 (14 types) ┘ × OpenEI floor area (no apts) ──► Commercial
 NLR #97 county inventories, annual → average MW, flat ───────► Industry, Agriculture
 transportation ──────────────────────────────────────────────► 0
-                      Σ sectors (2018)  +  NSRDB 2018 weather  →  TSGAM fit
-                      NSRDB weather for the target period      →  predict / sample
+                      Σ sectors (2018)                         →  Total
+                      Σ sectors (2018)  +  NSRDB 2018 weather  →  Estimator TSGAM fit
+                      NSRDB weather for the target period      →  Estimator predict
+EIA-861M small-scale solar × county share × weather shape  →  DG (DG.merge adds it)
 county panel + state energy + regional peaks + DG  →  Calibrate (optional, per UTC month)
 ```
 
@@ -29,18 +31,23 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
 3. **Industry and agriculture.** Annual county energy from NLR submission
    #97 (TBtu/yr → MW average). No hourly, daily or seasonal shape; not
    weather-driven; not checked against EIA.
-4. **Training frame.** The 2018 sector loads plus the county's NSRDB 2018
-   weather (county centroid) form the training set; total = Σ sectors,
-   DG = −(|res DG| + |com DG|), net = total + DG.
-5. **TSGAM.** `tsgam_estimator` fits, per target column, a time-series
-   generalized additive model: Fourier terms for yearly/weekly/daily
-   periodicity, spline responses to lagged weather (temperature and
-   humidity for loads; direct and diffuse irradiance for DG), and an AR
-   residual model. It is solved as a convex problem (CVXPY, CLARABEL).
-6. **Prediction / sampling.** Applying the fitted model to another year's
-   weather gives the expected load (`samples=0`); AR sampling gives
-   realizations with realistic hour-to-hour variability.
-7. **Calibration (a separate step).** `Total` is not adjusted to any
+4. **Sector sum.** `Total` sums the 2018 sector loads: total = Σ sectors,
+   and nothing more (no weather, DG or net load).
+5. **TSGAM.** `Estimator` sums the configured sectors' 2018 `enduse` and
+   fits, on its log, a time-series generalized additive model
+   (`tsgam_estimator`): Fourier terms for yearly/weekly/daily periodicity
+   and spline responses to lagged county-centroid NSRDB weather
+   (temperature and humidity by default); AR off by default (`ar=True`
+   adds an AR residual model with lags 1–9). It is solved
+   as a convex problem (CVXPY, SCS by default).
+6. **Prediction.** Applying the fitted model to another year's weather
+   gives the expected load; `EstimatorConfig.samples` instead draws AR
+   sample paths (autocorrelated when `ar` is on), optionally reduced to a
+   percentile per hour, seeded by `random_state`.
+7. **Distributed generation.** `loads.dgen.DG` allocates the state's
+   EIA-861M small-scale solar to the county by energy share and shapes it
+   hourly; `DG.merge` adds it as `elec_dg_MW ≤ 0` and sets net load.
+8. **Calibration (a separate step).** Neither `Total` nor `Estimator` is adjusted to any
    reported total. `loads.calibrate.Calibrate` shapes a panel of county (or
    node) gross loads with a convex program (Meyers and Chassin's
    hierarchical net-load shaping): per unit and UTC month, a scale and an
@@ -50,7 +57,7 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
    (see `loads/_validate/README.md`): every state within 0.5% of its energy
    target; CAISO-region net load vs CAISO's reported load −3.7% energy,
    −0.7% peak, 11.2% MAPE.
-8. **Precomputed WECC estimate.** `loads/wecc/wecc_estimate.py` predicts
+9. **Precomputed WECC estimate.** `loads/wecc/wecc_estimate.py` predicts
    every WECC county for 2018–2022 with `loads.estimator.Estimator` (using
    the harmonics chosen for the county's cluster medoid) and rescales each
    UTC month to the county's EIA-861M retail sales allocation
@@ -60,17 +67,15 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
 
 ## Promises (from the package)
 
-- the 2018 training frame: one row per hour of 2018 (UTC), the county's 2018
-  weather, a sector breakdown whose sum is `elec_total_MW` (DG excluded),
-  DG never positive, net = total + DG;
-- predictions for another period: the weather inputs and one TSGAM-predicted
-  column for every hour (one AR sample, or a percentile of samples, when
-  sampling);
-- predicted residential/commercial/total load follows temperature and
-  humidity, predicted DG follows direct and diffuse irradiance; industrial
-  and agricultural load do not depend on weather;
-- inputs and training data are cached (`refresh=True` to rebuild);
-  predictions are deterministic, samples are not.
+- `Total`: one row per hour of 2018 (UTC), a sector breakdown whose sum is
+  `elec_total_MW`, and nothing more;
+- `Estimator`: the weather inputs and one TSGAM-estimated column for every
+  hour of the requested years;
+- estimated load follows temperature and humidity; industrial and
+  agricultural load do not depend on weather;
+- `DG.merge`: DG never positive, net = total + DG;
+- inputs and sector loads are cached (`refresh=True` to rebuild);
+  estimates are deterministic, samples too for a given `random_state`.
 
 ## Not promised
 
@@ -81,20 +86,20 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
 - Load growth: predicted years inherit the 2018 stock scaling. `Units` and
   `Floorarea` can extrapolate growth (#19), but the sector models don't
   use it, so it must be applied separately.
-- The full sector breakdown in predictions (one column per call).
+- The full sector breakdown in estimates (one column per call).
 - Coverage outside years with NSRDB weather; most exercise has been
   2018–2022 in WECC states. Future years need future weather that NSRDB
   does not have.
 - Large loads (data centers, NERC "large loads"), EV/transportation load,
   behind-the-meter storage.
-- Leading/trailing lag hours when sampling or predicting.
+- The first lag hours of an estimate.
 
 ## Interpreting results
 
 - **Expected vs realized.** Predictions are conditional means given
   weather; they are smoother than real load. Peaks from predictions are
-  biased low relative to realized peaks. For peak planning use sample
-  ensembles.
+  biased low relative to realized peaks. For peak planning use AR sample
+  ensembles (`EstimatorConfig(ar=True, samples=n, percentile=None)`).
 - **Weather drives differences between years**, not economics. Year-on-year
   changes in predicted load reflect weather plus whatever growth enters
   through scaling inputs.
@@ -106,7 +111,8 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
   uncalibrated TSGAM: +20.7% energy, 21.6% MAPE), and
   `loads/_explore/explore_estimator_clusters.csv` the hold-out error of
   each harmonics choice per cluster medoid. For a specific county, measure
-  it: `Estimator(county_st)` hold-out mode or `Total.test(...)`, then
+  it: `Estimator(county_st)` hold-out mode (folds with
+  `EstimatorConfig(fold=True)`), then
   report RMSE/MAPE on the held-out rows.
 - **Calibrated is not validated per county.** `Calibrate` and
   `wecc_estimate` match state and regional totals; individual counties

@@ -4,8 +4,8 @@ description: >-
   US county-level hourly electric load modeling with eudoxys/loads: build
   residential, commercial, industrial and agricultural load, distributed
   (rooftop solar) generation and net load for a county and year from
-  ResStock/ComStock, Census, OpenEI, NLR and NSRDB weather data; predict or
-  sample other years with the TSGAM weather model; read the precomputed
+  ResStock/ComStock, Census, OpenEI, NLR and NSRDB weather data; estimate
+  other years with the TSGAM weather model (`Estimator`); read the precomputed
   2018-2022 WECC county and WECC240 node estimates; validate, summarize,
   calibrate to state energy and regional peaks, aggregate counties onto
   network nodes, and export to downstream tools. Use when a task needs a
@@ -20,7 +20,7 @@ allowed-tools: Read, Write, Edit, Bash(python3 -m loads.skill **), Bash(python -
 hourly county load, in MW, by sector, driven by the county's actual weather.
 This skill puts it to work inside larger workflows. Use **`loads`** for every
 number; use **`loads.skill`** (the package this file ships in) to resolve
-places, call `loads` in an explicit mode, check what came back against the
+places, call `loads` with the right front end, check what came back against the
 package contract, summarize it, calibrate or aggregate it, and hand it on
 with provenance.
 
@@ -41,7 +41,7 @@ Do these once, at workflow start. Skipping them fails late or never returns.
    loads`) installs the package, this skill and the precomputed WECC files
    (about 126 MB). Use a clone with `pip install -e .` to work on `loads`
    itself or to run its tests and validation, whose data is repository-only.
-2. **NSRDB credentials.** Every `Total` call fetches NSRDB weather. Without
+2. **NSRDB credentials.** Every `Estimator` call fetches NSRDB weather. Without
    `~/.nsrdb/credentials.json` (`{"<email>": "<api_key>"}`) the `weather`
    package tries to open a sign-up page in a browser, which hangs headless
    agents. Only the user can register (https://developer.nlr.gov/signup/);
@@ -50,7 +50,7 @@ Do these once, at workflow start. Skipping them fails late or never returns.
    `ls.configure()` points it at `$LOADS_CACHEDIR` or `~/.cache/eudoxys`
    and raises early if credentials are missing.
 4. **Budget time.** First access to a county downloads several sources and
-   fits a TSGAM model per target column: minutes per county, hours for a
+   fits a TSGAM model per estimated column: minutes per county, hours for a
    state or interconnection sweep. Results are cached afterwards. Test on one
    county (Alameda CA is the package convention) before sweeping.
 
@@ -82,7 +82,7 @@ of those, build from the model below. Shell: `python3 -m loads.skill wecc
 
 ## The loop
 
-Resolve -> fetch in an explicit mode -> validate -> use -> export with provenance.
+Resolve -> fetch with the right front end -> validate -> use -> export with provenance.
 
 ```python
 import loads.skill as ls
@@ -90,7 +90,7 @@ import loads.skill as ls
 ls.configure()                                   # cache dir + credential check
 c = ls.resolve("Alameda County, CA")             # -> County(state="CA", county="Alameda", ...)
 
-df = ls.county_loads(c, 2020, sectors=True)      # total, sectors, DG, net + weather
+df = ls.county_loads(c, 2020, sectors=True, dg=True)  # sectors, total, DG, net + weather
 rep = ls.validate(df, require_full_years=True)   # the loads contract, checked
 rep.raise_if_failed()
 
@@ -100,48 +100,54 @@ ls.to_csv(df, "out/alameda_2020.csv.gz")         # + .meta.json provenance sidec
 ```
 
 Shell equivalent: `python3 -m loads.skill county "Alameda CA" 2020
---sectors -o out/alameda_2020.csv.gz` prints a JSON report including
+--sectors --dg -o out/alameda_2020.csv.gz` prints a JSON report including
 validation; exit code 2 means the frame failed validation.
 
-## Pick the mode deliberately
+## Pick the front end deliberately
 
-`loads.Total(state, county, ...)` changes behavior with `samples`. Most
-mistakes with this package are a wrong mode. `ls.series` names them:
+`loads.Total` only sums the 2018 sectors; `loads.Estimator` is the
+prediction API. Most mistakes with this package are using one where the
+other was meant. `ls.training`, `ls.series` and `ls.county_loads` name them:
 
-| Need                                  | `loads.skill`                                 | `loads.Total`                          | Output columns                     |
+| Need                                  | `loads.skill`                                 | `loads`                                | Output columns                     |
 |---------------------------------------|-----------------------------------------------|----------------------------------------|------------------------------------|
-| Reference ("actual") 2018 load        | `training(c)`                                 | `Total(st, co)`                        | weather + every sector, DG, total, net |
-| Expected load for a year (weather-driven) | `series(c, 2021)`                         | `Total(..., date_range=idx, samples=0)` | X weather + one target            |
-| One plausible realization             | `series(c, 2021, mode="sample")`              | `samples=1`                            | X + target (random AR draw)        |
-| A high/low planning quantile          | `series(c, 2021, mode="percentile", samples=200, percentile=95)` | `samples=200, percentile=95` | X + target at that percentile (per hour, not a coherent trajectory) |
-| An ensemble for uncertainty           | `series(c, 2021, mode="samples", samples=50)` | `samples=50, percentile=None`          | X + `sample_0..49`                 |
+| Reference ("actual") 2018 load        | `training(c)`                                 | `Total(st, co)`                        | every sector + `elec_total_MW` (nothing else) |
+| Expected load for a year (weather-driven) | `series(c, 2021)`                         | `Estimator("Alameda CA", [2021])`      | weather + `elec_total_MW`          |
+| One sector for a year                 | `series(c, 2021, "elec_residential_MW")`      | `Estimator(..., config=EstimatorConfig(sectors=["residential"]))` | weather + the column |
+| Total, sectors, DG and net for a year | `county_loads(c, 2021, sectors=True, dg=True)` | several `Estimator` calls + `DG.merge` | sectors, total, DG, net + weather  |
 
 Facts that follow from the source:
 
-- `samples=None` (the default) returns 2018 training data and **ignores
-  `date_range`**. There is no `year` argument: `Total("CA", "Alameda",
-  2020)` raises `TypeError`, and `loads print -Y 2020` silently prints 2018.
-- Predict/sample modes return **only** the exogenous weather columns and the
-  one target `Y` (plus `elec_dg_MW`, and `elec_net_MW` when `Y` is
-  `elec_total_MW`, with `dg=True`). For total + DG + net + sectors in a year other than 2018,
-  call once per target; `county_loads` does that and assembles them.
-- `dg=True` adds the EIA-based `loads.dgen.DG` as `elec_dg_MW` (replacing
-  the model's DG) and recomputes `elec_net_MW` where `elec_total_MW` is
-  present; `county_loads(dg_source="eia")` does the same for the assembled
-  frame.
-- Predictable targets: `elec_total_MW`, `elec_residential_MW`,
-  `elec_commercial_MW`, `elec_dg_MW` and their `nonelec_` analogues.
-  Industrial and agricultural are flat at the 2018 level (no shape, no
-  weather response); transportation is zero.
-- The first 3 and last 3 hours of every predicted series are NaN (lag
-  window). `edges="fill"` (default) copies the nearest hour, `"pad"` widens
-  the request and trims, `"nan"` keeps them.
-- A percentile series is the per-hour quantile across samples; its energy
-  and peak are not the energy or peak of any realization. For peak or
-  energy distributions, use `mode="samples"` and compute the statistic per
-  sample.
-- `Total` is not calibrated to EIA or any other reported total, in any
-  year. Calibration is a separate step (below).
+- `Total(state, county, *, fuel="elec", refresh=False)` returns the 2018
+  `elec_{sector}_MW` columns and `elec_total_MW`, their sum, and nothing
+  more: no weather, no DG, no net load, no other year. There is no `year`
+  argument: `Total("CA", "Alameda", 2020)` raises `TypeError`, and
+  `loads print -Y 2020` silently prints 2018.
+- `Estimator(county_st, years, *, config=None)` returns the
+  `EstimatorConfig.weather` columns and the one `EstimatorConfig.enduse`
+  column (default `elec_total_MW` over all four sectors). With
+  `keep_actuals` (default) 2018 hours hold the 2018 sector loads. For total
+  + sectors in a year other than 2018, call once per column;
+  `county_loads` does that and assembles them.
+- Neither has DG. `loads.dgen.DG` is the only DG: EIA-861M small-scale
+  solar allocated to the county and shaped by weather. `DG.merge(frame,
+  state, county)` adds `elec_dg_MW` and sets `elec_net_MW` where
+  `elec_total_MW` is present; `county_loads(dg=True)` does the same.
+- Estimable columns (`schema.PREDICTABLE_TARGETS`): `elec_total_MW`,
+  `elec_residential_MW`, `elec_commercial_MW` and their `nonelec_`
+  analogues. Industrial and agricultural are flat at the 2018 level (no
+  shape, no weather response); transportation is zero.
+- The first 3 hours of the first estimated year are NaN (weather lags).
+  `edges="fill"` (default) copies the first valid hour, `"pad"` also
+  estimates the previous year and trims it, `"nan"` keeps them.
+- Estimates are deterministic. `EstimatorConfig(samples=n, percentile=p)`
+  draws AR samples instead (one sample, the `p`th percentile of `n`, or all
+  `n` as `sample_0..`); pass `ar=True` (lags 1–9) or samples are only
+  independent noise, since AR is off by default. Samples repeat for a
+  given `random_state` (default 42). Not exposed by `ls.series`: call
+  `Estimator` directly.
+- Neither `Total` nor `Estimator` is calibrated to EIA or any other
+  reported total, in any year. Calibration is a separate step (below).
 
 ## Contract to check, not assume
 
@@ -155,7 +161,7 @@ got:
 - `elec_net_MW == elec_total_MW + elec_dg_MW`;
 - `elec_total_MW == Σ elec_{sector}_MW` on `Total` frames, and
   `== baseload + cooling + heating` on sector-model frames;
-- no NaN except in the lag window; plausible weather ranges.
+- no NaN except in the estimator's lag window; plausible weather ranges.
 
 Report validation failures to the user with the frame's provenance
 (`df.attrs["loadskill"]`); do not drop columns or rows to make a check pass.
@@ -174,9 +180,8 @@ Read [workflows.md](reference/workflows.md) for complete recipes:
   `scale_monthly`), affine energy + peak (`fit_energy_peak`), and panel
   shaping to state energy and regional peak targets with
   `loads.calibrate.Calibrate` (`shape_to_targets`);
-- uncertainty bands and peak distributions from sample ensembles;
 - hold-out skill testing (`Estimator(county_st)`, cross-validated with
-  `EstimatorConfig(fold=True)`, `Total.test`) and comparison with measured
+  `EstimatorConfig(fold=True)`) and comparison with measured
   load imported with `loads.Normalize`;
 - handing loads to GridLAB-D players, PyPSA/production-cost CSVs, or
   cvx-sd signal decomposition.
@@ -186,12 +191,12 @@ Read [workflows.md](reference/workflows.md) for complete recipes:
 These fail silently or late. The full list with source references is in
 [footguns.md](reference/footguns.md).
 
-- **Wrong mode.** Training data returned where a year was intended (see
-  above). Check `df.index.year.unique()` and `df.attrs["loadskill"]["mode"]`.
-- **Which DG, which sign.** `elec_dg_MW` is the building-stock PV model by
-  default, or EIA-861M small-scale solar with `Total(dg=True)` /
-  `county_loads(dg_source="eia")` (zero, with a warning, outside the 13
-  WECC states). Say which. `loads` frames and `loads.dgen.DG` use
+- **Wrong front end.** `Total` (2018 sectors) used where a year was
+  intended (see above). Check `df.index.year.unique()` and
+  `df.attrs["loadskill"]["mode"]`.
+- **Which DG, which sign.** `elec_dg_MW` only comes from `loads.dgen.DG`
+  (EIA-861M small-scale solar; zero, with a warning, outside the 13 WECC
+  states). Say so. `loads` frames and `loads.dgen.DG` use
   `elec_dg_MW <= 0`; `Calibrate(dg=...)`, the bundled
   `loads/wecc/county_dg*.csv.gz` files and `dgen.compile` output use
   positive generation. `wecc_dg` and `shape_to_targets` convert.
@@ -206,11 +211,9 @@ These fail silently or late. The full list with source references is in
 - **UTC everywhere.** Months, days and peaks from raw output (and
   `Calibrate`'s monthly blocks) are UTC. Convert (`to_local`,
   `to_local_standard`) before reporting local calendar quantities.
-- **`direct` vs `sum` totals.** `Total`'s own `elec_total_MW` model and the
-  sum of separately predicted sector models differ by a few percent. Pick
-  one per study (`county_loads(total=...)`).
-- **`Total` vs `Estimator`.** Different TSGAM configurations, different
-  numbers; `wecc_estimate` is built from `Estimator`. Use one per study.
+- **`direct` vs `sum` totals.** An `Estimator` model of `elec_total_MW` and
+  the sum of separately estimated sector models differ by a few percent.
+  Pick one per study (`county_loads(total=...)`).
 - **Two location formats.** `Total`, `Residential`, ... take
   `state="CA", county="Alameda"`; `Estimator`, `Cluster`, `Calibrate`
   columns, `clusters.csv` and the WECC files use `"Alameda CA"`.
@@ -220,7 +223,7 @@ These fail silently or late. The full list with source references is in
   sub-hourly power readings need dividing by the readings per hour, and an
   hour with missing meters comes out low.
 - **No growth in predictions.** `Units`/`Floorarea` can extrapolate growth,
-  but `Total` predictions keep 2020 housing units and 2019 floor area for
+  but `Estimator` estimates keep 2020 housing units and 2019 floor area for
   every year. Apply growth separately and state the rate.
 - **Scope.** Large loads (data centers) and EV/transportation load are not
   modeled; industrial and agricultural load are flat annual averages. Say so
@@ -247,7 +250,5 @@ These fail silently or late. The full list with source references is in
   year: fetch, validate, summarize, export (needs data access).
 - [`examples/nodal_profiles.py`](examples/nodal_profiles.py) — sweep a
   state, map counties to buses, check conservation, write node CSVs.
-- [`examples/uncertainty.py`](examples/uncertainty.py) — sample ensemble ->
-  peak distribution and P10/P50/P90 hourly band.
 - [`examples/offline_demo.py`](examples/offline_demo.py) — the helper
-  pipeline on a synthetic `Total`-shaped frame; runs with no network.
+  pipeline on a synthetic county frame; runs with no network.

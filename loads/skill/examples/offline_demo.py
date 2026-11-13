@@ -1,9 +1,9 @@
-"""The loads.skill pipeline on a synthetic, Total-shaped frame (no network).
+"""The loads.skill pipeline on a synthetic county frame (no network).
 
 Shows validate -> summarize -> calibrate -> aggregate -> export on data
-with the same columns and conventions `loads.Total` returns, so the flow
-can be tried anywhere. Replace `synthetic()` with `ls.training(...)` or
-`ls.county_loads(...)` when data access is available.
+with the same columns and conventions `ls.county_loads(..., sectors=True,
+dg=True)` returns, so the flow can be tried anywhere. Replace `synthetic()`
+with `ls.county_loads(...)` when data access is available.
 
     python3 loads/skill/examples/offline_demo.py
 """

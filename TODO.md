@@ -17,7 +17,7 @@
   peaks (see `loads.calibrate`)
 
 - [x] Produce 95th percentile samples from TSGAM (see `samples` and
-  `percentile` in `loads.total.Total`)
+  `percentile` in `loads.estimator.EstimatorConfig`)
 
 # Clustering
 

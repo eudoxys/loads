@@ -1,8 +1,7 @@
 """Map county loads onto network nodes (buses, zones, balancing areas).
 
 `loads.aggregate.aggregate` does this only for WECC counties, always
-nearest-node, and recomputes every county with `samples=1` (a random AR
-draw). These helpers work for any node list and any county frames you
+nearest-node, and re-estimates every county with `loads.Estimator`. These helpers work for any node list and any county frames you
 already have, and support explicit fractional allocations.
 """
 

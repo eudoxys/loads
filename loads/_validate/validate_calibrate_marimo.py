@@ -83,7 +83,7 @@ def _(ExitStack, YEAR, build_button, mo, vc):
     _note = ""
     if not _cache.download() and not _run:
         _missing = vc.missing_inputs(YEAR)
-        _note = (f" The cache lacks the training data or weather of {len(_missing)} WECC "
+        _note = (f" The cache lacks the sector loads or weather of {len(_missing)} WECC "
             f"counties (e.g. {_missing[0]}), which will be downloaded and can take hours."
             if _missing else " All the county inputs are in the cache.")
     mo.stop(not _cache.download() and not _run,mo.vstack([

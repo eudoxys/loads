@@ -1,7 +1,7 @@
 """Check a `loads` frame against the package's stated contract before using it.
 
 The `loads` package documents invariants (hourly UTC coverage, sector sums,
-DG never positive, net = total + DG). Frames assembled from several `Total`
+DG never positive, net = total + DG). Frames assembled from several `loads`
 calls, edited, calibrated or read back from files only satisfy them if every
 step kept them, so a workflow that feeds county loads to another tool should
 check them on the frame it actually received. Pure pandas; works offline.
@@ -67,7 +67,7 @@ def validate(
     rtol: float = 1e-6,
     atol: float = 1e-3,
     require_full_years: bool = False,
-    allow_edge_nan: int = max(-min(schema.TSGAM_LAGS), max(schema.TSGAM_LAGS)),
+    allow_edge_nan: int = max(-min(schema.ESTIMATOR_LAGS), max(schema.ESTIMATOR_LAGS)),
 ) -> Report:
     """Validate a `loads`-shaped frame.
 
@@ -76,7 +76,7 @@ def validate(
     the interior of a power column, negative non-DG load.
 
     Warnings: NaN only at the lag-trimmed edges (up to `allow_edge_nan`
-    hours, the `Total` lag window), partial years, implausible weather.
+    hours, the `Estimator` lag window), partial years, implausible weather.
 
     `atol` is in MW; `loads` rounds outputs to 3 decimals.
     """
@@ -135,7 +135,7 @@ def validate(
                 rep.add("error", "nan", f"{col} has NaN outside the lag edges", int(nan.sum()))
             else:
                 rep.add("warning", "edge-nan",
-                        f"{col} NaN in first {head}/last {tail} hours (Total lag window)", head + tail)
+                        f"{col} NaN in first {head}/last {tail} hours (Estimator lag window)", head + tail)
         if col == "elec_dg_MW":
             pos = int((v > atol).sum())
             if pos:

@@ -2,15 +2,14 @@
 
     python3 -m loads.skill resolve "Alameda County, CA"
     python3 -m loads.skill env
-    python3 -m loads.skill county "Alameda CA" 2020 --sectors -o alameda_2020.csv
-    python3 -m loads.skill series "Alameda CA" 2020 --column elec_total_MW \\
-        --mode percentile --samples 200 --percentile 95 -o p95.csv
+    python3 -m loads.skill county "Alameda CA" 2020 --sectors --dg -o alameda_2020.csv
+    python3 -m loads.skill series "Alameda CA" 2020 --column elec_residential_MW -o res.csv
     python3 -m loads.skill validate alameda_2020.csv
     python3 -m loads.skill summarize alameda_2020.csv --column elec_net_MW
     python3 -m loads.skill wecc "Alameda CA" "Washoe NV" --years 2020 -o wecc_2020.csv
 
 Unlike `loads print -Y 2020`, which silently ignores `-Y` for the total
-dataset and prints 2018 training data, `county`/`series` honor the years.
+dataset and prints the 2018 sector loads, `county`/`series` honor the years.
 `wecc` reads the precomputed 2018-2022 WECC county estimate (no model fit, no
 NSRDB credentials, no network).
 """
@@ -50,25 +49,22 @@ def main(argv: list[str] | None = None) -> int:
     e = sub.add_parser("env", help="report cache folder and NSRDB credentials")
     e.add_argument("--cachedir")
 
-    c = sub.add_parser("county", help="county frame: total, DG, net (and sectors)")
+    c = sub.add_parser("county", help="county frame: total (and sectors, DG, net)")
     c.add_argument("place")
     c.add_argument("years", help="e.g. 2020, 2019-2021, 2018,2020")
     c.add_argument("--sectors", action="store_true")
-    c.add_argument("--no-dg", action="store_true")
-    c.add_argument("--dg-source", choices=["model", "eia"], default="model",
-                   help="elec_dg_MW from the TSGAM stock-PV model or loads.dgen.DG (EIA-861M)")
+    c.add_argument("--dg", action="store_true",
+                   help="add elec_dg_MW from loads.dgen.DG (EIA-861M) and elec_net_MW")
     c.add_argument("--total", choices=["direct", "sum"])
     c.add_argument("--edges", choices=["fill", "pad", "nan"], default="fill")
     c.add_argument("--cachedir")
     c.add_argument("-o", "--output", required=True)
 
-    s = sub.add_parser("series", help="one Total target in a chosen mode")
+    s = sub.add_parser("series", help="one Estimator target (or the 2018 Total sectors)")
     s.add_argument("place")
     s.add_argument("years")
     s.add_argument("--column", default="elec_total_MW")
-    s.add_argument("--mode", choices=["predict", "sample", "percentile", "samples", "training"], default="predict")
-    s.add_argument("--samples", type=int, default=100)
-    s.add_argument("--percentile", type=float, default=50.0)
+    s.add_argument("--mode", choices=["predict", "training"], default="predict")
     s.add_argument("--edges", choices=["fill", "pad", "nan"], default="fill")
     s.add_argument("--cachedir")
     s.add_argument("-o", "--output", required=True)
@@ -108,12 +104,11 @@ def main(argv: list[str] | None = None) -> int:
         from .validate import validate
         fetch.configure(a.cachedir)
         if a.cmd == "county":
-            df = fetch.county_loads(a.place, _years(a.years), dg=not a.no_dg, dg_source=a.dg_source,
+            df = fetch.county_loads(a.place, _years(a.years), dg=a.dg,
                                     sectors=a.sectors,
                                     total=a.total, edges=a.edges)
         else:
-            df = fetch.series(a.place, _years(a.years), a.column, mode=a.mode, samples=a.samples,
-                              percentile=a.percentile, edges=a.edges)
+            df = fetch.series(a.place, _years(a.years), a.column, mode=a.mode, edges=a.edges)
         to_csv(df, a.output)
         rep = validate(df)
         _emit({"output": a.output, "rows": len(df), "columns": list(df.columns),

@@ -29,8 +29,9 @@ and used by `loads/wecc/wecc_estimate.py`.
 
 An earlier clustering, whose medoids were Riverside CA, Orange CA, Los Angeles
 CA, King WA, Salt Lake UT, and Maricopa AZ, was evaluated by
-`tsgam_evaluate.py` and `evaluate_lag.py` to find the optimal
-`loads.total.Total` TSGAM configuration, which is found to be as follows (see
+`tsgam_evaluate.py` and `evaluate_lag.py` to find the optimal TSGAM
+configuration then used by `loads.total.Total` (which no longer predicts),
+which is found to be as follows (see
 `configs.csv`):
 
 | County         | Year Harmonics | Week Harmonics | Day Harmonics | Knots | AR Lag (h) | Exogenous Window (h) | RMSE (GW) |
