@@ -35,10 +35,16 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # ubuntu-latest (26.04) has no python 3.12 builds yet
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12" # must satisfy requires-python
+          cache: pip
+          cache-dependency-path: requirements.txt
       - name: Create docs
         run: make docs
       - name: Setup Pages
