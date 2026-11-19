@@ -183,19 +183,19 @@ import re
 # third-party imports
 import pandas as pd
 import numpy as np
-from tsgam import (
-    Estimator,
-    EstimatorConfig,
-    MultiPeriodicConfig,
-    SplineConfig,
-    ArConfig,
-    OutlierConfig,
-    SolverConfig,
-    PERIOD_HOURLY_DAILY,
-    PERIOD_HOURLY_WEEKLY,
-    PERIOD_HOURLY_YEARLY
-)
-from tsgam import __version__ as tsgam_version
+import tsgam
+# from tsgam import (
+#     Estimator,
+#     EstimatorConfig,
+#     MultiPeriodicConfig,
+#     SplineConfig,
+#     ArConfig,
+#     OutlierConfig,
+#     SolverConfig,
+#     PERIOD_HOURLY_DAILY,
+#     PERIOD_HOURLY_WEEKLY,
+#     PERIOD_HOURLY_YEARLY
+# )
 
 # eudoxys imports
 from weather import Weather
@@ -211,35 +211,35 @@ REFERENCE_YEAR = 2018
 """Reference year for training data"""
 
 WEATHER_CONFIG = {
-    'temperature_degF': SplineConfig(
+    'temperature_degF': tsgam.SplineConfig(
         n_knots=10,
         lags=[-3, -2, -1, 0],  # Current and 1-3 hours back
         reg_weight=1e-4,
         diff_reg_weight=1e0,
         whiten=True,
     ),
-    'humidity_pc': SplineConfig(
+    'humidity_pc': tsgam.SplineConfig(
         n_knots=8,
         lags=[-2, -1, 0],  # Current and 1-2 hours back
         reg_weight=1e-4,
         diff_reg_weight=1e0,
         whiten=True,
     ),
-    'global_Wpms': SplineConfig(
+    'global_Wpms': tsgam.SplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
         diff_reg_weight=1e0,
         whiten=True,
     ),
-    'direct_Wpms': SplineConfig(
+    'direct_Wpms': tsgam.SplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
         diff_reg_weight=1e0,
         whiten=True,
     ),
-    'diffuse_Wpms': SplineConfig(
+    'diffuse_Wpms': tsgam.SplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
@@ -635,13 +635,17 @@ class Estimator(pd.DataFrame):
 
         Returns
         -------
-        - `EstimatorConfig`: TSGAM estimator configuration
+        - `tsgam.EstimatorConfig`: TSGAM estimator configuration
         """
 
         # construct harmonics configuration
-        multi_periodic_config = MultiPeriodicConfig(
+        multi_periodic_config = tsgam.MultiPeriodicConfig(
             num_harmonics=config.harmonics,
-            periods=[PERIOD_HOURLY_YEARLY, PERIOD_HOURLY_WEEKLY, PERIOD_HOURLY_DAILY],
+            periods=[
+                tsgam.PERIOD_HOURLY_YEARLY,
+                tsgam.PERIOD_HOURLY_WEEKLY,
+                tsgam.PERIOD_HOURLY_DAILY,
+                ],
             reg_weight=1e-4,
         )
 
@@ -651,26 +655,26 @@ class Estimator(pd.DataFrame):
             exog_config.append(WEATHER_CONFIG[var_name])
 
         # autoregression configuration
-        ar_config = ArConfig(
+        ar_config = tsgam.ArConfig(
             # bool is a subclass of int, so check for True first
             lags=list(range(1,10)) if config.ar is True else list(range(1,int(config.ar)+1)),
             l1_constraint=0.97
         ) if config.ar else None
 
         # outlier configuration
-        outlier_config = OutlierConfig(
+        outlier_config = tsgam.OutlierConfig(
             reg_weight=config.outlier_regularizer,
             period_hours=24.0  # Daily outliers
         ) if config.outlier_regularizer else None
 
         # solver configuration
-        solver_config = SolverConfig(
+        solver_config = tsgam.SolverConfig(
             solver=config.solver,
             verbose=config.verbose
         )
 
         # main TSGAM config
-        return EstimatorConfig(
+        return tsgam.EstimatorConfig(
             multi_periodic_config=multi_periodic_config,
             exog_config=exog_config,
             ar_config=ar_config,
@@ -684,9 +688,9 @@ class Estimator(pd.DataFrame):
     def _get_model(cls,
         X:pd.DataFrame,
         Y:pd.DataFrame,
-        config:EstimatorConfig,
+        config:tsgam.EstimatorConfig,
         debug:bool=False,
-        ) -> Estimator:
+        ) -> tsgam.Estimator:
         """Run training
 
         Arguments
@@ -697,10 +701,10 @@ class Estimator(pd.DataFrame):
 
         Returns
         -------
-        - `Estimator`: estimator object
+        - `tsgam.Estimator`: estimator object
         """
 
-        model = Estimator(config)
+        model = tsgam.Estimator(config)
         model.fit(X,Y.values.ravel())
         return model
 
