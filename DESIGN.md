@@ -42,7 +42,7 @@ reversed decision in place and note the date.
 | 2 | 2018 is the reference (training) year, because ResStock/ComStock 2018 AMY is the hourly source. Industrial and agricultural inventories are 2019 annual energy. `Total.TRAINING_YEAR = 2018`. |
 | 3 | Residential load is ResStock building-type shapes scaled by Census housing units; commercial load is ComStock building-type shapes scaled by OpenEI floor area. |
 | 4 | Industrial and agricultural load are spread evenly over the year (flat shape) unless a `loadshape` is supplied. They do not respond to weather. |
-| 5 | Other periods are predicted with a TSGAM (`tsgam_estimator`) fitted to the 2018 load and the county's NSRDB weather (`temperature_degF`, `humidity_pc` by default), on log load, by `Estimator` (decision 20). Edited 2026-11-11: the separate `Total` TSGAM (which also predicted `elec_dg_MW` from `direct_Wpms`, `diffuse_Wpms`) is removed. |
+| 5 | Other periods are predicted with a TSGAM (`tsgam`) fitted to the 2018 load and the county's NSRDB weather (`temperature_degF`, `humidity_pc` by default), on log load, by `Estimator` (decision 20). Edited 2026-11-11: the separate `Total` TSGAM (which also predicted `elec_dg_MW` from `direct_Wpms`, `diffuse_Wpms`) is removed. |
 | 6 | Every data accessor subclasses `pd.DataFrame` and does its work in `__init__`; `Units` subclasses `float`. |
 | 7 | Every expensive accessor is cache-first through `eudoxys/cache`, namespaced `package="loads"` with a cache `version` that is bumped when the cached format changes; `CACHEDIR` class attribute and `refresh` argument. |
 | 8 | Columns encode fuel, category and unit: `{elec\|nonelec}_{baseload\|cooling\|heating\|total\|dg\|net}_MW`; `Total` reports `elec_{sector}_MW`. Weather columns keep `weather.Weather` names. |
@@ -214,7 +214,7 @@ each county's `cf` sums to 1.
 | cache outside site-packages | `Cache.CACHEDIR` override ✔ (used by `conftest.py`); default is inside the `cache` install |
 | hourly weather | `weather.Weather` ✔ (NSRDB credentials required) |
 | EIA retail sales, small-scale solar | `eia.HS861m`, `eia.Form861m` ✔ |
-| TSGAM | `tsgam_estimator` (`cvxgrp/tsgam`) ✔; not a Eudoxys package |
+| TSGAM | `tsgam` (`cvxgrp/tsgam`) ✔; not a Eudoxys package |
 | WECC240 bus/node data | read from `eudoxys/wecc240` raw URLs or a sibling clone; not a declared dependency |
 
 ## Known issues to handle

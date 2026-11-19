@@ -9,7 +9,7 @@ When `EstimatorConfig.log` is `True`, the fit and predict operations use the
 logarithm of the specified `EstimatorConfig.enduse` field.
 
 For information on `EstimatorConfig.ar`, `EstimatorConfig.solver`, and
-`EstimatorConfig.harmonics` see [TSGAM estimator](https://github.com/nimish/estimator).
+`EstimatorConfig.harmonics` see [TSGAM estimator](https://github.com/cvxgrp/tsgam).
 
 When `EstimatorConfig.outlier_regularizer` is positive, the TSGAM outlier
 component (with regularization weight `EstimatorConfig.outlier_regularizer`)
@@ -165,7 +165,7 @@ constructor.
 
 See also
 --------
-- [TSGAM estimator](https://github.com/nimish/estimator)
+- [TSGAM estimator](https://github.com/cvxgrp/tsgam)
 - [Eudoxys weather](https://www.eudoxys.com/weather)
 - `loads.residential.Residential`
 - `loads.commercial.Commercial`
@@ -183,7 +183,7 @@ import re
 # third-party imports
 import pandas as pd
 import numpy as np
-from tsgam_estimator import (
+from tsgam import (
     TsgamEstimator,
     TsgamEstimatorConfig,
     TsgamMultiPeriodicConfig,
@@ -195,7 +195,7 @@ from tsgam_estimator import (
     PERIOD_HOURLY_WEEKLY,
     PERIOD_HOURLY_YEARLY
 )
-from tsgam_estimator import __version__ as tsgam_version
+from tsgam import __version__ as tsgam_version
 
 # eudoxys imports
 from weather import Weather
