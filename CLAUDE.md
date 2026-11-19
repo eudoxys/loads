@@ -28,7 +28,7 @@ onto network nodes (e.g. WECC240 busses).
 Sibling eudoxys packages are core dependencies (installed from GitHub via
 `requirements.txt`): `cache` (local data cache), `fips` (state/county lookups),
 `weather` (NSRDB weather), `eia` (EIA forms 861/861m), `geohash`. The TSGAM
-model comes from `tsgam_estimator` (github.com/nimish/estimator).
+model comes from `tsgam` (github.com/cvxgrp/tsgam).
 
 ## Core conventions
 

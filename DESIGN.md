@@ -214,7 +214,7 @@ each county's `cf` sums to 1.
 | cache outside site-packages | `Cache.CACHEDIR` override ✔ (used by `conftest.py`); default is inside the `cache` install |
 | hourly weather | `weather.Weather` ✔ (NSRDB credentials required) |
 | EIA retail sales, small-scale solar | `eia.HS861m`, `eia.Form861m` ✔ |
-| TSGAM | `tsgam_estimator` (`nimish/estimator`) ✔; not a Eudoxys package |
+| TSGAM | `tsgam_estimator` (`cvxgrp/tsgam`) ✔; not a Eudoxys package |
 | WECC240 bus/node data | read from `eudoxys/wecc240` raw URLs or a sibling clone; not a declared dependency |
 
 ## Known issues to handle
