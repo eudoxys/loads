@@ -35,7 +35,7 @@ county panel + state energy + regional peaks + DG  →  Calibrate (optional, per
    and nothing more (no weather, DG or net load).
 5. **TSGAM.** `Estimator` sums the configured sectors' 2018 `enduse` and
    fits, on its log, a time-series generalized additive model
-   (`tsgam_estimator`): Fourier terms for yearly/weekly/daily periodicity
+   (`tsgam`): Fourier terms for yearly/weekly/daily periodicity
    and spline responses to lagged county-centroid NSRDB weather
    (temperature and humidity by default); AR off by default (`ar=True`
    adds an AR residual model with lags 1–9). It is solved

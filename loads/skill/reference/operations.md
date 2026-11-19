@@ -11,7 +11,7 @@ pip install --upgrade pip && pip install git+https://github.com/eudoxys/loads
 ```
 
 `loads` and its siblings install from GitHub (`eudoxys/cache`, `fips`,
-`weather`, `eia`, `geohash`, and `nimish/estimator` for TSGAM). The install
+`weather`, `eia`, `geohash`, and `cvxgrp/tsgam` for TSGAM). The install
 includes the Python modules, this skill's markdown, and the WECC data files
 the code reads (`county_mwh.csv`, the county DG files and the precomputed
 WECC county and node estimates; about 126 MB). To work on `loads` itself,

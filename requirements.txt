@@ -12,7 +12,7 @@ requests
 scikit-learn
 spcqe
 
-tsgam_estimator @ git+https://github.com/nimish/estimator
+tsgam @ git+https://github.com/cvxgrp/tsgam@33258337204ff78ae7e9b6fcf6c0b72d2ff720a2
 
 cache @ git+https://github.com/eudoxys/cache
 eia @ git+https://github.com/eudoxys/eia

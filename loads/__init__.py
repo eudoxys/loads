@@ -259,7 +259,7 @@ flowchart TB
 
     subgraph ESTG["estimator.py · Estimator"]
         direction TB
-        FIT["TSGAM fit<br/>(nimish/estimator)"]
+        FIT["TSGAM fit<br/>(cvxgrp/tsgam)"]
         PREDICT["Predict hourly<br/>county load"]
         EST["elec_total_MW<br/>for other years"]
         FIT --> PREDICT --> EST
@@ -449,7 +449,7 @@ Package information
     - [requests](https://pypi.org/project/requests/)
     - [scikit-learn](https://pypi.org/project/scikit-learn/)
     - [spcqe](https://pypi.org/project/spcqe/)
-    - [tsgam_estimator](https://github.com/nimish/estimator/)
+    - [tsgam](https://github.com/cvxgrp/tsgam/)
     - [cache](https://github.com/eudoxys/cache/)
     - [eia](https://github.com/eudoxys/eia/)
     - [fips](https://github.com/eudoxys/fips/)
