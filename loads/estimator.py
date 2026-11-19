@@ -184,18 +184,6 @@ import re
 import pandas as pd
 import numpy as np
 import tsgam
-# from tsgam import (
-#     Estimator,
-#     EstimatorConfig,
-#     MultiPeriodicConfig,
-#     SplineConfig,
-#     ArConfig,
-#     OutlierConfig,
-#     SolverConfig,
-#     PERIOD_HOURLY_DAILY,
-#     PERIOD_HOURLY_WEEKLY,
-#     PERIOD_HOURLY_YEARLY
-# )
 
 # eudoxys imports
 from weather import Weather
