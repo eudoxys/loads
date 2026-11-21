@@ -321,6 +321,9 @@ the same (the BA totals are matched either way; only the uncalibrated
 the PR #62 inputs: `WECC_load_MW` is on `main`.
 Node `c2u6xt` is in Canada but receives only the load of nearby US
 counties; no Canadian or Mexican load is in the node totals.
+The node net load of the default run (unscaled PV, not clipped), the
+script's `form930_node_net.csv.gz` output, is saved in the package as
+`loads/wecc/node_calibrated_ba_hourly_net.csv.gz`.
 
 | Year | EIA-930 TWh | County TWh | Node TWh | Node peak MW |
 | ---- | ----------- | ---------- | -------- | ------------ |
