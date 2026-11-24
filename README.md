@@ -10,11 +10,11 @@ other years from weather with a time-series model (TSGAM), calibrates
 county loads to state energy and regional peak targets, and aggregates
 counties onto network nodes such as the WECC 240-bus model.
 
-# Documentation
+## Documentation
 
 See https://www.eudoxys.com/loads
 
-# Installation
+## Installation
 
 Install using Eudoxys Package Manager:
 
@@ -25,15 +25,15 @@ Install using `pip`.
 
     pip install git+https://github.com/eudoxys/loads
 
-# Maintenance
+## Maintenance
 
-## Update docs
+### Update docs
 
 To update the documentation run the command
 
     make docs
 
-## Run tests
+### Run tests
 
 To run the tests run the commands
 
@@ -44,7 +44,7 @@ Most tests download data and require NSRDB credentials in
 `~/.nsrdb/credentials.json` (see https://www.eudoxys.com/weather). See
 [`loads/_test/README.md`](loads/_test/README.md) for details.
 
-## Cache Build
+### Cache Build
 
 To rebuild the cache for all WECC counties run the main script of the
 relevant modules, e.g.,
@@ -66,9 +66,9 @@ To restore the cache run the command
 
     cache restore -f filename.tar.gz
 
-# Examples
+## Examples
 
-## Command line
+### Command line
 
 Get the Alameda county California residential load data in CSV format
 
@@ -91,7 +91,7 @@ Without `-D`, the command prints the 2018 county load by sector and their
 sum (see `loads.total.Total`). Add `-G` to add the county's EIA-861M
 distributed generation and net load (see `loads.dgen`).
 
-## Python code
+### Python code
 
 Get the COMstock data frame for medium office buildings in Alameda County CA.
 
@@ -138,7 +138,7 @@ Outputs
 
     [8760 rows x 10 columns]
 
-## Sector totals
+### Sector totals
 
 Get the 2018 load of Alameda County CA by sector and the sum of the sectors.
 
@@ -151,7 +151,7 @@ which returns 8760 hourly rows with the columns `elec_residential_MW`,
 it has no weather, distributed generation or net load columns and does not
 predict other years.
 
-## Load estimates
+### Load estimates
 
 Estimate the total load of Alameda County CA for 2020 from 2020 weather.
 
@@ -177,7 +177,7 @@ same DG is available on its own with `loads.dgen.DG("CA","Alameda",date_range)`.
 See https://www.eudoxys.com/loads for the `Calibrate`, `Cluster`, and
 `Aggregator` tools.
 
-# Agent skill
+## Agent skill
 
 [`loads/skill/`](loads/skill/) is an agent skill and helper package
 (`loads.skill`) for using `loads` inside larger workflows run by a language
@@ -207,7 +207,7 @@ The skill's tests (`loads/_test/test_skill_*.py`) check that what it says
 about `loads` is still true, so a change to `loads` that breaks one of them
 should update the skill documentation in the same pull request.
 
-# Caveat
+## Caveat
 
 - Although a data cache is used extensively to avoid multiple/slow queries, the
   processing of this large amount of data can be very time-consuming.
@@ -219,6 +219,6 @@ should update the skill documentation in the same pull request.
 - Weather data requires NSRDB credentials in `~/.nsrdb/credentials.json`
   (see https://www.eudoxys.com/weather).
 
-# Acknowledgments
+## Acknowledgments
 
-- This material is based on work supported by the U.S. Department of Energy’s Office of Electricity through a grant from the Grid Controls and Communications Division
+- This work was authored in part for the U.S. Department of Energy (DOE) by the National Laboratory of the Rockies under Contract No. DE-AC36-08GO28308 through a grant from the Grid Controls and Communications Devision and by Lawrence Livermore National Laboratory under Contract DE-AC52-07NA27344 through a grant from the Advanced Grid Modeling Program.
