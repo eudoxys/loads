@@ -9,7 +9,7 @@ When `EstimatorConfig.log` is `True`, the fit and predict operations use the
 logarithm of the specified `EstimatorConfig.enduse` field.
 
 For information on `EstimatorConfig.ar`, `EstimatorConfig.solver`, and
-`EstimatorConfig.harmonics` see [TSGAM estimator](https://github.com/nimish/estimator).
+`EstimatorConfig.harmonics` see [TSGAM estimator](https://github.com/cvxgrp/tsgam).
 
 When `EstimatorConfig.outlier_regularizer` is positive, the TSGAM outlier
 component (with regularization weight `EstimatorConfig.outlier_regularizer`)
@@ -165,7 +165,7 @@ constructor.
 
 See also
 --------
-- [TSGAM estimator](https://github.com/nimish/estimator)
+- [TSGAM estimator](https://github.com/cvxgrp/tsgam)
 - [Eudoxys weather](https://www.eudoxys.com/weather)
 - `loads.residential.Residential`
 - `loads.commercial.Commercial`
@@ -183,19 +183,7 @@ import re
 # third-party imports
 import pandas as pd
 import numpy as np
-from tsgam_estimator import (
-    TsgamEstimator,
-    TsgamEstimatorConfig,
-    TsgamMultiPeriodicConfig,
-    TsgamSplineConfig,
-    TsgamArConfig,
-    TsgamOutlierConfig,
-    TsgamSolverConfig,
-    PERIOD_HOURLY_DAILY,
-    PERIOD_HOURLY_WEEKLY,
-    PERIOD_HOURLY_YEARLY
-)
-from tsgam_estimator import __version__ as tsgam_version
+import tsgam
 
 # eudoxys imports
 from weather import Weather
@@ -211,35 +199,35 @@ REFERENCE_YEAR = 2018
 """Reference year for training data"""
 
 WEATHER_CONFIG = {
-    'temperature_degF': TsgamSplineConfig(
+    'temperature_degF': tsgam.SplineConfig(
         n_knots=10,
         lags=[-3, -2, -1, 0],  # Current and 1-3 hours back
         reg_weight=1e-4,
         diff_reg_weight=1e0,
         whiten=True,
     ),
-    'humidity_pc': TsgamSplineConfig(
+    'humidity_pc': tsgam.SplineConfig(
         n_knots=8,
         lags=[-2, -1, 0],  # Current and 1-2 hours back
         reg_weight=1e-4,
         diff_reg_weight=1e0,
         whiten=True,
     ),
-    'global_Wpms': TsgamSplineConfig(
+    'global_Wpms': tsgam.SplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
         diff_reg_weight=1e0,
         whiten=True,
     ),
-    'direct_Wpms': TsgamSplineConfig(
+    'direct_Wpms': tsgam.SplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
         diff_reg_weight=1e0,
         whiten=True,
     ),
-    'diffuse_Wpms': TsgamSplineConfig(
+    'diffuse_Wpms': tsgam.SplineConfig(
         n_knots=8,
         lags=[-1, 0],
         reg_weight=1e-4,
@@ -635,13 +623,17 @@ class Estimator(pd.DataFrame):
 
         Returns
         -------
-        - `TsgamEstimatorConfig`: TSGAM estimator configuration
+        - `tsgam.EstimatorConfig`: TSGAM estimator configuration
         """
 
         # construct harmonics configuration
-        multi_periodic_config = TsgamMultiPeriodicConfig(
+        multi_periodic_config = tsgam.MultiPeriodicConfig(
             num_harmonics=config.harmonics,
-            periods=[PERIOD_HOURLY_YEARLY, PERIOD_HOURLY_WEEKLY, PERIOD_HOURLY_DAILY],
+            periods=[
+                tsgam.PERIOD_HOURLY_YEARLY,
+                tsgam.PERIOD_HOURLY_WEEKLY,
+                tsgam.PERIOD_HOURLY_DAILY,
+                ],
             reg_weight=1e-4,
         )
 
@@ -651,26 +643,26 @@ class Estimator(pd.DataFrame):
             exog_config.append(WEATHER_CONFIG[var_name])
 
         # autoregression configuration
-        ar_config = TsgamArConfig(
+        ar_config = tsgam.ArConfig(
             # bool is a subclass of int, so check for True first
             lags=list(range(1,10)) if config.ar is True else list(range(1,int(config.ar)+1)),
             l1_constraint=0.97
         ) if config.ar else None
 
         # outlier configuration
-        outlier_config = TsgamOutlierConfig(
+        outlier_config = tsgam.OutlierConfig(
             reg_weight=config.outlier_regularizer,
             period_hours=24.0  # Daily outliers
         ) if config.outlier_regularizer else None
 
         # solver configuration
-        solver_config = TsgamSolverConfig(
+        solver_config = tsgam.SolverConfig(
             solver=config.solver,
             verbose=config.verbose
         )
 
         # main TSGAM config
-        return TsgamEstimatorConfig(
+        return tsgam.EstimatorConfig(
             multi_periodic_config=multi_periodic_config,
             exog_config=exog_config,
             ar_config=ar_config,
@@ -684,9 +676,9 @@ class Estimator(pd.DataFrame):
     def _get_model(cls,
         X:pd.DataFrame,
         Y:pd.DataFrame,
-        config:TsgamEstimatorConfig,
+        config:tsgam.EstimatorConfig,
         debug:bool=False,
-        ) -> TsgamEstimator:
+        ) -> tsgam.Estimator:
         """Run training
 
         Arguments
@@ -697,10 +689,10 @@ class Estimator(pd.DataFrame):
 
         Returns
         -------
-        - `TsgamEstimator`: estimator object
+        - `tsgam.Estimator`: estimator object
         """
 
-        model = TsgamEstimator(config)
+        model = tsgam.Estimator(config)
         model.fit(X,Y.values.ravel())
         return model
 
